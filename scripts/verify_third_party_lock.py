@@ -212,7 +212,8 @@ def _verify_patch_records(root: Path, component: dict[str, Any]) -> None:
 
 
 def verify_local(root: Path, lock: dict[str, Any]) -> None:
-    has_git = (root / ".git").exists()
+    has_private_manifest = (root / DEFAULT_MANIFEST).is_file()
+    verify_full_vendored_tree = (root / ".git").exists() and has_private_manifest
     for component in lock["components"]:
         _verify_patch_records(root, component)
         source_path = component["source_path"]
@@ -225,7 +226,7 @@ def verify_local(root: Path, lock: dict[str, Any]) -> None:
         normalizations = component["line_ending_normalizations"]
         if inventory_digest(source, public_index, normalizations) != component["public_source_tree_sha256"]:
             raise LockError(f"{component['component']}: public source tree mismatch")
-        if has_git:
+        if verify_full_vendored_tree:
             vendored_index = _git_index(root, source_path)
             if len(vendored_index) != component["vendored_file_count"]:
                 raise LockError(f"{component['component']}: vendored file count mismatch")

@@ -72,7 +72,7 @@
   ],
   "asset_provenance_sha256": "1bf230e659f4162e4c204565008d25a2490fd5660946bf9a70e1f3e02d9af31f",
   "candidate": true,
-  "content_manifest_sha256": "81ea0e3d3c2490ea7c996dc230d7f1215a69104ad8c02da59c84f2a559ebae5c",
+  "content_manifest_sha256": "9279f5c3a7f8ef870c7d95ea6ae006a20864fa57e07463ebcd0c41a6e85fc5da",
   "decision_gates": {
     "D1_PUBLICATION_FORM": "APPROVED",
     "D2_COPYRIGHT_AND_PROVENANCE": "APPROVED",
@@ -2840,7 +2840,7 @@
     "scripts/verify_c_client_release_licenses.py": "0610b4828448dbad3797dedfa0cba20c6473673733751eea0b78a06d554bb0c6",
     "scripts/verify_libmobile_dependency.py": "f0aed7644eec148bcbbf06f7e5f60f0f727e8b9360decccac7ce28ba987569c4",
     "scripts/verify_sameboot_resource.py": "0a7a1757a36350482cf2f8d50ef2bdc13e8670600c961926c6d11b83012bfe4d",
-    "scripts/verify_third_party_lock.py": "2e773396e1257d1c3245024a349d3324d84ea8929f44716de364a706dd9b8ffc",
+    "scripts/verify_third_party_lock.py": "beda32a405de3348be69e7fdac27916627b07239d4861009faa77dee7823ed24",
     "scripts/write_release_manifest.py": "6e47013767213ec1d02227bc5753de18ff9fb4c15b7782b1805656193614c09d",
     "src/integral_emulator/__init__.py": "1a37ba3a482a4820b92f9ce1af4da2dcae188936fb9219a3e66afb11a05393e5",
     "src/integral_emulator/__main__.py": "8c7568f0ad11e243b7111c1dc89f194bfcb33afc6d847c152ed7e0695967b457",
