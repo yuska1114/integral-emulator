@@ -25,16 +25,9 @@ static bool file_exists(const wchar_t *path)
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
 }
 
-static bool prepend_runtime_path(const wchar_t *release_dir)
+static bool prepend_runtime_path(void)
 {
-    wchar_t dll_dir[MAX_PATH];
-    wchar_t client_dir[MAX_PATH];
-    wchar_t integral_gb_runtime_dir[MAX_PATH];
-    if (!join_path(dll_dir, MAX_PATH, release_dir, L"dll") ||
-        !join_path(client_dir, MAX_PATH, release_dir, L"client") ||
-        !join_path(integral_gb_runtime_dir, MAX_PATH, release_dir, L"runtimes\\gb")) {
-        return false;
-    }
+    const wchar_t *runtime_path_prefix = L"dll;client;runtimes\\gb";
 
     DWORD old_size = GetEnvironmentVariableW(L"PATH", NULL, 0);
     wchar_t *old_path = NULL;
@@ -44,15 +37,15 @@ static bool prepend_runtime_path(const wchar_t *release_dir)
         GetEnvironmentVariableW(L"PATH", old_path, old_size);
     }
 
-    size_t needed = wcslen(dll_dir) + wcslen(client_dir) + wcslen(integral_gb_runtime_dir) + 4u;
-    if (old_path) needed += wcslen(old_path);
+    size_t needed = wcslen(runtime_path_prefix) + 1u;
+    if (old_path) needed += 1u + wcslen(old_path);
     wchar_t *path = (wchar_t *)calloc(needed, sizeof(wchar_t));
     if (!path) {
         free(old_path);
         return false;
     }
-    swprintf(path, needed, L"%ls;%ls;%ls;%ls", dll_dir, client_dir, integral_gb_runtime_dir,
-             old_path ? old_path : L"");
+    swprintf(path, needed, L"%ls%ls%ls", runtime_path_prefix,
+             old_path ? L";" : L"", old_path ? old_path : L"");
     BOOL ok = SetEnvironmentVariableW(L"PATH", path);
     free(path);
     free(old_path);
@@ -78,7 +71,7 @@ static const wchar_t *skip_first_argument(const wchar_t *command_line)
 static bool set_packaged_environment(const wchar_t *release_dir)
 {
     wchar_t path[MAX_PATH];
-    if (!prepend_runtime_path(release_dir)) return false;
+    if (!prepend_runtime_path()) return false;
 
     if (join_path(path, MAX_PATH, release_dir, L"runtimes\\gb\\integral_gb_runtime_dual_server.exe")) {
         SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_DUAL_SERVER", path);
@@ -89,9 +82,11 @@ static bool set_packaged_environment(const wchar_t *release_dir)
     if (join_path(path, MAX_PATH, release_dir, L"runtimes\\gb\\integral_gb_runtime_mobile_runtime.exe")) {
         SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_MOBILE_RUNTIME", path);
     }
-    if (join_path(path, MAX_PATH, release_dir, L"runtimes\\n64")) {
-        SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_N64_RUNTIME_HOME", path);
-    }
+    /*
+     * The child starts in release_dir. Keep N64 and DLL lookup paths relative
+     * so ANSI runtime APIs never have to round-trip a non-ASCII package path.
+     */
+    SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_N64_RUNTIME_HOME", L"runtimes\\n64");
     if (join_path(path, MAX_PATH, release_dir, L"ssl\\cert.pem") && file_exists(path)) {
         SetEnvironmentVariableW(L"SSL_CERT_FILE", path);
     }

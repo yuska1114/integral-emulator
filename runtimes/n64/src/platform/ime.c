@@ -6,9 +6,6 @@
 
 #ifdef __APPLE__
 #include <Carbon/Carbon.h>
-#elif defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #endif
 
 #ifdef __APPLE__
@@ -86,7 +83,12 @@ bool integral_n64_runtime_ime_force_direct_input(void)
         return true;
     }
 #elif defined(_WIN32)
-    return LoadKeyboardLayoutA("00000409", KLF_ACTIVATE) != NULL;
+    /*
+     * N64 controls are read from SDL physical scancodes, so gameplay does not
+     * require an installed US keyboard layout.  Requiring 00000409 here made
+     * the Runtime exit before Core execution on Japanese-only Windows hosts.
+     */
+    return true;
 #else
     /* SDL keyboard events are physical and no text-input context is active. */
     return true;

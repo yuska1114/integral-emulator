@@ -741,6 +741,20 @@ static void client_log(const AppState *state, const char *event, const char *fmt
     fflush(g_client_log);
 }
 
+static void set_application_window_icon(SDL_Window *window)
+{
+    const char *path = getenv("INTEGRAL_EMULATOR_APP_ICON");
+    SDL_Surface *icon;
+    if (!window || !path || !path[0]) return;
+    icon = SDL_LoadBMP(path);
+    if (!icon) {
+        client_log(NULL, "app_icon_load_failed", "error=%s", SDL_GetError());
+        return;
+    }
+    SDL_SetWindowIcon(window, icon);
+    SDL_FreeSurface(icon);
+}
+
 static void redirect_child_output_to_client_log(void)
 {
 #ifdef _WIN32
@@ -9327,11 +9341,15 @@ static DWORD WINAPI monitor_save_sync_thread(LPVOID param)
     while (true) {
         DWORD wait_result = WaitForSingleObject(process, 1000);
         if (wait_result == WAIT_OBJECT_0 || wait_result == WAIT_FAILED) {
+            DWORD exit_code = STILL_ACTIVE;
+            BOOL has_exit_code = GetExitCodeProcess(process, &exit_code);
             client_log(NULL,
                        "local_emulator_exited_monitor",
-                       "game_session_id=%s wait_result=%lu",
+                       "game_session_id=%s wait_result=%lu exit_code=%lu exit_code_known=%d",
                        args->game_session_id,
-                       (unsigned long)wait_result);
+                       (unsigned long)wait_result,
+                       (unsigned long)exit_code,
+                       has_exit_code ? 1 : 0);
             if (heartbeat_lost) {
                 (void)preserve_heartbeat_lost_recovery_set(args->server,
                                                            args->game_session_id,
@@ -11890,6 +11908,7 @@ int main(int argc, char **argv)
         client_log_close();
         return 1;
     }
+    set_application_window_icon(window);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);

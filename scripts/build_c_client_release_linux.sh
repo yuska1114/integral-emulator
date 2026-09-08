@@ -34,7 +34,10 @@ make -C "$project_root/runtimes/n64" frontend
 rm -rf -- "$output_dir"
 mkdir -p "$output_dir/runtimes/gb/libmobile" \
   "$output_dir/runtimes/n64/build/prefix/lib/mupen64plus" \
-  "$output_dir/runtimes/n64/build/prefix/share/mupen64plus"
+  "$output_dir/runtimes/n64/build/prefix/share/mupen64plus" \
+  "$output_dir/assets"
+install -m 0644 "$project_root/assets/product/integral_emulator_icon.bmp" \
+  "$output_dir/assets/integral_emulator_icon.bmp"
 install -m 0755 "$project_root/c_client/build/integral_client" "$output_dir/integral_client"
 install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_dual_server" "$output_dir/integral_gb_runtime_dual_server"
 install -m 0755 "$project_root/c_client/build/integral_gb_runtime_fixed_host" "$output_dir/integral_gb_runtime_fixed_host"

@@ -86,6 +86,36 @@ class NamingContractTests(unittest.TestCase):
             self.skipTest("unapproved product assets are excluded from the public candidate")
         self.assertTrue((root / "assets" / "product" / "integral_emulator_icon.png").is_file())
         self.assertTrue((root / "assets" / "product" / "integral_emulator_icon.ico").is_file())
+        self.assertTrue((root / "assets" / "product" / "integral_emulator_icon.icns").is_file())
+        self.assertTrue((root / "assets" / "product" / "integral_emulator_icon.bmp").is_file())
+
+    def test_product_release_icon_pipeline_is_explicit(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        makefile = (root / "c_client" / "Makefile").read_text(encoding="utf-8")
+        linux_launcher = (root / "c_client" / "linux_release_launcher.sh").read_text(
+            encoding="utf-8"
+        )
+        linux_builder = (
+            root / "scripts" / "build_c_client_release_linux.sh"
+        ).read_text(encoding="utf-8")
+        linux_windows_packager = (
+            root / "scripts" / "package_c_client_linux_windows_release.sh"
+        ).read_text(encoding="utf-8")
+        windows_builder = (
+            root / "scripts" / "build_c_client_release_windows_msys2.sh"
+        ).read_text(encoding="utf-8")
+        macos_builder = (
+            root / "scripts" / "build_c_client_release_macos.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("integral_client.res.o", makefile)
+        self.assertIn("windows_launcher.rc", makefile)
+        self.assertIn("INTEGRAL_EMULATOR_APP_ICON", linux_launcher)
+        self.assertIn("integral_emulator_icon.bmp", linux_builder)
+        self.assertIn("assets/integral_emulator_icon.bmp", linux_windows_packager)
+        self.assertIn("Entry: ID: ${resource_id}", windows_builder)
+        self.assertIn("integral_emulator_icon.icns", macos_builder)
+        self.assertNotIn("continuing without a custom app icon", macos_builder)
 
     def test_integral_client_is_primary_build_output(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -263,6 +293,16 @@ class NamingContractTests(unittest.TestCase):
         self.assertNotIn('L"client\\\\gsc_login_client.exe"', windows)
         self.assertIn('L"runtimes\\\\gb\\\\integral_gb_runtime_fixed_host.exe"', windows)
         self.assertNotIn('L"runtimes\\\\gb\\\\integral_gb_runtime_link_node.exe"', windows)
+        self.assertIn('L"dll;client;runtimes\\\\gb"', windows)
+        self.assertIn(
+            'SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_N64_RUNTIME_HOME", '
+            'L"runtimes\\\\n64")',
+            windows,
+        )
+        self.assertNotIn(
+            'join_path(path, MAX_PATH, release_dir, L"runtimes\\\\n64")',
+            windows,
+        )
 
     def test_macos_release_unlock_removes_only_quarantine_recursively(self) -> None:
         root = Path(__file__).resolve().parents[1]

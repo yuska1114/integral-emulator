@@ -191,39 +191,19 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 PLIST
 
 make_icon() {
-  local source_png="${PROJECT_ROOT}/assets/product/integral_emulator_icon.png"
-  local iconset="${RESOURCES_DIR}/AppIcon.iconset"
+  local source_icns="${PROJECT_ROOT}/assets/product/integral_emulator_icon.icns"
   local icns="${RESOURCES_DIR}/AppIcon.icns"
-  if [[ ! -f "${source_png}" ]] || ! command -v sips >/dev/null || ! command -v iconutil >/dev/null; then
-    return 0
-  fi
-
-  mkdir -p "${iconset}"
-  for size in 16 32 128 256 512; do
-    sips -z "${size}" "${size}" "${source_png}" --out "${iconset}/icon_${size}x${size}.png" >/dev/null
-    local retina=$((size * 2))
-    sips -z "${retina}" "${retina}" "${source_png}" --out "${iconset}/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  if ! iconutil -c icns "${iconset}" -o "${icns}" >/dev/null 2>&1; then
-    if ! python3 - "${source_png}" "${icns}" <<'PY'
-from pathlib import Path
-import sys
-
-from PIL import Image
-
-source = Image.open(sys.argv[1]).convert("RGBA")
-source.resize((1024, 1024), Image.Resampling.LANCZOS).save(
-    Path(sys.argv[2]), format="ICNS"
-)
-PY
-    then
-      echo "Warning: icon generation failed; continuing without a custom app icon." >&2
-      rm -rf "${iconset}"
-      return 0
-    fi
-  fi
-  rm -rf "${iconset}"
+  [[ -s "${source_icns}" ]] || {
+    echo "Required macOS application icon is missing: ${source_icns}" >&2
+    exit 1
+  }
+  cp -f "${source_icns}" "${icns}"
   /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "${CONTENTS_DIR}/Info.plist" >/dev/null
+  [[ -s "${icns}" ]] || { echo "macOS application icon copy failed." >&2; exit 1; }
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${CONTENTS_DIR}/Info.plist")" == "AppIcon" ]] || {
+    echo "macOS application icon was not registered in Info.plist." >&2
+    exit 1
+  }
 }
 
 is_system_dependency() {

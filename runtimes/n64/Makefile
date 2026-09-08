@@ -1,7 +1,7 @@
 .PHONY: all frontend source-stack smoke reference-smoke verify-sources test \
 	transfer-pak-save-test transfer-smoke \
 	interactive-stop-test stop-request-file-test gui-smoke process-test cart-test keymap-test \
-	hotkeys-test remote-input-test remote-input-hook-test remote-media-ipc-test custom-input-test n64-save-layout-test \
+	hotkeys-test ime-test remote-input-test remote-input-hook-test remote-media-ipc-test custom-input-test n64-save-layout-test \
 	config-load-test release-macos ai-context
 
 
@@ -119,6 +119,14 @@ build/test-gui-hotkeys: tests/gui_hotkeys_test.c src/gui/hotkeys.c \
 hotkeys-test: build/test-gui-hotkeys
 	build/test-gui-hotkeys
 
+build/test-ime: tests/ime_test.c src/platform/ime.c src/platform/ime.h
+	mkdir -p build
+	$(CC) -Isrc $$(sdl2-config --cflags) $(N64_RUNTIME_CFLAGS) \
+		tests/ime_test.c src/platform/ime.c -o $@ $(N64_RUNTIME_LDLIBS)
+
+ime-test: build/test-ime
+	build/test-ime
+
 config-load-test: frontend
 	tools/test_config_load.sh
 
@@ -153,4 +161,4 @@ release-macos:
 gui-smoke: frontend
 	tools/test_gui_smoke.sh
 
-test: transfer-pak-save-test process-test cart-test keymap-test hotkeys-test remote-input-test remote-media-ipc-test config-load-test gui-smoke
+test: transfer-pak-save-test process-test cart-test keymap-test hotkeys-test ime-test remote-input-test remote-media-ipc-test config-load-test gui-smoke

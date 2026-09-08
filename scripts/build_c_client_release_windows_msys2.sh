@@ -52,6 +52,7 @@ need_command cc
 need_command make
 need_command ldd
 need_command windres
+need_command objdump
 need_command zip
 need_command python3
 
@@ -68,6 +69,14 @@ else
   echo "Skipping builds cannot produce trustworthy build provenance." >&2
   exit 1
 fi
+
+for resource_id in 0x000003 0x00000e; do
+  if ! objdump -x "${PROJECT_ROOT}/c_client/build/integral_client.exe" |
+      grep -F "Entry: ID: ${resource_id}" >/dev/null; then
+    echo "Windows C Client icon resource ${resource_id} is missing." >&2
+    exit 1
+  fi
+done
 
 echo "Creating release package..."
 rm -rf "${PACKAGE_DIR}" "${ZIP_PATH}"

@@ -4,8 +4,7 @@
 
 #include <stdbool.h>
 
-/* Disables SDL text composition and selects a direct ASCII keyboard source on
- * platforms which expose an application-level input-source API. */
+/* Disables SDL text composition and prepares physical-scancode input. */
 bool integral_n64_runtime_ime_force_direct_input(void);
 
 #endif

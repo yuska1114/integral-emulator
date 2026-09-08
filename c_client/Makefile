@@ -1,6 +1,7 @@
 CC ?= cc
 PKG_CONFIG ?= pkg-config
 PYTHON ?= python3
+WINDRES ?= windres
 CFLAGS ?= -O2 -Wall -Wextra -Werror
 CFLAGS += $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS)
 SDL_CFLAGS := $(shell $(PKG_CONFIG) --cflags sdl2)
@@ -14,6 +15,7 @@ OPENSSL_LIBS := $(shell $(PKG_CONFIG) --libs openssl 2>/dev/null)
 UNAME_S := $(shell uname -s)
 PLATFORM_LIBS :=
 EXEEXT :=
+WINDOWS_CLIENT_RESOURCE :=
 ifeq ($(HAS_SDL_TTF),1)
 CFLAGS += -DINTEGRAL_USE_SDL_TTF
 SDL_CFLAGS += $(SDL_TTF_CFLAGS)
@@ -35,6 +37,9 @@ ifneq ($(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)),)
 CFLAGS += -Wno-format-truncation -Wno-unused-function
 PLATFORM_LIBS += -lws2_32 -liphlpapi -lbcrypt -ladvapi32 -lmfplat -lmfuuid -lmf -lole32 -luuid
 EXEEXT := .exe
+ifneq ($(wildcard ../assets/product/integral_emulator_icon.ico),)
+WINDOWS_CLIENT_RESOURCE := build/integral_client.res.o
+endif
 endif
 
 BUILD_DIR := build
@@ -77,8 +82,13 @@ all: $(TARGET) $(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(TARGET): $(SOURCES) $(SAMEBOY_LIB) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -std=gnu11 -I../runtimes/gb/src/common -I../runtimes/gb/third_party/SameBoy/Core -Wno-multichar -o $@ $(SOURCES) $(SAMEBOY_LIB) -lm $(SDL_LIBS) $(PLATFORM_LIBS)
+$(TARGET): $(SOURCES) $(SAMEBOY_LIB) $(WINDOWS_CLIENT_RESOURCE) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -std=gnu11 -I../runtimes/gb/src/common -I../runtimes/gb/third_party/SameBoy/Core -Wno-multichar -o $@ $(SOURCES) $(WINDOWS_CLIENT_RESOURCE) $(SAMEBOY_LIB) -lm $(SDL_LIBS) $(PLATFORM_LIBS)
+
+ifneq ($(WINDOWS_CLIENT_RESOURCE),)
+$(WINDOWS_CLIENT_RESOURCE): windows_launcher.rc ../assets/product/integral_emulator_icon.ico | $(BUILD_DIR)
+	$(WINDRES) windows_launcher.rc -O coff -o $@
+endif
 
 $(SAMEBOY_LIB):
 	$(MAKE) -C $(SAMEBOY_DIR) lib \
