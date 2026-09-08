@@ -1,8 +1,8 @@
 # INTEGRAL EMULATOR
 
-INTEGRAL EMULATORは、デスクトップクライアント、Integral Server、GB Runtime、N64 Runtimeを組み合わせたエミュレーター環境です。
+INTEGRAL EMULATORは、オープンソースのGame Boyエミュレータです。通信ケーブルによるGame Boy同士の通信、NINTENDO 64との接続、モバイルアダプタGBとの連携が特徴です。また、セーブデータはサーバーで管理する設計になっています。
 
-GB RuntimeはGame Boy／Game Boy Colorの実行、Link Cable通信、Mobile Modeを担当します。N64 RuntimeはNINTENDO 64の実行とROOMセッションを担当します。ROMは利用者のPCに置き、SAVはIntegral Serverを正本として管理します。
+本エミュレータは、主に、デスクトップクライアント、Integral Server、GB Runtime、N64 Runtimeから構成されます。
 
 本リポジトリにはゲームROMやSAVデータは含まれていません。
 

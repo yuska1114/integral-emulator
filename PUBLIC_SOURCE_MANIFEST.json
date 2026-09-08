@@ -1,7 +1,7 @@
 {
   "asset_provenance_sha256": "626019f652017298a5c1497ab351df5838f40a88d81fa0c2c5ece0612ed1d69a",
   "candidate": true,
-  "content_manifest_sha256": "c48c421180e9c5c6a8c199c6a08f6b4c2698f9f1618ac079c6d74ca1d7c53f11",
+  "content_manifest_sha256": "27561a781691456523e099947b3416109909908f246f98d54eeccaa26855fc92",
   "decision_gates": {
     "D1_PUBLICATION_FORM": "APPROVED",
     "D2_COPYRIGHT_AND_PROVENANCE": "APPROVED",
@@ -23,7 +23,7 @@
     "LICENSES/GPL-3.0-or-later.txt": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
     "LICENSES/LGPL-3.0-or-later.txt": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
     "LICENSE_SCOPE.md": "3e18aed75a88978bacb59a328c4b5b1d76155cafc159b6c1c1d83b5510c1f42d",
-    "README.md": "515417247d40f4e61c0f4788fa2f2babdc82896f8096733be65bcb19576e95da",
+    "README.md": "e6df69ee92f2818efa667d12fa8f76dc8f55c80fd421dbf8b7c79473fb3ae454",
     "THIRD_PARTY_LOCK.json": "dcd7c963176affbc6c6ea719c5c1f4f5c63552958a358fd87ec8027ee8dc4346",
     "THIRD_PARTY_NOTICES.md": "6e39ddc9863f8a438d88699260a031de530fcbf62d58af4fd9f459d56bd24bbb",
     "c_client/BINARY_LICENSE_SCOPE.md": "b4a0a8e25c12c7a8162ec6cf1cf5450508b34722bc56ce0578348fc392978cc8",
@@ -1426,7 +1426,7 @@
   "release_status": "NOT LICENSED FOR FORMAL RELEASE",
   "relevant_untracked_count": 0,
   "relevant_untracked_unclassified": 0,
-  "source_commit": "6832a520155191806b0ae323a89dc28c7dd1e14b",
-  "source_date_epoch": 1788851206,
+  "source_commit": "2fefcb6b3a2236cd73ae2db3e9d872c9db13137c",
+  "source_date_epoch": 1788856839,
   "tracked_dirty": false
 }
