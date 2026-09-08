@@ -68,7 +68,7 @@ python3 scripts/verify_libmobile_dependency.py runtimes/gb/third_party/libmobile
 公開ソースZIPは、展開前に同梱manifestと内容が一致するかを単独で検証できます。
 
 ```bash
-python3 scripts/build_public_source.py --verify <公開ソースZIP>
+python3 scripts/public_source_integrity.py --archive <公開ソースZIP>
 ```
 
 展開後は、ソースツリーのルートで次を実行します。ビルド生成物は許可されますが、
@@ -78,8 +78,7 @@ python3 scripts/build_public_source.py --verify <公開ソースZIP>
 python3 scripts/public_source_integrity.py --directory .
 ```
 
-この検証はファイルの整合性確認です。公開承認や配布元の真正性を証明するものでは
-ありません。また、候補版を正式版として検証する場合は拒否されます。
+この検証はファイル内容の一致を確認するものであり、配布元の真正性を保証するものではありません。
 
 ## ドキュメント
 

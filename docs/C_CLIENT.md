@@ -7,7 +7,7 @@ ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として
 
 ## 対応環境
 
-初回公開でサポートするクライアント環境は次のとおりです。
+サポートするクライアント環境は次のとおりです。
 
 - Ubuntu 24.04 LTS
 - Windows 11
@@ -15,16 +15,7 @@ ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として
 Windows 11ではネイティブ版C Clientを使用できます。Integral Serverを同じWindows
 PCで動かす場合は、WSL2上のUbuntu 24.04 LTSを使用します。
 
-macOS版は開発・検証用にビルドできますが、初回公開の公式サポート対象ではありません。
-
-Linux x86-64配布バイナリのビルド環境にはUbuntu 22.04 LTSを使用して構いません。
-これは古いglibcを基準にして互換性を広く保つためのビルド方針です。公開時の
-サポート対象OSは上記のUbuntu 24.04 LTSのままとし、ビルド環境と実行サポート環境を
-区別します。
-
-Ubuntu 22.04 LTS標準のCMake 3.22ではlibmobileをビルドできないため、release
-builderではCMake 3.25以降を別途用意します。OS baselineを24.04へ上げる理由には
-せず、生成されたLinuxバイナリのglibc依存を22.04上で確認します。
+macOS版は開発・検証用にビルドできますが、公式サポート対象ではありません。
 
 ## Ubuntu 24.04 LTSでのビルド
 
@@ -234,24 +225,15 @@ make -C c_client n64-runtime-stop-process-test
 
 ## Linux／Windows配布アーカイブの作成
 
-Linuxの入力成果物はUbuntu 22.04 LTS x86-64上で次のスクリプトにより作成します。
-この段階で成果物hash、ビルド元commit、dirty状態を`BUILD_PROVENANCE.json`へ
-記録し、公開バイナリからローカルcheckoutの絶対パスを除去してstripします。
+Linux x86-64の入力成果物は次のスクリプトにより作成します。
 
 ```bash
 bash scripts/build_c_client_release_linux.sh \
   dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_BUILD
 ```
 
-WindowsおよびmacOSのrelease builderも同じ形式のビルド記録を成果物内に
-生成します。`SKIP_BUILD`による既存バイナリの再包装は、信頼できるビルド時点を
-記録できないためrelease作成では受け付けません。
-
 公開ソースでは`assets/public/`の全面黒プレースホルダーを既定アイコンとして
-使用します。公式ブランド画像は公開ソースへ含めません。管理者が非公開の公式画像を
-使う場合だけ、`INTEGRAL_EMULATOR_ICON_PNG`、`INTEGRAL_EMULATOR_ICON_ICO`、
-`INTEGRAL_EMULATOR_ICON_ICNS`、`INTEGRAL_EMULATOR_ICON_BMP`へ対応形式のパスを
-明示します。欠落または不正形式の画像を指定するとビルドは失敗します。
+使用します。
 
 検証済みのLinuxビルドディレクトリとWindowsビルドディレクトリから、
 配布用のtar.gzとZIPを同時に作成できます。
@@ -264,46 +246,21 @@ bash scripts/package_c_client_linux_windows_release.sh \
 
 出力先は既定で`dist/releases/`です。両パッケージの`README.txt`は
 `c_client/RELEASE_README.txt`だけを原本とし、作成時に同一性を検証します。
-Linuxパッケージは専用ランチャーからGB Dual Server、Fixed Host、Mobile
-RuntimeおよびN64 Runtimeの絶対パスを設定し、Mobile Runtime用libmobileも
-同梱します。
-Windowsパッケージはランチャー、GB／N64 Runtime、DLL、TLS証明書を維持します。
-公開物は明示的なallowlistから構成し、N64 reference runnerと開発用headerは
-含めません。ROM、SAV、RTC、鍵、実設定、ログ、SQLite、macOSメタデータを
-検出した場合は作成を拒否します。各プラットフォームに同形式の
+各プラットフォームに同形式の
 `RELEASE_MANIFEST.json`と`SHA256SUMS`、各アーカイブの隣に`.sha256`を生成します。
-正式な`dist/releases/`出力にはclean worktreeと、同一commitの検証済み正式公開
-ソースZIPが必要です。条件を満たさない場合、スクリプトは自動的なfallbackや
-互換コピーを作らず失敗します。レビュー用成果物が必要な場合は、代替出力先を
-`dist/release-candidates/<短縮commit>/`として明示的に指定します。Linux／Windows
-パッケージャーでは第3引数、macOSビルダーでは出力先overrideで指定します。
-候補版のmanifestにも実際の出自とdirty状態をそのまま記録し、
-`dist/releases/`の正式版とは区別します。
-このスクリプトは再ビルドを行わず、両入力の`BUILD_PROVENANCE.json`に記録された
-出自が現在のcleanなソースと一致し、dirtyがfalseで、全入力hashが一致する場合だけ
-配布整形します。記録欠落、改変、出自不一致、dirty入力は失敗します。
 
-公開Git cloneでは、公開リポジトリのcheckout commitと、
-`PUBLIC_SOURCE_MANIFEST.json`が示す内部正本の元commitを別々に記録します。
-Git管理外へ展開した公開ZIPでは、公開manifestと全ソースの一致を検証してから、
-manifestの元commitとmanifest自体のSHA-256を記録します。偽のGit commitは補いません。
-通常のビルド生成物は公開`.gitignore`と同じ限定された規則で除外しますが、既存ソースの
-改変・欠落や想定外のソース追加は拒否します。
-
-公開ソースZIPは、内部policyファイルなしで次のように検証できます。
+公開ソースZIPは次のように検証できます。
 
 ```bash
-python3 scripts/build_public_source.py --verify /path/to/public-source.zip
+python3 scripts/public_source_integrity.py --archive /path/to/public-source.zip
 python3 scripts/public_source_integrity.py --directory /path/to/extracted-source
 ```
 
-この検証はファイル一覧、hash、件数、関連digest、パス安全性、重複・衝突、欠落・
-余分なファイルを確認するものです。発行元の真正性や公開承認を証明する署名では
-ありません。候補ZIPを正式版として要求する検証は失敗します。
+この検証はファイル内容の一致を確認するものであり、配布元の真正性を保証するものではありません。
 
 macOS成果物名も
 `INTEGRAL_EMULATOR_C_CLIENT_<version>_MACOS_ARM64_<YYYYMMDD>.zip`とし、
-Linux／Windowsと同じ命名規則を使用します。旧名称のaliasは作りません。
+Linux／Windowsと同じ命名規則を使用します。
 
 macOSでは、次のH.264検証を実行できます。
 

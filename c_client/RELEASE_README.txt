@@ -16,11 +16,15 @@ Windows 11
 1. ZIPファイルを完全に展開します。
 2. 展開先のINTEGRAL_EMULATOR.exeをダブルクリックします。
 
-必要なDLLとTLS証明書ファイルは配布物に同梱されています。
+実行ファイルだけを別の場所へ移動せず、展開したフォルダ構成のまま使用してください。
+
+このWindows版にはコード署名を行っていません。Microsoft Defender SmartScreenなどに
+より、発行元を確認できない旨の警告が表示される場合があります。公開元とZIPファイルの
+SHA-256を確認し、信頼できる場合にのみ実行してください。
 
 macOS（Apple Silicon）
 
-macOS版は開発・検証用です。初回の正式サポート対象には含みません。
+macOS版は開発・検証用です。正式サポート対象には含みません。
 同梱ライブラリの要件により、macOS 26.0以降が必要です。
 
 1. ZIPファイルを完全に展開します。
@@ -85,7 +89,7 @@ login.serverにはIntegral Server APIのベースURLを指定します。URLに�
   LICENSE_SCOPE.md、THIRD_PARTY_NOTICES.md  ライセンスの適用範囲と第三者告知
   LICENSES/     GNUライセンス原文と同梱コンポーネントのライセンス原文
   RUNTIME_DEPENDENCIES.md  同梱共有ライブラリとライセンスの対応表
-  BUILD_PROVENANCE.json  ビルド元の出自、dirty状態、成果物hash
+  BUILD_PROVENANCE.json  ビルド情報
 
 展開後のSHA256SUMSには、配布物内ファイルのハッシュが記録されています。
 アーカイブと同じ場所にある.sha256ファイルには、tar.gzまたはZIP自体のハッシュが

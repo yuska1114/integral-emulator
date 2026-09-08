@@ -173,7 +173,7 @@ class NamingContractTests(unittest.TestCase):
         )
         self.assertNotIn("make -C c_client release-macos", document)
         self.assertNotIn("Mac workspace", document)
-        self.assertIn("初回公開の公式サポート対象ではありません", document)
+        self.assertIn("公式サポート対象ではありません", document)
 
         for key in ("login.server", "login.server_id", "login.remember"):
             self.assertIn(key, config_example)
@@ -412,8 +412,6 @@ class NamingContractTests(unittest.TestCase):
                 / "build_source_macos_arm64_package.sh"
             ).exists()
         )
-        self.assertTrue((root / "scripts" / "build_public_source.py").is_file())
-
     def test_runtime_source_directories_are_canonical(self) -> None:
         root = Path(__file__).resolve().parents[1]
         self.assertTrue((root / "runtimes" / "gb" / "src" / "Makefile").is_file())

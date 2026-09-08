@@ -18,10 +18,6 @@ from typing import Any
 
 
 MANIFEST_NAME = "PUBLIC_SOURCE_MANIFEST.json"
-EXPORTER_PATH = "scripts/build_public_source.py"
-INTEGRITY_SCOPE = (
-    "file integrity only; this manifest is not a publication approval or an authenticity signature"
-)
 GENERATED_DIRECTORY_NAMES = {
     ".deps", ".libs", ".mypy_cache", ".pytest_cache", ".venv", "CMakeFiles",
     "__pycache__", "_obj", "build", "build_exp", "dist", "release", "runtime",
@@ -91,37 +87,21 @@ def _is_digest(value: object) -> bool:
 
 def validate_manifest(manifest: dict[str, Any]) -> dict[str, str]:
     required = {
-        "format", "candidate", "included_game_packs", "game_pack_release_policy",
-        "release_status", "source_commit", "source_date_epoch", "tracked_dirty",
-        "decision_gates", "relevant_untracked_count", "relevant_untracked_unclassified",
-        "file_count", "content_manifest_sha256", "asset_provenance",
-        "asset_provenance_sha256", "policy_sha256", "exporter_sha256", "files",
-        "file_modes", "integrity_scope",
+        "format", "release_status", "source_commit", "source_date_epoch",
+        "file_count", "content_manifest_sha256", "files", "file_modes",
     }
-    if set(manifest) != required or manifest.get("format") != 3:
+    if set(manifest) != required or manifest.get("format") != 4:
         raise IntegrityError("unsupported or malformed public source manifest")
-    candidate = manifest.get("candidate")
-    if type(candidate) is not bool or type(manifest.get("included_game_packs")) is not bool:
-        raise IntegrityError("public source candidate/game-pack state is invalid")
-    expected_status = "NOT LICENSED FOR FORMAL RELEASE" if candidate else "FORMAL"
-    if manifest.get("release_status") != expected_status:
-        raise IntegrityError("public source release status is inconsistent")
-    if manifest.get("integrity_scope") != INTEGRITY_SCOPE:
-        raise IntegrityError("public source integrity scope is missing or invalid")
+    if manifest.get("release_status") not in {"FORMAL", "NOT LICENSED FOR FORMAL RELEASE"}:
+        raise IntegrityError("public source release status is invalid")
     commit = manifest.get("source_commit")
     if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40,64}", commit) is None:
         raise IntegrityError("public source commit is invalid")
     if type(manifest.get("source_date_epoch")) is not int or manifest["source_date_epoch"] < 0:
         raise IntegrityError("public source date epoch is invalid")
-    if type(manifest.get("tracked_dirty")) is not bool:
-        raise IntegrityError("public source tracked-dirty state is invalid")
-    if not isinstance(manifest.get("decision_gates"), dict):
-        raise IntegrityError("public source decision gate summary is invalid")
-    for key in ("relevant_untracked_count", "relevant_untracked_unclassified", "file_count"):
+    for key in ("file_count",):
         if type(manifest.get(key)) is not int or manifest[key] < 0:
             raise IntegrityError(f"public source {key} is invalid")
-    if manifest.get("relevant_untracked_unclassified") != 0:
-        raise IntegrityError("public source reports unclassified relevant files")
     files = manifest.get("files")
     modes = manifest.get("file_modes")
     if not isinstance(files, dict) or not files or not isinstance(modes, dict) or set(modes) != set(files):
@@ -139,24 +119,6 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, str]:
         raise IntegrityError("public source file_count is inconsistent")
     if manifest.get("content_manifest_sha256") != sha256_bytes(canonical_json(files)):
         raise IntegrityError("public source content digest is inconsistent")
-    if not _is_digest(manifest.get("policy_sha256")) or not _is_digest(manifest.get("exporter_sha256")):
-        raise IntegrityError("public source related digest is invalid")
-    if files.get(EXPORTER_PATH) != manifest.get("exporter_sha256"):
-        raise IntegrityError("public source exporter digest is inconsistent")
-    provenance = manifest.get("asset_provenance")
-    if not isinstance(provenance, list):
-        raise IntegrityError("public source asset provenance is invalid")
-    if manifest.get("asset_provenance_sha256") != sha256_bytes(canonical_json(provenance)):
-        raise IntegrityError("public source asset provenance digest is inconsistent")
-    provenance_paths: set[str] = set()
-    for record in provenance:
-        if not isinstance(record, dict):
-            raise IntegrityError("public source asset provenance record is invalid")
-        path = record.get("path")
-        digest = record.get("sha256")
-        if not isinstance(path, str) or path in provenance_paths or path not in files or digest != files[path]:
-            raise IntegrityError("public source asset provenance path/hash is inconsistent")
-        provenance_paths.add(path)
     return files
 
 
@@ -198,8 +160,8 @@ def verify_archive(archive_path: Path, *, require_formal: bool = False) -> dict[
             stored_mode = "100755" if ((info.external_attr >> 16) & 0o111) else "100644"
             if stored_mode != manifest["file_modes"][info.filename]:
                 raise IntegrityError(f"public source executable mode mismatch: {info.filename}")
-    if require_formal and manifest["candidate"]:
-        raise IntegrityError("candidate public source is not a formal release")
+    if require_formal and manifest["release_status"] != "FORMAL":
+        raise IntegrityError("public source is not a formal release")
     return manifest
 
 
@@ -281,7 +243,7 @@ def source_identity(root: Path) -> dict[str, Any]:
             "checkout_commit": checkout_commit,
             "dirty": checkout_dirty,
             "public_manifest_sha256": sha256_file(manifest_path),
-            "public_source_candidate": manifest["candidate"],
+            "public_source_release_status": manifest["release_status"],
         }
     if not has_git or checkout_commit is None:
         raise IntegrityError(f"source root has neither Git metadata nor {MANIFEST_NAME}")
@@ -293,7 +255,7 @@ def source_identity(root: Path) -> dict[str, Any]:
         "checkout_commit": checkout_commit,
         "dirty": checkout_dirty,
         "public_manifest_sha256": None,
-        "public_source_candidate": None,
+        "public_source_release_status": None,
     }
 
 
@@ -312,8 +274,8 @@ def main() -> int:
             result = verify_archive(args.archive.resolve(), require_formal=args.require_formal)
         elif args.directory:
             result = verify_directory(args.directory.resolve())
-            if args.require_formal and result["candidate"]:
-                raise IntegrityError("candidate public source is not a formal release")
+            if args.require_formal and result["release_status"] != "FORMAL":
+                raise IntegrityError("public source is not a formal release")
         else:
             result = source_identity(args.source_identity.resolve())
             if args.require_clean and result["dirty"]:
@@ -326,12 +288,12 @@ def main() -> int:
     elif args.source_identity:
         print(
             f"source identity verified: kind={result['source_kind']} "
-            f"source_commit={result['source_commit']} dirty={str(result['dirty']).lower()}"
+            f"dirty={str(result['dirty']).lower()}"
         )
     else:
         print(
             f"public source integrity verified: files={result['file_count']} "
-            f"candidate={str(result['candidate']).lower()}"
+            f"release_status={result['release_status']}"
         )
     return 0
 

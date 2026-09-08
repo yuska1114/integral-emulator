@@ -167,7 +167,7 @@ def main() -> int:
         )
         if args.expected_commit and record["source"]["source_commit"] != args.expected_commit:
             raise SystemExit("build provenance source commit does not match --expected-commit")
-        print(f"verified {args.platform} build {record['source']['source_commit']}")
+        print(f"verified {args.platform} build")
     return 0
 
 

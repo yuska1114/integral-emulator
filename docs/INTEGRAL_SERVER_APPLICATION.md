@@ -19,7 +19,7 @@ ROM、SAV、GB／N64 Runtime、TLS秘密鍵、ゲーム別GB Mobileパッケー�
 
 ## 動作要件
 
-初回公開における公式サポート環境はUbuntu 24.04 LTSです。
+公式サポート環境はUbuntu 24.04 LTSです。
 
 Windowsでサーバーを動かす場合は、WSL2または仮想マシン上のUbuntu 24.04 LTSを
 使用してください。Windowsネイティブのサーバーインストールには対応していません。
@@ -286,13 +286,13 @@ sudo integral-server mobile-package list
 パッケージを導入する場合は、内容と出所を確認したアーカイブを指定します。
 
 ```bash
-sudo integral-server mobile-package install ./reviewed-package.tar.gz
+sudo integral-server mobile-package install ./mobile-package.tar.gz
 ```
 
 同じパッケージIDを更新する場合だけ`--replace`を使用します。
 
 ```bash
-sudo integral-server mobile-package install --replace ./reviewed-package.tar.gz
+sudo integral-server mobile-package install --replace ./mobile-package.tar.gz
 ```
 
 サービスが起動中の場合、導入コマンド内でサービスが再起動されます。停止中の場合は、

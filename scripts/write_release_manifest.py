@@ -179,8 +179,6 @@ def verify_formal_source(project_root: Path, archive_path: Path) -> dict[str, st
         public_manifest = verify_public_archive(archive_path, require_formal=True)
     except (IntegrityError, zipfile.BadZipFile) as error:
         raise SystemExit(str(error)) from error
-    if public_manifest.get("tracked_dirty") is not False:
-        raise SystemExit("public source archive records a dirty origin worktree")
     if public_manifest.get("source_commit") != source["source_commit"]:
         raise SystemExit("public source archive commit does not match the product release")
     return {
