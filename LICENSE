@@ -1,0 +1,13 @@
+# ライセンス
+
+INTEGRAL EMULATORは、複数のライセンスで構成されるプロジェクトです。
+
+- Integral Emulator独自のサーバーおよび共通ファイル: GNU Affero General Public License version 3またはそれ以降（AGPL-3.0-or-later）
+- Integral Emulator独自のC ClientおよびGB Runtime: GNU General Public License version 3またはそれ以降（GPL-3.0-or-later）
+- Integral Emulator独自のN64 Runtime: GNU General Public License version 2またはそれ以降（GPL-2.0-or-later）
+
+適用範囲と個別ファイルの例外は`LICENSE_SCOPE.md`を参照してください。GNUライセンスの原文は`LICENSES/`に収録しています。
+
+第三者由来のコードや素材には、それぞれの著作権者が定めるライセンスと著作権表示が適用されます。`THIRD_PARTY_NOTICES.md`および各third-partyコンポーネントに付属する原文を参照してください。
+
+Copyright (C) 2026 yuska (GitHub: @yuska1114)

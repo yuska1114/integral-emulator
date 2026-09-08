@@ -1,0 +1,141 @@
+diff --git a/src/main/eventloop.c b/src/main/eventloop.c
+index f382e2b..a013d1d 100644
+--- a/src/main/eventloop.c
++++ b/src/main/eventloop.c
+@@ -44,6 +44,9 @@
+ #define SDL_SCANCODE_SLASH SDLK_SLASH
+ #define SDL_SCANCODE_G SDLK_g
+ #define SDL_SCANCODE_RETURN SDLK_RETURN
++#define SDL_SCANCODE_KP_ENTER SDLK_KP_ENTER
++#define SDL_SCANCODE_LEFT SDLK_LEFT
++#define SDL_SCANCODE_RIGHT SDLK_RIGHT
+ #define SDL_SCANCODE_0 SDLK_0
+ #define SDL_SCANCODE_1 SDLK_1
+ #define SDL_SCANCODE_2 SDLK_2
+@@ -324,7 +327,17 @@ static int MatchJoyCommand(const SDL_Event *event, eJoyCommand cmd)
+ }
+ #endif /* NO_KEYBINDINGS */
+
++static SDL_atomic_t l_stop_confirmation_state;
++
+ static void request_stop_confirmation(void)
++{
++    if (SDL_AtomicGet(&l_stop_confirmation_state) == 0) {
++        SDL_AtomicSet(&l_stop_confirmation_state, 1);
++        DebugMessage(M64MSG_STATUS, "N64 Runtime: STOP confirmation requested");
++    }
++}
++
++void event_process_stop_confirmation(void)
+ {
+     const SDL_MessageBoxButtonData buttons[] = {
+         { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT |
+@@ -341,7 +354,15 @@ static void request_stop_confirmation(void)
+         NULL
+     };
+     int button = 0;
+-    if (SDL_ShowMessageBox(&message, &button) == 0 && button == 1)
++    int result;
++
++    if (!SDL_AtomicCAS(&l_stop_confirmation_state, 1, 2))
++        return;
++
++    DebugMessage(M64MSG_STATUS, "N64 Runtime: showing STOP confirmation dialog");
++    result = SDL_ShowMessageBox(&message, &button);
++    SDL_AtomicSet(&l_stop_confirmation_state, 0);
++    if (result == 0 && button == 1)
+         main_stop();
+ }
+
+@@ -359,15 +380,26 @@ static int SDLCALL event_sdl_filter(void *userdata, SDL_Event *event)
+         // user clicked on window close button
+         case SDL_QUIT:
+             request_stop_confirmation();
+-            break;
++            return 0;
+
+         case SDL_KEYDOWN:
+ #if SDL_VERSION_ATLEAST(1,3,0)
+             if (event->key.repeat)
+                 return 0;
+
++            if (event->key.keysym.scancode == SDL_SCANCODE_ESCAPE ||
++                event->key.keysym.sym == SDLK_ESCAPE) {
++                request_stop_confirmation();
++                return 0;
++            }
++
+             event_sdl_keydown(event->key.keysym.scancode, event->key.keysym.mod);
+ #else
++            if (event->key.keysym.sym == SDLK_ESCAPE) {
++                request_stop_confirmation();
++                return 0;
++            }
++
+             event_sdl_keydown(event->key.keysym.sym, event->key.keysym.mod);
+ #endif
+             return 0;
+@@ -393,6 +425,11 @@ static int SDLCALL event_sdl_filter(void *userdata, SDL_Event *event)
+                     gfx.moveScreen(event->window.data1, event->window.data2);
+                     return 0;  // consumed the event
+                     break;
++
++                case SDL_WINDOWEVENT_CLOSE:
++                    request_stop_confirmation();
++                    return 0;  // consumed the event
++                    break;
+             }
+             break;
+ #else
+@@ -696,8 +733,11 @@ void event_sdl_keydown(int keysym, int keymod)
+ #ifndef NO_KEYBINDINGS
+     int slot;
+
+-    /* All emulator commands are configurable; there are no hard-coded keys. */
+-    if ((slot = get_saveslot_from_keysym(keysym)) >= 0)
++    /* Physical Escape always opens the safe stop confirmation, even when the
++     * configurable STOP hotkey is UNDEFINED. */
++    if (keysym == SDL_SCANCODE_ESCAPE)
++        request_stop_confirmation();
++    else if ((slot = get_saveslot_from_keysym(keysym)) >= 0)
+         main_state_set_slot(slot);
+     else if (event_key_matches(keysym, kbdStop))
+         request_stop_confirmation();
+@@ -782,4 +822,3 @@ void event_set_gameshark(int active)
+     // notify front-end application that gameshark button state has changed
+     StateChanged(M64CORE_INPUT_GAMESHARK, GamesharkActive);
+ }
+-
+diff --git a/src/main/eventloop.h b/src/main/eventloop.h
+index 78b096c..d196600 100644
+--- a/src/main/eventloop.h
++++ b/src/main/eventloop.h
+@@ -24,6 +24,7 @@
+
+ extern int event_set_core_defaults(void);
+ extern void event_initialize(void);
++extern void event_process_stop_confirmation(void);
+ extern void event_sdl_keydown(int keysym, int keymod);
+ extern void event_sdl_keyup(int keysym, int keymod);
+ extern int event_gameshark_active(void);
+diff --git a/src/main/main.c b/src/main/main.c
+index 4cd4a5e..dcd3638 100644
+--- a/src/main/main.c
++++ b/src/main/main.c
+@@ -387,6 +387,7 @@ static void main_check_inputs(void)
+     lircCheckInput();
+ #endif
+     SDL_PumpEvents();
++    event_process_stop_confirmation();
+ }
+
+ /*********************************************************************************************************
+@@ -1966,9 +1967,6 @@ m64p_error main_run(void)
+         init_debugger();
+ #endif
+
+-    /* Startup message on the OSD */
+-    osd_new_message(OSD_MIDDLE_CENTER, "Mupen64Plus Started...");
+-
+     g_EmulatorRunning = 1;
+     StateChanged(M64CORE_EMU_STATE, M64EMU_RUNNING);

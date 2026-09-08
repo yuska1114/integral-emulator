@@ -1,0 +1,5 @@
+# INTEGRAL EMULATOR client connection settings
+# Set login.server to the complete API base URL, including any path prefix.
+login.server=
+login.server_id=primary
+login.remember=0

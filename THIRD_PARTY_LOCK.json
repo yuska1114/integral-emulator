@@ -1,0 +1,256 @@
+{
+  "components": [
+    {
+      "build_patches": [],
+      "component": "SameBoy",
+      "excluded_upstream_paths": [
+        ".github/actions/cgb-acid2.gbc",
+        ".github/actions/cgb_sound.gb",
+        ".github/actions/dmg-acid2.gb",
+        ".github/actions/dmg_sound-2.gb",
+        ".github/actions/oam_bug-2.gb",
+        "SDL/background.bmp"
+      ],
+      "license_files": [
+        "runtimes/gb/third_party/SameBoy/LICENSE"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM_WITH_MIT_MATERIALIZED_PATCH; IOS_AND_HEXFIEND_EXCLUDED_FROM_PUBLIC_RELEASE",
+      "line_ending_normalizations": [],
+      "materialized_patches": [
+        {
+          "license": "MIT",
+          "order": 1,
+          "path": "runtimes/gb/patches/sameboy-integral-rtc-and-windows-build.patch",
+          "sha256": "523d3a33739b371e425bc50d890121374e2ffa5914f3c697e833ac5349d121bc"
+        }
+      ],
+      "public_source_file_count": 75,
+      "public_source_tree_sha256": "8d8a4a6a3b714b579ae6ac0ff69fc67c165afc5040fa2eaaf53b65b4e7d928e4",
+      "source_path": "runtimes/gb/third_party/SameBoy",
+      "upstream_archive_sha256": "aca79238ef23c220b6332abb28b6a4bbe467995ff7a26073dcb3070a7054eab6",
+      "upstream_archive_url": "https://codeload.github.com/LIJI32/SameBoy/tar.gz/208ba4afabffab9edde416f2dbb8ae459e34adb8",
+      "upstream_commit": "208ba4afabffab9edde416f2dbb8ae459e34adb8",
+      "upstream_file_count": 637,
+      "upstream_repository": "https://github.com/LIJI32/SameBoy.git",
+      "upstream_tree_oid": "74605c44c72c74979907e1f0680e982410af050f",
+      "upstream_tree_sha256": "6c0a825ce2ea2bbbf4aefe420ed39935653c77fe08f67f648d21a4cfe1dd5f23",
+      "vendored_file_count": 631,
+      "vendored_tree_sha256": "ad6bb2ba92c36369f569212952003cfe0b3bcc41f6cd5d4a1a73384db3c65857"
+    },
+    {
+      "build_patches": [
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 1,
+          "path": "runtimes/n64/patches/mupen64plus-core-physical-hotkeys.patch",
+          "sha256": "36cb7c526c0b9c1280623ac968e635855e500af458a65ca5f4eace356bd88c39"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 2,
+          "path": "runtimes/n64/patches/mupen64plus-core-deferred-stop-confirmation.patch",
+          "sha256": "f690c16c93b58ab2901b3e384284f082c2ebba53acc7b737cb844bb9c5bec5e0"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 3,
+          "path": "runtimes/n64/patches/mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch",
+          "sha256": "539796f5a9bfb3f2cada3e881318ad73ff534a261c5041b9acea37a24c5b6491"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 4,
+          "path": "runtimes/n64/patches/mupen64plus-core-homebrew-transferpak.patch",
+          "sha256": "1abc6da63620967e9ed87707a2f45caea79146b39b4685f6a5e1834416f956bd"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 5,
+          "path": "runtimes/n64/patches/mupen64plus-core-current-rdram.patch",
+          "sha256": "0f0167fb6f5b949738c6f195de9caf381ed70caf0f76947f956076fe8d38a6dc"
+        }
+      ],
+      "component": "mupen64plus-core",
+      "excluded_upstream_paths": [],
+      "license_files": [
+        "runtimes/n64/third_party/mupen64plus-core/LICENSES"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM; UPSTREAM_MULTI_LICENSE_PRESERVED; INTEGRAL_BUILD_PATCHES_GPL-2.0-OR-LATER",
+      "line_ending_normalizations": [
+        "projects/msvc/mupen64plus-core.vcxproj.filters"
+      ],
+      "materialized_patches": [],
+      "public_source_file_count": 294,
+      "public_source_tree_sha256": "c0ededd93dd9ff5315f95303ebc6f8f7b419ec7d0c69655ae577bf64a2158c5f",
+      "source_path": "runtimes/n64/third_party/mupen64plus-core",
+      "upstream_archive_sha256": "4173762419a3136f0ff3d3dee01e0ee242fa1c3b4cc1c0f7d25a6e2b1e46f1ba",
+      "upstream_archive_url": "https://codeload.github.com/mupen64plus/mupen64plus-core/tar.gz/b0d68c20f49b8f833afa21450e0e8874c87c13c4",
+      "upstream_commit": "b0d68c20f49b8f833afa21450e0e8874c87c13c4",
+      "upstream_file_count": 297,
+      "upstream_repository": "https://github.com/mupen64plus/mupen64plus-core.git",
+      "upstream_tree_oid": "1a8831cd7a46941d8c53c495ca45ab6fd279ba7c",
+      "upstream_tree_sha256": "4e1a758c18eada923a08fc15a9a4e79d18bfecc3ae8839af9ff28c51e1bddaa3",
+      "vendored_file_count": 297,
+      "vendored_tree_sha256": "b8c1e2195708b4505040b82ad962dc4e373dae0aef9297463b283741c4f5da24"
+    },
+    {
+      "build_patches": [],
+      "component": "mupen64plus-ui-console",
+      "excluded_upstream_paths": [],
+      "license_files": [
+        "runtimes/n64/third_party/mupen64plus-ui-console/LICENSES"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM; UPSTREAM_LICENSES_PRESERVED",
+      "line_ending_normalizations": [
+        "projects/msvc/mupen64plus-ui-console.sln",
+        "projects/msvc/mupen64plus-ui-console.vcxproj"
+      ],
+      "materialized_patches": [],
+      "public_source_file_count": 22,
+      "public_source_tree_sha256": "d731136480612c472060507c424de570eeb418d56b446e2646c7f0f959866adb",
+      "source_path": "runtimes/n64/third_party/mupen64plus-ui-console",
+      "upstream_archive_sha256": "aeef10aea9b6c1849375a66ee73cff1cebd1f4184b98e49efbc6da397c88cccc",
+      "upstream_archive_url": "https://codeload.github.com/mupen64plus/mupen64plus-ui-console/tar.gz/1a68327fddda71f1acbad8a63ef04288b1887d19",
+      "upstream_commit": "1a68327fddda71f1acbad8a63ef04288b1887d19",
+      "upstream_file_count": 37,
+      "upstream_repository": "https://github.com/mupen64plus/mupen64plus-ui-console.git",
+      "upstream_tree_oid": "2fc453b0519faea86344e0acf05e7db619dbbc18",
+      "upstream_tree_sha256": "980b74055ba92530553c46243c719a08c6f2a549e28cea3a43db7517c542b985",
+      "vendored_file_count": 37,
+      "vendored_tree_sha256": "5fef880d039fb8301333ca4e33d83333d77095dd27ab4592010408bf5c6c869d"
+    },
+    {
+      "build_patches": [
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 1,
+          "path": "runtimes/n64/patches/mupen64plus-input-sdl-physical-scancode.patch",
+          "sha256": "a200946fc33a17e4506f1ebbd4d64c1a5d9868469a5038492136acb659a4b2f5"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 2,
+          "path": "runtimes/n64/patches/mupen64plus-input-sdl-remote-controller2.patch",
+          "sha256": "b47bda924b85c1e9c0e27ee0bd6b5a20ee3b14ece69e674dd047fd55a1c601a5"
+        }
+      ],
+      "component": "mupen64plus-input-sdl",
+      "excluded_upstream_paths": [],
+      "license_files": [
+        "runtimes/n64/third_party/mupen64plus-input-sdl/COPYING",
+        "runtimes/n64/third_party/mupen64plus-input-sdl/LICENSES"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM; UPSTREAM_LICENSES_PRESERVED; INTEGRAL_BUILD_PATCHES_GPL-2.0-OR-LATER",
+      "line_ending_normalizations": [
+        "projects/msvc/mupen64plus-input-sdl.vcxproj"
+      ],
+      "materialized_patches": [],
+      "public_source_file_count": 30,
+      "public_source_tree_sha256": "eec74c802b63d52b0aa15a27b68068207aafc71e87445b36edc0a2255e17bfe2",
+      "source_path": "runtimes/n64/third_party/mupen64plus-input-sdl",
+      "upstream_archive_sha256": "9423d5036b4bdda1f9effba073e5d630985618cb335167e89166a4ebc574e204",
+      "upstream_archive_url": "https://codeload.github.com/mupen64plus/mupen64plus-input-sdl/tar.gz/f2ca3839415d45a547f79d21177dfe15a0ce6d8c",
+      "upstream_commit": "f2ca3839415d45a547f79d21177dfe15a0ce6d8c",
+      "upstream_file_count": 30,
+      "upstream_repository": "https://github.com/mupen64plus/mupen64plus-input-sdl.git",
+      "upstream_tree_oid": "693521a863933fcc373ba6519a351d7290a72663",
+      "upstream_tree_sha256": "463d6f29d82635b513f659b70d2819eb02b464d48d24c5b8ce05ddce3886adb6",
+      "vendored_file_count": 30,
+      "vendored_tree_sha256": "2b3d507c2599787920c894827906c891ae368276ef674307b38da28150bc9a52"
+    },
+    {
+      "build_patches": [
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 1,
+          "path": "runtimes/n64/patches/mupen64plus-audio-sdl-remote-media.patch",
+          "sha256": "13f4109fd654a5572c7bc8f8252baa2b4d12dacf2f705edc66f0f645b1fbfe46"
+        }
+      ],
+      "component": "mupen64plus-audio-sdl",
+      "excluded_upstream_paths": [],
+      "license_files": [
+        "runtimes/n64/third_party/mupen64plus-audio-sdl/LICENSES"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM; UPSTREAM_LICENSES_PRESERVED; INTEGRAL_BUILD_PATCH_GPL-2.0-OR-LATER",
+      "line_ending_normalizations": [
+        "projects/msvc/mupen64plus-audio-sdl.vcxproj"
+      ],
+      "materialized_patches": [],
+      "public_source_file_count": 27,
+      "public_source_tree_sha256": "462fd9172ea00411cbb81b7bf01f50431417fdb7dd10cd4bfe51e36a9b1266c2",
+      "source_path": "runtimes/n64/third_party/mupen64plus-audio-sdl",
+      "upstream_archive_sha256": "c8b949944d63420dca2c20b353ac5894997f6b1413657a52c5d56bb6c04cf29d",
+      "upstream_archive_url": "https://codeload.github.com/mupen64plus/mupen64plus-audio-sdl/tar.gz/6c2c3f8ae10b7f0f6dfe06f45ca7ca598a6b659a",
+      "upstream_commit": "6c2c3f8ae10b7f0f6dfe06f45ca7ca598a6b659a",
+      "upstream_file_count": 27,
+      "upstream_repository": "https://github.com/mupen64plus/mupen64plus-audio-sdl.git",
+      "upstream_tree_oid": "973c4e9fc8527192dae49dfb835f3fe1ce10c0ad",
+      "upstream_tree_sha256": "ff41980d572a2b40ec2581c4c827aa90f598ccb297e91b0122634c93a7d7eaf1",
+      "vendored_file_count": 27,
+      "vendored_tree_sha256": "2e9d95cefd5b44d0d4f31c01c53c3a1c9c839f86056f6110ac9c0946690d470d"
+    },
+    {
+      "build_patches": [],
+      "component": "mupen64plus-rsp-hle",
+      "excluded_upstream_paths": [],
+      "license_files": [
+        "runtimes/n64/third_party/mupen64plus-rsp-hle/LICENSES"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM; UPSTREAM_LICENSES_PRESERVED",
+      "line_ending_normalizations": [
+        "projects/msvc/mupen64plus-rsp-hle.vcxproj"
+      ],
+      "materialized_patches": [],
+      "public_source_file_count": 38,
+      "public_source_tree_sha256": "f913bee3391a8bbe4041be121e665943c295dfc2bac7789d377dcd9cfdcf90fd",
+      "source_path": "runtimes/n64/third_party/mupen64plus-rsp-hle",
+      "upstream_archive_sha256": "90b12c946008dbc3807d66b196c37a17f1c106731a35d27cd3f3ecb02a7c9404",
+      "upstream_archive_url": "https://codeload.github.com/mupen64plus/mupen64plus-rsp-hle/tar.gz/2798e65d6fc89d89aace0b0d779af6406809b940",
+      "upstream_commit": "2798e65d6fc89d89aace0b0d779af6406809b940",
+      "upstream_file_count": 38,
+      "upstream_repository": "https://github.com/mupen64plus/mupen64plus-rsp-hle.git",
+      "upstream_tree_oid": "071c905d471cccf81149925294b074103451a6fe",
+      "upstream_tree_sha256": "b0f0e4c3084ab66cc3570f82b963bdbd54671e93e033aac2bd0e36c124930604",
+      "vendored_file_count": 38,
+      "vendored_tree_sha256": "80a4c5e69199c0a24637a0b3af8c2b94dcabfa8dbde9b086bcfa633d558d0e2e"
+    },
+    {
+      "build_patches": [],
+      "component": "GLideN64",
+      "excluded_upstream_paths": [
+        "translations/release/gliden64_de.qm",
+        "translations/release/gliden64_es.qm",
+        "translations/release/gliden64_fr.qm",
+        "translations/release/gliden64_it.qm",
+        "translations/release/gliden64_ja.qm",
+        "translations/release/gliden64_pl.qm",
+        "translations/release/gliden64_pt_BR.qm",
+        "translations/release/gliden64_zh.qm"
+      ],
+      "license_files": [
+        "runtimes/n64/third_party/GLideN64/LICENSE"
+      ],
+      "license_review_status": "ATTESTED_EXACT_UPSTREAM_WITH_COMPILED_TRANSLATION_EXCLUSIONS; UPSTREAM_GPL-2.0 LICENSE_PRESERVED",
+      "line_ending_normalizations": [],
+      "materialized_patches": [],
+      "public_source_file_count": 515,
+      "public_source_tree_sha256": "2d7d04c93aeac6ec5f25f68a58f302ad0cbefb270a9be4f1f8dbbccd11696b90",
+      "source_path": "runtimes/n64/third_party/GLideN64",
+      "upstream_archive_sha256": "e13ec39ec21e7f6b009803caf3608674d160823b637fd5d964ed4ae215646b44",
+      "upstream_archive_url": "https://codeload.github.com/gonetz/GLideN64/tar.gz/7c8cc44f92437a298c21b4262f48f83effb4d05d",
+      "upstream_commit": "7c8cc44f92437a298c21b4262f48f83effb4d05d",
+      "upstream_file_count": 539,
+      "upstream_repository": "https://github.com/gonetz/GLideN64.git",
+      "upstream_tree_oid": "5bdcd12c400044eb1363e7981448e3de37174a69",
+      "upstream_tree_sha256": "c3f4a331ed1f8ce8f6275b289578899463159c33f1d3c018bf6ee9676297507e",
+      "vendored_file_count": 531,
+      "vendored_tree_sha256": "e88fc5beda6f985052f8706e5ea306eb1b225e3d4c4c4757269fedb532508a3c"
+    }
+  ],
+  "digest_algorithm": "sha256-mode-path-content-v1",
+  "format": 1,
+  "generated_at": "2026-09-02",
+  "public_digest_algorithm": "sha256-path-content-v1",
+  "scope_note": "iPhone/iOS client source and excluded SameBoy platform integrations are outside the initial public release. Upstream license texts remain controlling for third-party code."
+}

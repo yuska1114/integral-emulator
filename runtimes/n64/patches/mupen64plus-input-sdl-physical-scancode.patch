@@ -1,0 +1,178 @@
+diff --git a/src/config.c b/src/config.c
+index 285f111..49d4001 100644
+--- a/src/config.c
++++ b/src/config.c
+@@ -190,6 +190,11 @@ static int load_controller_config(int i, const char *SectionName)
+             DebugMessage(M64MSG_WARNING, "missing config key '%s' for controller %i button %i", button_names[j], i+1, j);
+             continue;
+         }
++        if ((config_ptr = strstr(input_str, "scancode")) != NULL)
++            if (sscanf(config_ptr, "scancode(%i)", (int *) &controller[i].button[j].key) != 1)
++                DebugMessage(M64MSG_WARNING, "parsing error in scancode() parameter of button '%s' for controller %i", button_names[j], i + 1);
++        /* key() remains supported for existing configurations. It converts a
++         * legacy SDL 1 keysym, while scancode() preserves the physical key. */
+         if ((config_ptr = strstr(input_str, "key")) != NULL) {
+             if (sscanf(config_ptr, "key(%i)", (int *) &controller[i].button[j].key) != 1) {
+                 DebugMessage(M64MSG_WARNING, "parsing error in key() parameter of button '%s' for controller %i", button_names[j], i + 1);
+@@ -232,6 +237,11 @@ static int load_controller_config(int i, const char *SectionName)
+             DebugMessage(M64MSG_WARNING, "missing config key '%s' for controller %i axis %i", button_names[j], i+1, axis_idx);
+             continue;
+         }
++        if ((config_ptr = strstr(input_str, "scancode")) != NULL)
++            if (sscanf(config_ptr, "scancode(%i,%i)", (int *) &controller[i].axis[axis_idx].key_a,
++                                                       (int *) &controller[i].axis[axis_idx].key_b) != 2)
++                DebugMessage(M64MSG_WARNING, "parsing error in scancode() parameter of axis '%s' for controller %i", button_names[j], i + 1);
++        /* Keep legacy key() input compatibility. */
+         if ((config_ptr = strstr(input_str, "key")) != NULL) {
+             if (sscanf(config_ptr, "key(%i,%i)", (int *) &controller[i].axis[axis_idx].key_a, (int *) &controller[i].axis[axis_idx].key_b) != 2) {
+                 DebugMessage(M64MSG_WARNING, "parsing error in key() parameter of axis '%s' for controller %i", button_names[j], i + 1);
+@@ -311,7 +321,7 @@ static void init_controller_config(int iCtrlIdx, const char *pccDeviceName, eMode
+         ParamString[0] = 0;
+         if (controller[iCtrlIdx].button[j].key > 0)
+         {
+-            sprintf(Param, "key(%i) ", sdl_native2keysym(controller[iCtrlIdx].button[j].key));
++            sprintf(Param, "scancode(%i) ", controller[iCtrlIdx].button[j].key);
+             strcat(ParamString, Param);
+         }
+         if (controller[iCtrlIdx].button[j].button >= 0)
+@@ -357,7 +367,7 @@ static void init_controller_config(int iCtrlIdx, const char *pccDeviceName, eMode
+         ParamString[0] = 0;
+         if (controller[iCtrlIdx].axis[j].key_a > 0 && controller[iCtrlIdx].axis[j].key_b > 0)
+         {
+-            sprintf(Param, "key(%i,%i) ", sdl_native2keysym(controller[iCtrlIdx].axis[j].key_a), sdl_native2keysym(controller[iCtrlIdx].axis[j].key_b));
++            sprintf(Param, "scancode(%i,%i) ", controller[iCtrlIdx].axis[j].key_a, controller[iCtrlIdx].axis[j].key_b);
+             strcat(ParamString, Param);
+         }
+         if (controller[iCtrlIdx].axis[j].button_a >= 0 && controller[iCtrlIdx].axis[j].button_b >= 0)
+@@ -740,3 +750,23 @@ void load_configuration(int bPreConfig)
++    /* A Transfer Pak is physically attached to an N64 controller port even
++     * when that port has no input device. Full-auto mode normally drops every
++     * controller after the first keyboard fallback when SDL finds too few
++     * joysticks. Restore only otherwise-unused Transfer Pak ports as virtual
++     * manual controllers so games can enumerate all inserted GB carts. */
++    for (n64CtrlIdx=0; n64CtrlIdx < 4; n64CtrlIdx++)
++    {
++        if (controller[n64CtrlIdx].control->Present ||
++            controller[n64CtrlIdx].control->Plugin != PLUGIN_TRANSFER_PAK)
++            continue;
++        sprintf(SectionName, "Input-SDL-Control%i", n64CtrlIdx + 1);
++        load_controller_config(SectionName, n64CtrlIdx, DEVICE_NO_JOYSTICK);
++        if (controller[n64CtrlIdx].control->Present)
++        {
++            ActiveControllers++;
++            if (!bPreConfig)
++                DebugMessage(M64MSG_INFO, "N64 Controller #%i: Using virtual Transfer Pak port without an SDL input device", n64CtrlIdx+1);
++        }
++    }
++
+     /* see how many joysticks are plugged in */
+     joy_plugged = 0;
+     for (j = 0; j < 4; j++)
+diff --git a/src/plugin.c b/src/plugin.c
+index aee969d..3eb39ad 100644
+--- a/src/plugin.c
++++ b/src/plugin.c
+@@ -28,6 +28,13 @@
+ #include <string.h>
+ #include <math.h>
+-
++#ifdef __APPLE__
++/* Carbon also declares a legacy GetKeys symbol which collides with the N64
++ * plugin ABI. Rename only that unused declaration while reading the header. */
++#define GetKeys CarbonLegacyGetKeys
++#include <Carbon/Carbon.h>
++#undef GetKeys
++#endif
++
+ #define M64P_PLUGIN_PROTOTYPES 1
+ #include "config.h"
+ #include "m64p_common.h"
+@@ -1039,9 +1047,87 @@ EXPORT void CALL RomClosed(void)
+   output:   none
+ *******************************************************************/
++#ifdef __APPLE__
++static int is_ascii_keyboard_source(TISInputSourceRef source)
++{
++    CFStringRef category;
++    CFStringRef type;
++    CFBooleanRef ascii;
++    CFBooleanRef enabled;
++    CFBooleanRef selectable;
++    if (source == NULL)
++        return 0;
++    category = (CFStringRef) TISGetInputSourceProperty(source, kTISPropertyInputSourceCategory);
++    type = (CFStringRef) TISGetInputSourceProperty(source, kTISPropertyInputSourceType);
++    ascii = (CFBooleanRef) TISGetInputSourceProperty(source, kTISPropertyInputSourceIsASCIICapable);
++    enabled = (CFBooleanRef) TISGetInputSourceProperty(source, kTISPropertyInputSourceIsEnabled);
++    selectable = (CFBooleanRef) TISGetInputSourceProperty(source, kTISPropertyInputSourceIsSelectCapable);
++    return category != NULL && CFEqual(category, kTISCategoryKeyboardInputSource) &&
++           type != NULL && (CFEqual(type, kTISTypeKeyboardLayout) ||
++                            CFEqual(type, kTISTypeKeyboardInputMode)) &&
++           ascii == kCFBooleanTrue && enabled == kCFBooleanTrue &&
++           selectable == kCFBooleanTrue;
++}
++
++static int select_ascii_input_source(void)
++{
++    TISInputSourceRef source = TISCopyCurrentKeyboardInputSource();
++    CFArrayRef sources;
++    CFIndex index;
++    if (is_ascii_keyboard_source(source)) {
++        CFRelease(source);
++        return 1;
++    }
++    if (source != NULL)
++        CFRelease(source);
++    source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource();
++    if (is_ascii_keyboard_source(source)) {
++        OSStatus status = TISSelectInputSource(source);
++        CFRelease(source);
++        if (status == noErr)
++            return 1;
++    }
++    else if (source != NULL) {
++        CFRelease(source);
++    }
++    sources = TISCreateInputSourceList(NULL, 0);
++    if (sources == NULL)
++        return 0;
++    for (index = 0; index < CFArrayGetCount(sources); ++index) {
++        TISInputSourceRef candidate = (TISInputSourceRef) CFArrayGetValueAtIndex(sources, index);
++        if (is_ascii_keyboard_source(candidate) && TISSelectInputSource(candidate) == noErr) {
++            CFRelease(sources);
++            return 1;
++        }
++    }
++    CFRelease(sources);
++    return 0;
++}
++#endif
++
++static int force_direct_keyboard_input(void)
++{
++    SDL_SetHint(SDL_HINT_IME_SHOW_UI, "0");
++    SDL_StopTextInput();
++#ifdef __APPLE__
++    {
++        if (!select_ascii_input_source())
++            return 0;
++        return 1;
++    }
++#else
++    return 1;
++#endif
++}
++
+ EXPORT int CALL RomOpen(void)
+ {
+     int i;
+-
++    if (!force_direct_keyboard_input()) {
++        DebugMessage(M64MSG_ERROR, "Could not disable IME/direct text input");
++        return 0;
++    }
++    DebugMessage(M64MSG_INFO, "Direct keyboard input active; IME disabled");
++
+     // open joysticks
+     for (i = 0; i < 4; i++) {
+         InitiateJoysticks(i);

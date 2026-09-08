@@ -1,0 +1,1 @@
+{"schema_version":1,"initial_state":{"ready":true},"routes":[{"host":"numbers-b.invalid","method":"POST","path":"/number","requires":{"ready":true},"sets":{},"status":200,"headers":{"Content-Type":"application/octet-stream"},"body":{"content_id":"number-b","offset":0,"length":3},"discard_body":128}]}

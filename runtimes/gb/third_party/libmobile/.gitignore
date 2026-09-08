@@ -1,0 +1,27 @@
+/build/
+/libmobile.pc
+/mobile_config.h
+
+# Autotools artifacts
+/Makefile.in
+/aclocal.m4
+/autoconf.h.in
+/autoconf.h.in~
+/autom4te.cache/
+/build-aux/
+/configure
+/configure~
+/m4/
+
+# In-source build artifacts
+*.la
+*.lo
+*.o
+.deps/
+.libs/
+/Makefile
+/autoconf.h
+/config.log
+/config.status
+/libtool
+stamp-*

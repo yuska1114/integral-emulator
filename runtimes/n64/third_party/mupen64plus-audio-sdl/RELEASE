@@ -1,0 +1,167 @@
+SDL Audio plugin for Mupen64Plus
+---------------------------------
+
+----------------------------------------------
+# Mupen64Plus-audio-sdl v2.6.0 - July 14, 2024
+
+## Merged PRs
+
+* [43](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/43): CI/CD: Update to generic scripts, independent schedule, etc
+* [42](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/42): CI/CD: Fixes Ubuntu i386 builds, among other changes
+* [41](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/41): CI/CD: Integrate scheduled builds and other...
+* [40](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/40): CI/CD: Update MSVC
+* [39](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/39): CI/CD: Update
+* [38](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/38): CI/CD: Implement GitHub Actions and public nightly builds
+* [37](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/37): Fix channel swapping logic for BigEndian systems
+* [35](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/35): Fixes
+* [34](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/34): build: Allow out of tree builds.
+* [32](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/32): Allow non-default compilers without resorting to symbolic links
+* [31](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/31): Allow to set custom platform toolset from commands
+* [30](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/30): Add SDL2 compatibility
+* [29](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/29): AppVeyor with artifact packaging
+* [28](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/28): Changes to have more generic project files
+* [27](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/27): Fix gcc 8.3 compile with headers for uint32_t
+
+## Top Contributors (2 or more commits)
+1. Jj0YzL5nvJ
+2. bsmiles32
+3. richard42
+4. Gillou68310
+
+--------------------------------------------------
+# Mupen64Plus-audio-sdl v2.5.9 - February 10, 2019
+
+## Merged PRs
+
+* [26](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/26): Remove use of ConfigSaveOptions.
+* [25](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/25): Update homepage links
+* [24](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/24): Fix swap channels path.
+* [23](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/23): Remove underrun messages as it spammed too much and is not really needed
+* [22](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/22): Build MXE targets as additional tests in travis build matrix
+* [21](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/21): Various fixes.
+  Hopefully this should fix the "audio cracks" reported in https://github.com/mupen64plus/mupen64plus-core/issues/463
+* [20](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/20): Disable speex/src when their libraries are not found
+* [19](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/19): Refactorings
+* [17](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/17): Use faster container based Travis CI
+* [16](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/16): Allow audio/video sync to be configured, default to off
+* [15](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/15): Use resampler if available
+* [14](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/14): bump macosx-version-min to 10.6 for SDL2.0.5.
+  Allows for compilation on MacOS 10.12 Sierra using packages from Homebrew (samplerate speexdsp nasm and the sdl2 packages).
+* [13](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/13): Use Ubuntu Trusty as base system for Travis CI
+* [12](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/12): Added x64 configuration to VisualStudio2013 project file
+* [11](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/11): Remove unnecessary OpenBSD warning.
+* [10](https://github.com/mupen64plus/mupen64plus-audio-sdl/pull/10): bug workaround (volume does not follow system volume on jolla phone)
+
+
+Mupen64Plus-audio-sdl - v2.5 - April 26, 2015
+---------------------------------------------
+ - MS Visual Studio 2013 project files
+ - audioresource support for integration with Linux-based Nemo Mobile OS
+ - Makefile: use SDL2 by default if present, disable OSS support on OpenBSD
+
+Mupen64Plus-audio-sdl - v2.0 - July 4, 2013
+-------------------------------------------
+ - Add support for resampling with speexdsp library
+ - Add more resampling quality options
+ - Bugfix: Don't assume OSS is installed in all linux systems.
+ - Bugfix: Some combinations of VolumeSetLevel and VolumeMute caused VolumeGetString to return "Mute" when not muted
+ - Make SDL volume handling the default, since OSS is no longer included in the kernel.
+ - Minor refactoring of volume handling code.
+ - MS Visual Studio 2012 project files
+ - Makefile improvements
+   - support for ARM and MINGW architectures
+   - support for cross-compiling (MXE win32 builds under Unix)
+
+Mupen64Plus-audio-sdl v1.99.5 - March 10, 2012
+--------------------------------------------------
+ - added version number to SDL-audio plugin config parameters, to support future changes
+ - updated audio plugin for new Mupen64plus 2.0 API versioning scheme
+ - makefile fixes and improvements
+
+Mupen64Plus-audio-sdl v1.99.4 - November 22, 2010
+--------------------------------------------------
+ - Bugfix: Plugin should write default config values at startup time
+ - Bugfix: fixed fast-forward for banjo-kazooie and other games which was broken due to limitation in basic resampling algorithm
+ - many makefile fixes and improvements
+
+Mupen64Plus-audio-sdl v1.99.3 - February 13, 2010
+--------------------------------------------------
+ - sync with core<-->plugin API change for RomOpen()
+ - bugfix: logical error in previous audio refactoring causing slowdown/lockup on loading savestate or re-initializing audio
+ - Makefile improvements:
+   - 'sdl-config --libs' can give "-Wl,-rpath", so plugin must be linked with CC instead of LD
+   - issue #257: added to makefile OS type GNU/kFreeBSD
+
+Mupen64Plus-audio-sdl v1.99.2 - January 6, 2010
+-------------------------------------------------
+ - new feature: Completely re-wrote buffering/synchronization code:
+   - Buffer parameters now work as advertised and all use the same units
+   - Bugfix: previous defaults and algorithm behavior caused audio choppiness on slower PCs
+   - Bugfix: maximum speed was previously limited to low value by constraints from primary buffer size
+ - bugfix: SDL volume control will always be used on systems without OSS support
+ - new feature: added MSVC8 project file, minor code refactoring to build in Windows
+ - Makefile improvements:
+   - throw error if OS/CPU not supported
+   - use DESTDIR in install/uninstall paths
+   - Allow user-specified CC/CXX/LD paths
+
+Mupen64Plus-audio-sdl v1.99.1 - December 14, 2009
+-------------------------------------------------
+ - Converted to new Mupen64Plus 2.0 API
+ - Code cleanup to remove non-standard data types
+ - Refactored build system to separate source and object files
+ - bugfix #269: jttl_audio segfaults on exit due to incorrectly ordered shutdown code
+
+ Mupen64plus 1.5:
+ +Additional SDL modulation option for volume control.
+ +New Gtk GUI for plugin configuration.
+ +Improved no GUI support.
+
+ Mupen64plus 1.4:
+ +Extended plugin API to allow all for runtime volume changes via OSS.
+
+  1.4:
+ +Use only standard frequency for higher compatibility
+ +Fast resample algorithm (use only integers)
+ +Slight improvements in buffer management : pausing audio when buffer underrun occur
+ 
+ 1.2:
+ +Added possibility to swap channels
+ +Some more optimizations
+ +Calling RomOpen() is not required anymore. Plugin should now follow Zilmar's specs.
+ +Added test functions.
+ +Added support for config file
+
+ 1.1.1:
+ +Fixed the bug that was causing terrible noise (thanks Law)
+ +Much more debugging data appears now if DEBUG is defined
+ +Few more error checks
+
+ 1.1:
+ +Audio device is opened now with native byte ordering of the machine. Just
+  for compatibility (thanks Flea).
+ +Fixed possible double freeing bug (thanks Flea)
+ +Optimizations in AiLenChanged
+ +Fixed segmentation fault when changing rom.
+ +Syncronization redone
+
+ 1.0.1.3:
+ +Smarter versioning. No more betas.
+ +More cleaning up done.
+ +Buffer underrun and overflow messages appear now at stderr (if DEBUG is
+  defined)
+ +Many things are now precalculated (this should bring a small performance
+  boost)
+ +Buffer underrun bug fixed.
+ +Segmentation fault when closing rom fixed (at least I think so)
+
+ 1.0 beta 2:
+ +Makefile fixed to get rid of annoying warning messages
+ +Cleaned up some old code
+ +Default frequency set to 33600Hz (for Master Quest compatibility)
+ +Better syncronization (needs some work still though)
+
+ 1.0 beta 1:
+ +First public release
+
+

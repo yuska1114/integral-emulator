@@ -1,0 +1,474 @@
+# INTEGRAL EMULATOR サーバー運用手順書
+
+この文書は、独立アプリケーション版INTEGRAL EMULATORサーバーの導入と日常運用を説明します。
+
+サーバーはPython HTTP APIとして動作します。インターネットへの外部公開、TLS、リバースプロキシ、
+ファイアウォール、ドメイン等の構築・運用は公式サポート対象外です。
+
+## 配布内容
+
+サーバー配布物には、次のものが含まれます。
+
+- Pythonサーバー
+- 公開設定
+- systemdユニット
+- インストーラーと運用CLI
+- 本手順書
+
+ROM、SAV、GB／N64 Runtime、TLS秘密鍵、ゲーム別GB Mobileパッケージは含まれません。
+
+## 動作要件
+
+初回公開における公式サポート環境はUbuntu 24.04 LTSです。
+
+Windowsでサーバーを動かす場合は、WSL2または仮想マシン上のUbuntu 24.04 LTSを
+使用してください。Windowsネイティブのサーバーインストールには対応していません。
+
+必要な環境は次のとおりです。
+
+- Ubuntu 24.04 LTS
+- Python 3.11以上
+- systemd
+- `sudo`権限
+
+サーバーは専用のPython仮想環境を使用し、アプリケーション本体は
+`/opt/integral-server/app`へ配置されます。
+
+## インストール
+
+配布アーカイブを展開し、そのディレクトリで実行します。
+
+```bash
+sudo ./install.sh
+```
+
+インストール後、診断してからサービスを起動します。
+
+```bash
+sudo integral-server doctor
+sudo integral-server start
+integral-server status
+curl http://127.0.0.1:8080/health
+```
+
+正常時は次の応答が返ります。
+
+```json
+{"ok": true}
+```
+
+インストーラーはサービスの自動起動を有効にしますが、初回起動は行いません。
+
+`install.sh`を再実行しても、既存の環境設定、管理者パスワード、SQLiteデータベース、
+SAVは維持されます。
+
+本手順書は展開した配布ディレクトリ内の`docs/INTEGRAL_SERVER_APPLICATION.md`に
+あります。インストール先へはコピーされません。
+
+## 主な配置先
+
+- `/opt/integral-server/app`: サーバーアプリケーションとデータ定義
+- `/opt/integral-server/venv`: 専用Python仮想環境
+- `/etc/integral-server/integral-server.env`: サーバー環境設定
+- `/var/lib/integral-server`: SQLiteデータベース、SAV等の永続データ
+- `/var/lib/integral-server/mobile-packages`: GB Mobile追加パッケージ
+- `/etc/systemd/system/integral-server.service`: systemdユニット
+- `/usr/local/bin/integral-server`: 運用CLI
+
+## 運用コマンド
+
+```text
+sudo integral-server doctor
+sudo integral-server start
+sudo integral-server stop
+sudo integral-server restart
+integral-server status
+sudo integral-server logs
+sudo integral-server logs --follow
+integral-server edit-config
+sudo integral-server user-issue testuser001
+sudo integral-server user-issue testuser002 --email user@example.com
+sudo integral-server user-password-reset testuser001
+sudo integral-server open-admin
+sudo integral-server mobile-package list
+sudo integral-server mobile-package install <パッケージ.tar.gz>
+sudo integral-server uninstall
+```
+
+### サービス操作
+
+- `doctor`: Python、設定ファイル、保存領域、管理者パスワード、ROM登録ポリシー、
+  GB Mobileパッケージ、起動中のHTTPヘルスを確認します。
+- `start`、`stop`、`restart`: systemdサービスを操作します。
+- `status`: サービスの状態を表示します。
+- `logs`: サービスログを表示します。`-n 200`で行数を指定し、`--follow`または
+  `-f`で追跡できます。
+
+`doctor`は主要な運用条件を診断しますが、すべての設定をサーバー起動と同じ経路で
+検証するものではありません。設定変更後は、再起動結果、`status`、ログ、
+`/health`まで確認してください。
+
+### 設定編集
+
+```bash
+integral-server edit-config
+sudo integral-server doctor
+sudo integral-server restart
+```
+
+`edit-config`自体には`sudo`を付けないでください。必要な権限で設定ファイルを開き、
+終了後に基本構文を確認します。サービスは自動再起動されません。
+
+別の設定ファイルを指定する場合は、`--config`をコマンドより前に置きます。
+
+```bash
+integral-server --config /absolute/path/server.env edit-config
+```
+
+### ユーザー管理
+
+```bash
+sudo integral-server user-issue testuser001
+sudo integral-server user-password-reset testuser001
+```
+
+`user-issue`はログインIDと初期パスワードを発行します。`--email`は任意です。
+初回ログイン時にはパスワード変更が必要です。
+
+ログインIDでは大文字・小文字を区別しません。
+
+`user-password-reset`は既存ユーザーへ仮パスワードを発行し、既存の認証セッションを
+無効化します。ROOM参加中またはゲーム実行中のユーザーは変更できません。
+
+初期パスワードと仮パスワードは対話端末へ一度だけ表示されます。pipeやファイルへの
+リダイレクトは使用できません。
+
+### 管理画面
+
+```bash
+sudo integral-server open-admin
+```
+
+管理画面のURLと管理者パスワードを表示します。デスクトップ環境では既定のブラウザも
+開きます。
+
+SSH接続やGUIのない環境ではブラウザを開かず、URLとパスワードだけを表示します。
+
+## サーバー設定
+
+設定ファイルは次の場所にあります。
+
+```text
+/etc/integral-server/integral-server.env
+```
+
+初期設定の主な項目は次のとおりです。
+
+```text
+INTEGRAL_EMULATOR_API_HOST=127.0.0.1
+INTEGRAL_EMULATOR_API_PORT=8080
+INTEGRAL_EMULATOR_STORAGE_ROOT=/var/lib/integral-server
+INTEGRAL_EMULATOR_PUBLIC_BASE_PATH=
+INTEGRAL_EMULATOR_ADMIN_PASSWORD=<自動生成された値>
+INTEGRAL_EMULATOR_ALLOW_UNLISTED_ROMS=1
+INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION=0
+INTEGRAL_EMULATOR_ALLOW_USER_INITIAL_SAVE_IMPORT=0
+INTEGRAL_EMULATOR_LINK_CABLE_ROOMS=1-16
+INTEGRAL_EMULATOR_N64_ROOMS=65-80
+```
+
+標準構成では`127.0.0.1:8080`だけを待ち受けます。
+
+`INTEGRAL_EMULATOR_PUBLIC_BASE_PATH`の初期値は空です。これはリバースプロキシ等で
+外部パス接頭辞を使用する場合の設定ですが、その具体的な構築は公式サポート対象外です。
+
+管理者パスワードをログ、課題管理システム、共有資料へ貼り付けないでください。
+
+### ユーザー自己登録
+
+既定値は次のとおりです。
+
+```text
+INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION=0
+```
+
+`0`では公開APIからの自己登録を拒否し、管理者が`user-issue`で発行したユーザーだけが
+利用できます。
+
+自己登録を許可する場合は`1`へ変更して、サーバーを再起動します。
+
+### ROOM数
+
+Link Cable ROOMには1～64、N64 ROOMには65～128を使用できます。
+
+```text
+INTEGRAL_EMULATOR_LINK_CABLE_ROOMS=1-16
+INTEGRAL_EMULATOR_N64_ROOMS=65-80
+```
+
+設定値には、カンマ区切りの番号と包含範囲を指定できます。
+
+```text
+1-8,10,12-16
+```
+
+空値にすると、そのモードのROOMをすべて無効化します。範囲外、降順、重複、
+書式不正はサーバー起動時に拒否されます。
+
+稼働中のROOMを設定から外した場合も起動が拒否されます。ROOMを終了するか、
+設定を戻してください。
+
+## 永続データとバックアップ
+
+SQLite権威データは次の場所にあります。
+
+```text
+/var/lib/integral-server/data/integral_emulator.sqlite3
+```
+
+SAV本体と回復用ファイルも`/var/lib/integral-server`配下に保存されます。
+
+バックアップ時はサービスを停止し、設定と保存ルートを同じ時点で保存してください。
+次の保存先は毎回新しい名前を使用します。
+
+```bash
+sudo integral-server stop
+sudo install -d -m 0700 /var/backups/integral-server-YYYYMMDD
+sudo cp -a /etc/integral-server \
+  /var/backups/integral-server-YYYYMMDD/config
+sudo cp -a /var/lib/integral-server \
+  /var/backups/integral-server-YYYYMMDD/storage
+```
+
+復旧時はSQLiteファイルだけでなく、対応するSAVツリーも同じバックアップ時点へ
+戻してください。稼働中のSQLiteファイルだけを単独コピーしないでください。
+
+## アンインストール
+
+```bash
+sudo integral-server uninstall
+```
+
+次のものを削除します。
+
+- `/opt/integral-server`
+- systemdユニット
+- 運用CLI
+
+次の永続データは削除しません。
+
+- `/etc/integral-server`
+- `/var/lib/integral-server`
+
+データを削除する`purge`機能はありません。
+
+`/opt/integral-server`内に直接追加したROMカタログはアンインストール時に削除されます。
+後述のとおり、カタログ原本は`/etc/integral-server/rom-catalogs`へ保存してください。
+
+## GB/N64 ROOM用の共有TLSメディアリレー
+
+HTTP APIはサーバー配布物だけで動作します。
+
+一方、GB Runtime Fixed HostとN64 ROOMの対戦・映像通信には、別途共有TLSメディア
+リレーが必要です。`integral-server.service`はメディアリレーを起動しません。
+
+メディアリレー、TLS、インターネット公開に関する具体的な構築手順は、この公開
+手順書の対象外です。
+
+## GB Mobile追加パッケージ
+
+インストール直後はGB Mobileパッケージが登録されていません。
+
+```bash
+sudo integral-server mobile-package list
+```
+
+パッケージを導入する場合は、内容と出所を確認したアーカイブを指定します。
+
+```bash
+sudo integral-server mobile-package install ./reviewed-package.tar.gz
+```
+
+同じパッケージIDを更新する場合だけ`--replace`を使用します。
+
+```bash
+sudo integral-server mobile-package install --replace ./reviewed-package.tar.gz
+```
+
+サービスが起動中の場合、導入コマンド内でサービスが再起動されます。停止中の場合は、
+次回起動時から有効になります。
+
+導入後は次のとおり確認します。
+
+```bash
+sudo integral-server mobile-package list
+sudo integral-server doctor
+integral-server status
+curl http://127.0.0.1:8080/health
+```
+
+ゲーム別パッケージ、その生成器、実ゲームの応答データはサーバー配布物に含まれません。
+ROM、SAV、パスワード、秘密鍵を追加パッケージへ含めてはいけません。
+
+`/var/lib/integral-server/mobile-packages`を手作業で変更しないでください。
+
+## ROM登録ポリシー
+
+### 制限なしモード
+
+既定値は次のとおりです。
+
+```text
+INTEGRAL_EMULATOR_ALLOW_UNLISTED_ROMS=1
+```
+
+この状態では、基本的な形式、拡張子、サイズ、hash、ROMヘッダータイトルの検証に
+合格すれば、カタログ未登録のROMも登録できます。
+
+ROM本体はサーバーへ送信されません。サーバーへ送信されるのはROMのメタデータだけです。
+
+### 厳格カタログモード
+
+許可カタログに一致するROMだけを登録可能にする場合は、次のように設定します。
+
+```text
+INTEGRAL_EMULATOR_ALLOW_UNLISTED_ROMS=0
+```
+
+有効なカタログは次のディレクトリから読み込まれます。
+
+```text
+/opt/integral-server/app/config/allowed_roms/
+```
+
+公開配布の`default.json`は空カタログです。追加カタログがなければ、厳格モードでは
+すべてのROM登録が拒否されます。
+
+### カタログの作成
+
+アンインストールで失わないよう、カタログ原本は`/etc/integral-server`配下へ保存します。
+
+```bash
+sudo install -d -m 0750 /etc/integral-server/rom-catalogs
+sudoedit /etc/integral-server/rom-catalogs/local_roms.json
+```
+
+内容例は次のとおりです。
+
+```json
+{
+  "schema_version": 1,
+  "catalog_id": "local_roms",
+  "catalog_role": "primary",
+  "roms": [
+    {
+      "content_id": "my_homebrew_v1",
+      "game_type": "homebrew_gb",
+      "platform": "gb",
+      "display_name": "My Homebrew",
+      "canonical_name": "My Homebrew Version 1",
+      "region": "JP",
+      "size": 32768,
+      "rom_header_title": "MY HOMEBREW",
+      "hashes": {
+        "crc32": "12345678",
+        "md5": "0123456789ABCDEF0123456789ABCDEF",
+        "sha1": "0123456789ABCDEF0123456789ABCDEF01234567",
+        "sha256": "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+      }
+    }
+  ]
+}
+```
+
+主な条件は次のとおりです。
+
+- `catalog_id`と`content_id`は他のカタログと重複させない
+- `catalog_role`は通常`primary`を使用する
+- `platform`は`gb`または`n64`
+- `game_type`は英小文字、数字、`_`、`-`を使った1～64文字の識別子
+- `size`はバイト単位
+- `crc32`と`md5`は必須
+- `sha1`または`sha256`の少なくとも一方が必須
+- `rom_header_title`は省略可能
+
+作成した原本を、サーバーが読み込むディレクトリへ配置します。
+
+```bash
+sudo install -m 0644 \
+  /etc/integral-server/rom-catalogs/local_roms.json \
+  /opt/integral-server/app/config/allowed_roms/local_roms.json
+```
+
+診断後に再起動します。
+
+```bash
+sudo integral-server doctor
+sudo integral-server restart
+integral-server status
+```
+
+厳格モードでは、`doctor`に次の項目が表示されることを確認します。
+
+```text
+[PASS] ROM allowlist enforcement: enabled
+[PASS] ROM catalogs loadable: <登録件数> entries
+```
+
+カタログを変更した場合も、原本を編集してから同じ手順でインストールし直してください。
+
+アンインストール後にサーバーを再インストールした場合も、原本からカタログを再配置します。
+
+### カタログの無効化
+
+1件のROMを無効化する場合は、対象エントリへ次の項目を追加します。
+
+```json
+"enabled": false
+```
+
+カタログ全体を無効化する場合は、インストール済みファイルの拡張子を変更します。
+
+```bash
+sudo mv /opt/integral-server/app/config/allowed_roms/local_roms.json \
+  /opt/integral-server/app/config/allowed_roms/local_roms.json.disabled
+sudo integral-server doctor
+sudo integral-server restart
+```
+
+## ユーザー初期SAV取込み
+
+既定値は次のとおりです。
+
+```text
+INTEGRAL_EMULATOR_ALLOW_USER_INITIAL_SAVE_IMPORT=0
+```
+
+`0`では、ROMの初回登録時にユーザーからSAVを受け取らず、サーバーが初期化SAVを
+作成します。
+
+ユーザーによる初期SAV取込みを許可する場合だけ`1`へ変更し、サービスを再起動します。
+取込みにはC Client上での明示的な選択と確認が必要です。
+
+既存SAVの差し替えには管理画面のSAV Replaceを使用します。
+
+## 障害時の確認
+
+次の順に確認します。
+
+```bash
+sudo integral-server doctor
+integral-server status
+sudo integral-server logs -n 200
+curl -v http://127.0.0.1:8080/health
+```
+
+主な確認点は次のとおりです。
+
+- `doctor`に`[FAIL]`がないか
+- 設定ファイルが読み取れるか
+- 保存領域をサービスユーザーが読み書きできるか
+- ROMカタログのJSON、識別子、hash、重複に問題がないか
+- SQLiteデータベースとSAVが同じバックアップ時点か
+- 8080番ポートを別のプロセスが使用していないか
+- ROOM設定変更後の起動エラーがログにないか

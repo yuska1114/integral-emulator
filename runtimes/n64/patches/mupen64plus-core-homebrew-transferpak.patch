@@ -1,0 +1,21 @@
+diff --git a/src/main/main.c b/src/main/main.c
+index b6e04ea0..c6d7cf6d 100644
+--- a/src/main/main.c
++++ b/src/main/main.c
+@@ -1679,7 +1679,7 @@ m64p_error main_run(void)
+         l_ipaks[k] = &g_irumblepak;
+         ++k;
+     }
+-    if (ROM_SETTINGS.transferpak) {
++    if (ROM_SETTINGS.transferpak || g_media_loader.get_gb_cart_rom != NULL) {
+         l_pak_type_idx[PLUGIN_TRANSFER_PAK] = k;
+         l_ipaks[k] = &g_itransferpak;
+         ++k;
+@@ -1694,7 +1694,7 @@ m64p_error main_run(void)
+         l_pak_type_idx[PLUGIN_RUMBLE_PAK] = k;
+         l_pak_type_idx[PLUGIN_RAW] = k;
+     }
+-    if (!ROM_SETTINGS.transferpak) {
++    if (!ROM_SETTINGS.transferpak && g_media_loader.get_gb_cart_rom == NULL) {
+         l_pak_type_idx[PLUGIN_TRANSFER_PAK] = k;
+     }

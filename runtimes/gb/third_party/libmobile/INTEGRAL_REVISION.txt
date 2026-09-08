@@ -1,0 +1,4 @@
+Upstream: https://github.com/pokemon-mobile/libmobile
+Revision: 0704f56902f23b7ebf05c82c222e0e145e3140b6
+Integration: dynamically linked, unmodified source import
+License: GNU LGPL v3 or later; see COPYING and COPYING.LESSER

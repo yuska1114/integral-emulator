@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://integral-emulator.invalid/schema/gb-mobile/http-routes-v2.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "initial_state", "routes"],
+  "$defs": {
+    "state": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+      "additionalProperties": {"type": "boolean"}
+    },
+    "headerPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "presence"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9-]{1,64}$"},
+        "presence": {"enum": ["present", "absent"]},
+        "max_length": {"type": "integer", "minimum": 0, "maximum": 2048},
+        "value_exact": {"type": "string", "maxLength": 512},
+        "value_prefix": {"type": "string", "maxLength": 512},
+        "value_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "bodySlice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "fixed_base64"],
+      "properties": {
+        "offset": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "fixed_base64": {"type": "string", "maxLength": 88}
+      }
+    },
+    "requestBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_length", "max_length", "slices"],
+      "properties": {
+        "min_length": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "max_length": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "slices": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/bodySlice"}}
+      }
+    },
+    "responseBody": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["fixed_base64"],
+          "properties": {"fixed_base64": {"type": "string"}}
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["content_id", "offset", "length"],
+          "properties": {
+            "content_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+            "offset": {"type": "integer", "minimum": 0},
+            "length": {"type": "integer", "minimum": 0}
+          }
+        }
+      ]
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "method", "path", "status", "max_uses"],
+      "properties": {
+        "host": {"type": "string", "minLength": 1, "maxLength": 253},
+        "method": {"enum": ["GET", "POST", "PUT"]},
+        "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "http_version": {"enum": ["1.0", "1.1"]},
+        "requires": {"$ref": "#/$defs/state"},
+        "sets": {"$ref": "#/$defs/state"},
+        "request_headers": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/headerPredicate"}},
+        "request_body": {"$ref": "#/$defs/requestBody"},
+        "max_uses": {"type": "integer", "minimum": 1, "maximum": 16},
+        "same_body_replay": {"type": "boolean"},
+        "status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "headers": {
+          "type": "object", "maxProperties": 32,
+          "propertyNames": {"pattern": "^[A-Za-z0-9-]{1,64}$"},
+          "additionalProperties": {"type": "string", "maxLength": 1024}
+        },
+        "body": {"$ref": "#/$defs/responseBody"},
+        "discard_body": {"type": "integer", "minimum": 0, "maximum": 1048576},
+        "sink_body": {"type": "integer", "minimum": 0, "maximum": 1048576}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": 2},
+    "initial_state": {"$ref": "#/$defs/state"},
+    "routes": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/route"}}
+  }
+}

@@ -1,0 +1,25 @@
+.DS_Store
+
+# Build and runtime outputs
+/build/
+/runtime/
+/screenshots/
+/release/
+*.log
+
+# Local user configuration
+/n64_runtime.conf
+/n64_runtime.conf.part
+/n64_runtime.conf
+/n64_runtime.conf.part
+
+# User-provided ROM and save data
+/roms/*
+*.sav
+*.srm
+*.rtc
+
+# Generated third-party build products
+/third_party/**/projects/unix/_obj/
+/third_party/**/projects/unix/*.dylib
+/third_party/**/projects/unix/*.so

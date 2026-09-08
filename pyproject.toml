@@ -1,0 +1,15 @@
+[project]
+name = "integral-emulator"
+version = "0.1.1"
+description = "INTEGRAL EMULATOR client and online service foundation"
+authors = [{ name = "yuska (GitHub: @yuska1114)" }]
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSES/AGPL-3.0-or-later.txt"]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+integral-server = "integral_emulator.server_cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

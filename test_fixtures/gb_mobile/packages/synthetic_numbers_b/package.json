@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "package_id": "synthetic_numbers_b",
+  "display_name": "Synthetic Number Service B",
+  "adapter_id": "gb_mobile_v2",
+  "rom_titles": ["INTEGRAL DEMO B"],
+  "active_release_id": "2026-09-02.1",
+  "status": "approved",
+  "provenance_path": "PROVENANCE.md",
+  "license_paths": ["LICENSES/CC0-1.0.txt"]
+}

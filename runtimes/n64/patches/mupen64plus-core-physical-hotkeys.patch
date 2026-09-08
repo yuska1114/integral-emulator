@@ -1,0 +1,282 @@
+diff --git a/src/main/eventloop.c b/src/main/eventloop.c
+index 49de3de..5b20799 100644
+--- a/src/main/eventloop.c
++++ b/src/main/eventloop.c
+@@ -116,8 +116,19 @@ typedef enum {joyFullscreen,
+               joyIncrease,
+               joyDecrease,
+               joyForward,
++              joySpeedtoggle,
+               joyAdvance,
+-              joyGameshark
++              joyGameshark,
++              joySlot0,
++              joySlot1,
++              joySlot2,
++              joySlot3,
++              joySlot4,
++              joySlot5,
++              joySlot6,
++              joySlot7,
++              joySlot8,
++              joySlot9
+ } eJoyCommand;
+
+ #ifndef NO_KEYBINDINGS
+@@ -135,12 +146,23 @@ static const char *JoyCmdName[] = { "Joy Mapping Fullscreen",
+                                     "Joy Mapping Increase Volume",
+                                     "Joy Mapping Decrease Volume",
+                                     "Joy Mapping Fast Forward",
++                                    "Joy Mapping Speed Limiter Toggle",
+                                     "Joy Mapping Frame Advance",
+-                                    "Joy Mapping Gameshark"};
++                                    "Joy Mapping Gameshark",
++                                    "Joy Mapping Slot 0",
++                                    "Joy Mapping Slot 1",
++                                    "Joy Mapping Slot 2",
++                                    "Joy Mapping Slot 3",
++                                    "Joy Mapping Slot 4",
++                                    "Joy Mapping Slot 5",
++                                    "Joy Mapping Slot 6",
++                                    "Joy Mapping Slot 7",
++                                    "Joy Mapping Slot 8",
++                                    "Joy Mapping Slot 9"};
+
+ static const int NumJoyCommands = sizeof(JoyCmdName) / sizeof(const char *);
+
+-static int JoyCmdActive[16][2];  /* if extra joystick commands are added above, make sure there is enough room in this array */
++static int JoyCmdActive[32][2];  /* if extra joystick commands are added above, make sure there is enough room in this array */
+                                  /* [i][0] is Command Active, [i][1] is Hotkey Active */
+ #endif /* NO_KEYBINDINGS */
+
+@@ -303,6 +325,27 @@ static int MatchJoyCommand(SDL_Event *event, eJoyCommand cmd)
+ }
+ #endif /* NO_KEYBINDINGS */
+
++static void request_stop_confirmation(void)
++{
++    const SDL_MessageBoxButtonData buttons[] = {
++        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT |
++              SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "NO" },
++        { 0, 1, "YES" }
++    };
++    const SDL_MessageBoxData message = {
++        SDL_MESSAGEBOX_WARNING,
++        NULL,
++        "N64 Runtime",
++        "Stop emulation?\nUnsaved progress may be lost.",
++        2,
++        buttons,
++        NULL
++    };
++    int button = 0;
++    if (SDL_ShowMessageBox(&message, &button) == 0 && button == 1)
++        main_stop();
++}
++
+ /*********************************************************************************************************
+ * sdl event filter
+ */
+@@ -315,7 +357,7 @@ static int SDLCALL event_sdl_filter(void *userdata, SDL_Event *event)
+     {
+         // user clicked on window close button
+         case SDL_QUIT:
+-            main_stop();
++            request_stop_confirmation();
+             break;
+
+         case SDL_KEYDOWN:
+@@ -383,7 +425,7 @@ static int SDLCALL event_sdl_filter(void *userdata, SDL_Event *event)
+                     if (cmd == joyFullscreen)
+                         gfx.changeWindow();
+                     else if (cmd == joyStop)
+-                        main_stop();
++                        request_stop_confirmation();
+                     else if (cmd == joyPause)
+                         main_toggle_pause();
+                     else if (cmd == joySave)
+@@ -408,10 +450,14 @@ static int SDLCALL event_sdl_filter(void *userdata, SDL_Event *event)
+                         main_volume_up();
+                     else if (cmd == joyForward)
+                         main_set_fastforward(1);
++                    else if (cmd == joySpeedtoggle)
++                        main_speedlimiter_toggle();
+                     else if (cmd == joyAdvance)
+                         main_advance_one();
+                     else if (cmd == joyGameshark)
+                         event_set_gameshark(1);
++                    else if (cmd >= joySlot0 && cmd <= joySlot9)
++                        main_state_set_slot(cmd - joySlot0);
+                 }
+                 else if (action == -1) /* command was just de-activated (button up, etc) */
+                 {
+@@ -615,12 +641,29 @@ static int get_saveslot_from_keysym(int keysym)
+     {
+         sprintf(kbdSaveSlotStr, "%s%i", kbdSaveSlot, slot);
+         kbdSaveSlotKey = ConfigGetParamInt(l_CoreEventsConfig, kbdSaveSlotStr);
+-        if (keysym == sdl_keysym2native(kbdSaveSlotKey))
++        char kbdScancodeSlotStr[sizeof(kbdSaveSlot)+3];
++        int scancode;
++        sprintf(kbdScancodeSlotStr, "Kbd Scancode Slot %i", slot);
++        scancode = ConfigGetParamInt(l_CoreEventsConfig, kbdScancodeSlotStr);
++        if ((scancode > SDL_SCANCODE_UNKNOWN && keysym == scancode) ||
++            keysym == sdl_keysym2native(kbdSaveSlotKey))
+             return slot;
+     }
+
+     return -1;
+ }
++
++static int event_key_matches(int keysym, const char *mapping)
++{
++    char physical[64];
++    int scancode;
++    const char *suffix = mapping + strlen("Kbd Mapping ");
++    snprintf(physical, sizeof(physical), "Kbd Scancode %s", suffix);
++    scancode = ConfigGetParamInt(l_CoreEventsConfig, physical);
++    return (scancode > SDL_SCANCODE_UNKNOWN && keysym == scancode) ||
++           keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig,
++                                                         mapping));
++}
+ #endif /* NO_KEYBINDINGS */
+
+ /*********************************************************************************************************
+@@ -632,45 +675,42 @@ void event_sdl_keydown(int keysym, int keymod)
+ #ifndef NO_KEYBINDINGS
+     int slot;
+
+-    /* check for the only hard-coded key command: Alt-enter for fullscreen */
+-    if (keysym == SDL_SCANCODE_RETURN && keymod & (KMOD_LALT | KMOD_RALT))
+-        gfx.changeWindow();
+-    /* check all of the configurable commands */
+-    else if ((slot = get_saveslot_from_keysym(keysym)) >= 0)
++    /* All emulator commands are configurable; there are no hard-coded keys. */
++    if ((slot = get_saveslot_from_keysym(keysym)) >= 0)
+         main_state_set_slot(slot);
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdStop)))
++    else if (event_key_matches(keysym, kbdStop))
+-        main_stop();
++        request_stop_confirmation();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdFullscreen)))
++    else if (event_key_matches(keysym, kbdFullscreen))
+         gfx.changeWindow();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdSave)))
++    else if (event_key_matches(keysym, kbdSave))
+         main_state_save(0, NULL); /* save in mupen64plus format using current slot */
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdLoad)))
++    else if (event_key_matches(keysym, kbdLoad))
+         main_state_load(NULL); /* load using current slot */
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdIncrement)))
++    else if (event_key_matches(keysym, kbdIncrement))
+         main_state_inc_slot();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdReset)))
++    else if (event_key_matches(keysym, kbdReset))
+         main_reset(0);
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdSpeeddown)))
++    else if (event_key_matches(keysym, kbdSpeeddown))
+         main_speeddown(5);
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdSpeedtoggle)))
++    else if (event_key_matches(keysym, kbdSpeedtoggle))
+         main_speedlimiter_toggle();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdSpeedup)))
++    else if (event_key_matches(keysym, kbdSpeedup))
+         main_speedup(5);
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdScreenshot)))
++    else if (event_key_matches(keysym, kbdScreenshot))
+         main_take_next_screenshot();    /* screenshot will be taken at the end of frame rendering */
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdPause)))
++    else if (event_key_matches(keysym, kbdPause))
+         main_toggle_pause();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdMute)))
++    else if (event_key_matches(keysym, kbdMute))
+         main_volume_mute();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdIncrease)))
++    else if (event_key_matches(keysym, kbdIncrease))
+         main_volume_up();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdDecrease)))
++    else if (event_key_matches(keysym, kbdDecrease))
+         main_volume_down();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdForward)))
++    else if (event_key_matches(keysym, kbdForward))
+         main_set_fastforward(1);
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdAdvance)))
++    else if (event_key_matches(keysym, kbdAdvance))
+         main_advance_one();
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdGameshark))) {
++    else if (event_key_matches(keysym, kbdGameshark)) {
+         event_set_gameshark(1);
+     }
+     else
+@@ -685,15 +725,15 @@ void event_sdl_keydown(int keysym, int keymod)
+ void event_sdl_keyup(int keysym, int keymod)
+ {
+ #ifndef NO_KEYBINDINGS
+-    if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdStop)))
++    if (event_key_matches(keysym, kbdStop))
+     {
+         return;
+     }
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdForward)))
++    else if (event_key_matches(keysym, kbdForward))
+     {
+         main_set_fastforward(0);
+     }
+-    else if (keysym == sdl_keysym2native(ConfigGetParamInt(l_CoreEventsConfig, kbdGameshark)))
++    else if (event_key_matches(keysym, kbdGameshark))
+     {
+         event_set_gameshark(0);
+     }
+
+diff --git a/src/main/main.c b/src/main/main.c
+index 78739ae..e8d2a23 100644
+--- a/src/main/main.c
++++ b/src/main/main.c
+@@ -163,9 +163,12 @@ static char *get_save_filename(void)
+ {
+     static char filename[256];
+
++    const char *override = ConfigGetParamString(g_CoreConfig, "SaveFilenameOverride");
+     int format = ConfigGetParamInt(g_CoreConfig, "SaveFilenameFormat");
+
+-    if (format == 0) {
++    if (override != NULL && override[0] != '\0') {
++        snprintf(filename, 256, "%s", override);
++    } else if (format == 0) {
+         snprintf(filename, 256, "%s", ROM_PARAMS.headername);
+     } else /* if (format == 1) */ {
+         if (strstr(ROM_SETTINGS.goodname, "(unknown rom)") == NULL) {
+@@ -215,7 +218,7 @@ static char *get_eeprom_path(void)
+     free(path);
+
+     /* else use new path */
+-    return formatstr("%s%s.eep", get_savesrampath(), get_save_filename());
++    return formatstr("%s%s.sav", get_savesrampath(), get_save_filename());
+ }
+
+ static char *get_sram_path(void)
+@@ -232,7 +235,7 @@ static char *get_sram_path(void)
+     free(path);
+
+     /* else use new path */
+-    return formatstr("%s%s.sra", get_savesrampath(), get_save_filename());
++    return formatstr("%s%s.sav", get_savesrampath(), get_save_filename());
+ }
+
+ static char *get_flashram_path(void)
+@@ -249,7 +252,7 @@ static char *get_flashram_path(void)
+     free(path);
+
+     /* else use new path */
+-    return formatstr("%s%s.fla", get_savesrampath(), get_save_filename());
++    return formatstr("%s%s.sav", get_savesrampath(), get_save_filename());
+ }
+
+ static char *get_gb_ram_path(const char* gbrom, unsigned int control_id)
+@@ -439,6 +442,7 @@ m64p_error main_core_startup(int APIVersion, const char *ConfigPath, const char *
+     ConfigSetDefaultString(g_CoreConfig, "GbCameraVideoCaptureBackend1", DEFAULT_VIDEO_CAPTURE_BACKEND, "Gameboy Camera Video Capture backend");
+     ConfigSetDefaultInt(g_CoreConfig, "SaveDiskFormat", 1, "Disk Save Format (0: Full Disk Copy (*.ndr/*.d6r), 1: RAM Area Only (*.ram))");
+     ConfigSetDefaultInt(g_CoreConfig, "SaveFilenameFormat", 1, "Save (SRAM/State) Filename Format (0: ROM Header Name, 1: Automatic (including partial MD5 hash))");
++    ConfigSetDefaultString(g_CoreConfig, "SaveFilenameOverride", "", "Optional front-end supplied base name for SRAM and state files");
+
+     /* handle upgrades */
+     if (bUpgrade)

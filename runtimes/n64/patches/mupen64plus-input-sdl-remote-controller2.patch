@@ -1,0 +1,96 @@
+diff --git a/src/plugin.c b/src/plugin.c
+--- a/src/plugin.c
++++ b/src/plugin.c
+@@ -46,6 +46,12 @@
+ #include "plugin.h"
+ #include "version.h"
+ 
++#if defined(_WIN32)
++#include <windows.h>
++#else
++#include <dlfcn.h>
++#endif
++
+ #ifdef __linux__
+ #include <dirent.h>
+ #include <fcntl.h>
+@@ -119,6 +125,58 @@ static int romopen = 0;         // is a rom opened
+ 
+ static unsigned char myKeyState[SDL_NUM_SCANCODES];
+ 
++typedef int (*integral_n64_runtime_remote_state_fn)(uint64_t *buttons);
++
++static integral_n64_runtime_remote_state_fn find_remote_state(void)
++{
++    static integral_n64_runtime_remote_state_fn function;
++    static int attempted;
++    if (!attempted) {
++#if defined(_WIN32)
++        function = (integral_n64_runtime_remote_state_fn)(void *)GetProcAddress(
++            GetModuleHandle(NULL), "integral_n64_runtime_remote_controller_state");
++#else
++        *(void **)(&function) = dlsym(
++            RTLD_DEFAULT, "integral_n64_runtime_remote_controller_state");
++#endif
++        attempted = 1;
++    }
++    return function;
++}
++
++static BUTTONS remote_controller_state(uint64_t buttons)
++{
++    BUTTONS keys;
++    memset(&keys, 0, sizeof(keys));
++    if ((buttons & (1ULL << 0)) != 0U) {
++        keys.R_DPAD = 1U;
++    }
++    if ((buttons & (1ULL << 1)) != 0U) {
++        keys.L_DPAD = 1U;
++    }
++    if ((buttons & (1ULL << 2)) != 0U) {
++        keys.U_DPAD = 1U;
++    }
++    if ((buttons & (1ULL << 3)) != 0U) {
++        keys.D_DPAD = 1U;
++    }
++    if ((buttons & (1ULL << 4)) != 0U) keys.A_BUTTON = 1U;
++    if ((buttons & (1ULL << 5)) != 0U) keys.B_BUTTON = 1U;
++    if ((buttons & (1ULL << 6)) != 0U) keys.START_BUTTON = 1U;
++    if ((buttons & (1ULL << 7)) != 0U) keys.Z_TRIG = 1U;
++    if ((buttons & (1ULL << 8)) != 0U) keys.L_TRIG = 1U;
++    if ((buttons & (1ULL << 9)) != 0U) keys.R_TRIG = 1U;
++    if ((buttons & (1ULL << 10)) != 0U) keys.R_CBUTTON = 1U;
++    if ((buttons & (1ULL << 11)) != 0U) keys.L_CBUTTON = 1U;
++    if ((buttons & (1ULL << 12)) != 0U) keys.U_CBUTTON = 1U;
++    if ((buttons & (1ULL << 13)) != 0U) keys.D_CBUTTON = 1U;
++    if ((buttons & (1ULL << 14)) != 0U) keys.X_AXIS = 80;
++    if ((buttons & (1ULL << 15)) != 0U) keys.X_AXIS = -80;
++    if ((buttons & (1ULL << 16)) != 0U) keys.Y_AXIS = 80;
++    if ((buttons & (1ULL << 17)) != 0U) keys.Y_AXIS = -80;
++    return keys;
++}
++
+ #if __linux__ && !SDL_VERSION_ATLEAST(2,0,0)
+ static struct ff_effect ffeffect[4];
+ static struct ff_effect ffstrong[4];
+@@ -690,5 +748,20 @@ EXPORT void CALL GetKeys( int Control, BUTTONS *Keys )
+     DebugMessage(M64MSG_VERBOSE, "Controller #%d value: 0x%8.8X", Control, *(int *)&controller[Control].buttons );
+ #endif
++    if (Control == 1) {
++        integral_n64_runtime_remote_state_fn get_remote = find_remote_state();
++        uint64_t remote = 0U;
++        if (get_remote != NULL && get_remote(&remote) != 0) {
++            static int remote_input_logged;
++            controller[Control].buttons = remote_controller_state(remote);
++            if (remote != 0U && !remote_input_logged) {
++                DebugMessage(
++                    M64MSG_INFO,
++                    "N64 Runtime remote Controller 2 input active: 0x%llx",
++                    (unsigned long long)remote);
++                remote_input_logged = 1;
++            }
++        }
++    }
+     *Keys = controller[Control].buttons;
+ 
+     /* handle mempack / rumblepak switching (only if rumble is active on joystick) */

@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "integral-server uninstall must be run with sudo." >&2
+  exit 1
+fi
+
+systemctl disable --now integral-server.service
+
+rm -rf -- /opt/integral-server
+rm -f -- /etc/systemd/system/integral-server.service \
+  /usr/local/bin/integral-server
+systemctl daemon-reload
+rm -f -- /usr/local/libexec/integral-server-uninstall
+
+echo "Removed:"
+echo "  /opt/integral-server"
+echo "  /etc/systemd/system/integral-server.service"
+echo "  /usr/local/bin/integral-server"
+echo "Preserved persistent data:"
+echo "  /etc/integral-server"
+echo "  /var/lib/integral-server"

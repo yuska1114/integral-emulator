@@ -1,0 +1,244 @@
+diff --git a/src/device/gb/gb_cart.c b/src/device/gb/gb_cart.c
+index a6414171..ac7bbaf9 100644
+--- a/src/device/gb/gb_cart.c
++++ b/src/device/gb/gb_cart.c
+@@ -30,6 +30,7 @@
+ #include "backends/api/rumble_backend.h"
+ #include "backends/api/storage_backend.h"
+ #include "backends/api/video_capture_backend.h"
++#include "backends/file_storage.h"
+ #if 0
+ void cv_imshow(const char* name, unsigned int width, unsigned int height, int channels, void* data);
+ #else
+@@ -37,6 +38,8 @@ void cv_imshow(const char* name, unsigned int width, unsigned int height, int ch
+ #endif
+ 
+ #include <assert.h>
++#include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ 
+@@ -53,6 +56,134 @@ enum gbcart_extra_devices
+ 
+ /* various helper functions for ram, rom, or MBC uses */
+ 
++static uint32_t read_le32(const uint8_t* data)
++{
++    return ((uint32_t)data[0]) |
++           ((uint32_t)data[1] << 8) |
++           ((uint32_t)data[2] << 16) |
++           ((uint32_t)data[3] << 24);
++}
++
++static uint64_t read_le64(const uint8_t* data)
++{
++    return ((uint64_t)read_le32(data)) |
++           ((uint64_t)read_le32(data + 4) << 32);
++}
++
++static void write_le32(uint8_t* data, uint32_t value)
++{
++    data[0] = (uint8_t)(value & 0xff);
++    data[1] = (uint8_t)((value >> 8) & 0xff);
++    data[2] = (uint8_t)((value >> 16) & 0xff);
++    data[3] = (uint8_t)((value >> 24) & 0xff);
++}
++
++static void write_le64(uint8_t* data, uint64_t value)
++{
++    write_le32(data, (uint32_t)(value & 0xffffffffu));
++    write_le32(data + 4, (uint32_t)(value >> 32));
++}
++
++static char* make_mbc3_rtc_filename(const char* ram_filename)
++{
++    size_t len;
++    char* rtc_filename;
++
++    if (ram_filename == NULL) {
++        return NULL;
++    }
++
++    len = strlen(ram_filename);
++    rtc_filename = (char*)malloc(len + 5);
++    if (rtc_filename == NULL) {
++        return NULL;
++    }
++
++    memcpy(rtc_filename, ram_filename, len);
++    memcpy(rtc_filename + len, ".rtc", 5);
++    return rtc_filename;
++}
++
++static int load_mbc3_rtc_sidecar(struct gb_cart* gb_cart)
++{
++    uint8_t data[48];
++    size_t read_count;
++    FILE* file;
++
++    if (gb_cart->rtc_filename == NULL) {
++        return -1;
++    }
++
++    file = fopen(gb_cart->rtc_filename, "rb");
++    if (file == NULL) {
++        return -1;
++    }
++
++    read_count = fread(data, 1, sizeof(data), file);
++    if (fclose(file) != 0 || read_count != sizeof(data)) {
++        return -1;
++    }
++
++    gb_cart->rtc.regs[MBC3_RTC_SECONDS] = (uint8_t)read_le32(data + 0);
++    gb_cart->rtc.regs[MBC3_RTC_MINUTES] = (uint8_t)read_le32(data + 4);
++    gb_cart->rtc.regs[MBC3_RTC_HOURS] = (uint8_t)read_le32(data + 8);
++    gb_cart->rtc.regs[MBC3_RTC_DAYS_L] = (uint8_t)read_le32(data + 12);
++    gb_cart->rtc.regs[MBC3_RTC_DAYS_H] = (uint8_t)read_le32(data + 16);
++
++    gb_cart->rtc.latched_regs[MBC3_RTC_SECONDS] = (uint8_t)read_le32(data + 20);
++    gb_cart->rtc.latched_regs[MBC3_RTC_MINUTES] = (uint8_t)read_le32(data + 24);
++    gb_cart->rtc.latched_regs[MBC3_RTC_HOURS] = (uint8_t)read_le32(data + 28);
++    gb_cart->rtc.latched_regs[MBC3_RTC_DAYS_L] = (uint8_t)read_le32(data + 32);
++    gb_cart->rtc.latched_regs[MBC3_RTC_DAYS_H] = (uint8_t)read_le32(data + 36);
++
++    gb_cart->rtc.latch = 0;
++    gb_cart->rtc.last_time = (time_t)read_le64(data + 40);
++    gb_cart->rtc.loaded = 1;
++
++    DebugMessage(M64MSG_INFO, "GB Loader RTC: %s - %zu",
++            gb_cart->rtc_filename,
++            sizeof(data));
++    return 0;
++}
++
++static void save_mbc3_rtc_sidecar(struct gb_cart* gb_cart)
++{
++    uint8_t data[48];
++    FILE* file;
++
++    if (gb_cart->rtc_filename == NULL) {
++        return;
++    }
++
++    write_le32(data + 0, gb_cart->rtc.regs[MBC3_RTC_SECONDS]);
++    write_le32(data + 4, gb_cart->rtc.regs[MBC3_RTC_MINUTES]);
++    write_le32(data + 8, gb_cart->rtc.regs[MBC3_RTC_HOURS]);
++    write_le32(data + 12, gb_cart->rtc.regs[MBC3_RTC_DAYS_L]);
++    write_le32(data + 16, gb_cart->rtc.regs[MBC3_RTC_DAYS_H]);
++
++    write_le32(data + 20, gb_cart->rtc.latched_regs[MBC3_RTC_SECONDS]);
++    write_le32(data + 24, gb_cart->rtc.latched_regs[MBC3_RTC_MINUTES]);
++    write_le32(data + 28, gb_cart->rtc.latched_regs[MBC3_RTC_HOURS]);
++    write_le32(data + 32, gb_cart->rtc.latched_regs[MBC3_RTC_DAYS_L]);
++    write_le32(data + 36, gb_cart->rtc.latched_regs[MBC3_RTC_DAYS_H]);
++
++    write_le64(data + 40, (uint64_t)gb_cart->rtc.last_time);
++
++    file = fopen(gb_cart->rtc_filename, "wb");
++    if (file == NULL) {
++        DebugMessage(M64MSG_WARNING, "couldn't open GB RTC file '%s' for writing",
++                gb_cart->rtc_filename);
++        return;
++    }
++
++    if (fwrite(data, 1, sizeof(data), file) != sizeof(data)) {
++        DebugMessage(M64MSG_WARNING, "failed to write GB RTC file '%s'",
++                gb_cart->rtc_filename);
++    }
++
++    fclose(file);
++}
++
+ 
+ static void read_rom(const void* rom_storage, const struct storage_backend_interface* irom_storage, uint16_t address, uint8_t* data, size_t size)
+ {
+@@ -398,6 +529,7 @@ static int read_gb_cart_mbc3(struct gb_cart* gb_cart, uint16_t address, uint8_t*
+             }
+ 
+             memset(data, read_mbc3_rtc_regs(&gb_cart->rtc, gb_cart->ram_bank - 0x08), size);
++            save_mbc3_rtc_sidecar(gb_cart);
+             break;
+ 
+         default:
+@@ -445,6 +577,7 @@ static int write_gb_cart_mbc3(struct gb_cart* gb_cart, uint16_t address, const u
+         }
+ 
+         latch_mbc3_rtc_regs(&gb_cart->rtc, value);
++        save_mbc3_rtc_sidecar(gb_cart);
+         break;
+ 
+     /* 0xa000-0xbfff: RAM bank 00-07 or RTC register 08-0c */
+@@ -481,6 +614,7 @@ static int write_gb_cart_mbc3(struct gb_cart* gb_cart, uint16_t address, const u
+             }
+ 
+             write_mbc3_rtc_regs(&gb_cart->rtc, gb_cart->ram_bank - 0x08, value);
++            save_mbc3_rtc_sidecar(gb_cart);
+             break;
+ 
+         default:
+@@ -980,6 +1114,9 @@ void init_gb_cart(struct gb_cart* gb_cart,
+     struct mbc3_rtc rtc;
+     struct pocket_cam cam;
+ 
++    free(gb_cart->rtc_filename);
++    gb_cart->rtc_filename = NULL;
++
+     memset(&rtc, 0, sizeof(rtc));
+     memset(&cam, 0, sizeof(cam));
+ 
+@@ -1071,6 +1208,14 @@ void init_gb_cart(struct gb_cart* gb_cart,
+     gb_cart->iram_storage = iram_storage;
+     gb_cart->extra_devices = type->extra_devices;
+     gb_cart->rtc = rtc;
++    if ((type->extra_devices & GED_RTC) && iram_storage == &g_ifile_storage &&
++            ram_storage != NULL) {
++        gb_cart->rtc_filename = make_mbc3_rtc_filename(
++                ((const struct file_storage*)ram_storage)->filename);
++        if (gb_cart->rtc_filename != NULL) {
++            (void)load_mbc3_rtc_sidecar(gb_cart);
++        }
++    }
+     gb_cart->cam = cam;
+     gb_cart->rumble = rumble;
+     gb_cart->irumble = irumble;
+diff --git a/src/device/gb/gb_cart.h b/src/device/gb/gb_cart.h
+index c9cdae5e..304967e9 100644
+--- a/src/device/gb/gb_cart.h
++++ b/src/device/gb/gb_cart.h
+@@ -65,6 +65,7 @@ struct gb_cart
+     unsigned int extra_devices;
+ 
+     struct mbc3_rtc rtc;
++    char* rtc_filename;
+     struct pocket_cam cam;
+ 
+     void* rumble;
+diff --git a/src/device/gb/mbc3_rtc.c b/src/device/gb/mbc3_rtc.c
+index ce75ed5f..90f9c896 100644
+--- a/src/device/gb/mbc3_rtc.c
++++ b/src/device/gb/mbc3_rtc.c
+@@ -77,6 +77,10 @@ void init_mbc3_rtc(struct mbc3_rtc* rtc,
+ 
+ void poweron_mbc3_rtc(struct mbc3_rtc* rtc)
+ {
++    if (rtc->loaded) {
++        return;
++    }
++
+     memset(rtc->regs, 0, MBC3_RTC_REGS_COUNT);
+     memset(rtc->latched_regs, 0, MBC3_RTC_REGS_COUNT);
+     rtc->latch = 0;
+diff --git a/src/device/gb/mbc3_rtc.h b/src/device/gb/mbc3_rtc.h
+index d9e7705a..cee1fc56 100644
+--- a/src/device/gb/mbc3_rtc.h
++++ b/src/device/gb/mbc3_rtc.h
+@@ -48,6 +48,7 @@ struct mbc3_rtc
+     uint8_t latched_regs[MBC3_RTC_REGS_COUNT];
+ 
+     time_t last_time;
++    int loaded;
+ 
+     void* clock;
+     const struct clock_backend_interface* iclock;

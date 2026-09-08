@@ -1,0 +1,120 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: MIT
+#
+# Target: SameBoy v1.0.3, commit 208ba4afabffab9edde416f2dbb8ae459e34adb8
+# Purpose: expose bounded RTC offset application and support the native
+# Windows/MSYS2 static Core build used by INTEGRAL EMULATOR.
++--- a/Core/gb.c
++++ b/Core/gb.c
+@@ -955,6 +955,59 @@
+ 
+     fclose(f);
+     return 0;
++}
++
++static void rewind_mbc3_rtc_seconds(GB_gameboy_t *gb, uint64_t seconds)
++{
++    while (seconds--) {
++        if (gb->rtc_real.seconds-- != 0) continue;
++        gb->rtc_real.seconds = 59;
++        if (gb->rtc_real.minutes-- != 0) continue;
++        gb->rtc_real.minutes = 59;
++        if (gb->rtc_real.hours-- != 0) continue;
++        gb->rtc_real.hours = 23;
++        if (gb->rtc_real.days-- != 0) continue;
++        gb->rtc_real.days = 0xFF;
++        gb->rtc_real.high ^= 1;
++    }
++}
++
++static void rewind_huc3_rtc_seconds(GB_gameboy_t *gb, uint64_t seconds)
++{
++    uint64_t minutes = seconds / 60;
++    while (minutes--) {
++        if (gb->huc3.minutes-- != 0) continue;
++        gb->huc3.minutes = 60 * 24 - 1;
++        if (gb->huc3.days != 0) {
++            gb->huc3.days--;
++        }
++    }
++}
++
++int GB_apply_rtc_offset(GB_gameboy_t *gb, int64_t offset_seconds)
++{
++    GB_ASSERT_NOT_RUNNING_OTHER_THREAD(gb)
++
++    if (!gb->cartridge_type ||
++        (gb->cartridge_type->mbc_type != GB_HUC3 && !gb->cartridge_type->has_rtc) ||
++        offset_seconds == 0) {
++        return 0;
++    }
++
++    uint64_t now = (uint64_t)time(NULL);
++    if (offset_seconds > 0) {
++        GB_rtc_set_time(gb, gb->last_rtc_second + (uint64_t)offset_seconds);
++    }
++    else if (gb->cartridge_type->mbc_type == GB_HUC3) {
++        uint64_t seconds = (uint64_t)-offset_seconds;
++        rewind_huc3_rtc_seconds(gb, seconds);
++    }
++    else {
++        uint64_t seconds = (uint64_t)-offset_seconds;
++        rewind_mbc3_rtc_seconds(gb, seconds);
++    }
++    gb->last_rtc_second = now;
++    return 1;
+ }
+ 
+ static void load_tpp1_save_data(GB_gameboy_t *gb, const tpp1_rtc_save_t *data)
+--- a/Core/gb.h
++++ b/Core/gb.h
+@@ -948,6 +948,7 @@
+ int GB_save_battery_size(GB_gameboy_t *gb);
+ int GB_save_battery_to_buffer(GB_gameboy_t *gb, uint8_t *buffer, size_t size);
+ int GB_save_battery(GB_gameboy_t *gb, const char *path);
++int GB_apply_rtc_offset(GB_gameboy_t *gb, int64_t offset_seconds);
+ 
+ void GB_load_battery_from_buffer(GB_gameboy_t *gb, const uint8_t *buffer, size_t size);
+ int GB_load_battery(GB_gameboy_t *gb, const char *path);
+--- a/Makefile
++++ b/Makefile
+@@ -18,7 +18,7 @@
+ ifeq ($(PLATFORM),windows32)
+ _ := $(shell chcp 65001)
+ EXESUFFIX:=.exe
+-NATIVE_CC = clang -IWindows -Wno-deprecated-declarations --target=x86_64-pc-windows
++NATIVE_CC = clang -IWindows -Wno-deprecated-declarations
+ SDL_AUDIO_DRIVERS ?= xaudio2 sdl
+ else
+ EXESUFFIX:=
+@@ -290,8 +290,8 @@
+ endif
+ 
+ ifeq ($(PLATFORM),windows32)
+-CFLAGS += -IWindows -Drandom=rand --target=x86_64-pc-windows
+-LDFLAGS += -lmsvcrt -lkernel32 -Wl,/MANIFESTFILE:NUL --target=x86_64-pc-windows
++CFLAGS += -IWindows -Drandom=rand -Wno-macro-redefined -Wno-inconsistent-dllimport -Wno-unused-command-line-argument
++LDFLAGS += -lmsvcrt -lkernel32 -Wl,/MANIFESTFILE:NUL
+ SDL_LDFLAGS := -lSDL2 -lcomdlg32 -luser32 -lshell32 -lole32 -ladvapi32 -ldwmapi -lwindowscodecs -lSDL2main
+ GL_LDFLAGS := -lopengl32 
+ ifneq ($(REDIST_XAUDIO),)
+@@ -879,10 +879,17 @@
+ 	$(CC) $(FAT_FLAGS) $(CFLAGS) $(LIBFLAGS) $^ $(OBJ)/lto_hack.o -o $@
+ 	-@rm $(OBJ)/lto_hack.o
+     
+-$(LIBDIR)/libsameboy.a: $(LIBDIR)/libsameboy.o
++ifeq ($(PLATFORM),windows32)
++$(LIBDIR)/libsameboy.a: $(CORE_OBJECTS)
+ 	-@$(MKDIR) -p $(dir $@)
+ 	-@rm -f $@
+ 	ar -crs $@ $^
++else
++$(LIBDIR)/libsameboy.a: $(LIBDIR)/libsameboy.o
++	-@$(MKDIR) -p $(dir $@)
++	-@rm -f $@
++	ar -crs $@ $^
++endif
+ 	
+ $(LIBDIR)/libsameboy.$(DL_EXT): $(CORE_OBJECTS)
+ 	-@$(MKDIR) -p $(dir $@)
+

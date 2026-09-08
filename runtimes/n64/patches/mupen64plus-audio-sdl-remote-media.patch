@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Target: mupen64plus-audio-sdl commit
+# 6c2c3f8ae10b7f0f6dfe06f45ca7ca598a6b659a
+# Purpose: forward post-mix PCM to the optional INTEGRAL N64 media hook.
+--- a/src/sdl_backend.c
++++ b/src/sdl_backend.c
+@@ -22,7 +22,16 @@
++#if defined(__linux__) && !defined(_GNU_SOURCE)
++#define _GNU_SOURCE
++#endif
++
+ #include <SDL.h>
+ #include <SDL_audio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#if defined(_WIN32)
++#include <windows.h>
++#else
++#include <dlfcn.h>
++#endif
+ 
+ #include "circular_buffer.h"
+ #include "main.h"
+@@ -36,6 +41,30 @@
+ /* number of bytes per sample */
+ #define N64_SAMPLE_BYTES 4
+ #define SDL_SAMPLE_BYTES 4
++
++typedef void (*integral_n64_runtime_remote_media_audio_fn)(const void *, size_t,
++                                                 unsigned int, unsigned int);
++
++static integral_n64_runtime_remote_media_audio_fn find_remote_media_audio(void)
++{
++    static integral_n64_runtime_remote_media_audio_fn function;
++    static int attempted;
++    if (!attempted) {
++#if defined(_WIN32)
++        HMODULE frontend = GetModuleHandle(NULL);
++        function = (integral_n64_runtime_remote_media_audio_fn)(void *)GetProcAddress(
++            frontend, "integral_n64_runtime_remote_media_audio_pcm");
++#elif defined(__APPLE__)
++        *(void **)(&function) = dlsym(RTLD_MAIN_ONLY,
++                                      "integral_n64_runtime_remote_media_audio_pcm");
++#else
++        *(void **)(&function) = dlsym(RTLD_DEFAULT,
++                                      "integral_n64_runtime_remote_media_audio_pcm");
++#endif
++        attempted = 1;
++    }
++    return function;
++}
+ 
+ /* For SDL < 1.3 */
+ #if !SDL_VERSION_ATLEAST(1,3,0)
+@@ -112,6 +141,7 @@
+ static void my_audio_callback(void* userdata, unsigned char* stream, int len)
+ {
+     struct sdl_backend* sdl_backend = (struct sdl_backend*)userdata;
++    integral_n64_runtime_remote_media_audio_fn remote_media_audio;
+ 
+     /* mark the time, for synchronization on the input side */
+     sdl_backend->last_cb_time = SDL_GetTicks();
+@@ -136,6 +166,12 @@
+     {
+         ++sdl_backend->underrun_count;
+         memset(stream, 0, len);
++    }
++
++    remote_media_audio = find_remote_media_audio();
++    if (remote_media_audio != NULL) {
++        remote_media_audio(stream, (size_t)len,
++                           sdl_backend->output_frequency, 2U);
+     }
+ }
+ 
+@@ -167,6 +203,7 @@
+ static void sdl_init_audio_device(struct sdl_backend* sdl_backend)
+ {
+     SDL_AudioSpec desired, obtained;
++    integral_n64_runtime_remote_media_audio_fn remote_media_audio;
+ 
+     sdl_backend->error = 0;
+ 
+@@ -253,6 +290,18 @@
+     DebugMessage(M64MSG_VERBOSE, "Silence: %i", obtained.silence);
+     DebugMessage(M64MSG_VERBOSE, "Samples: %i", obtained.samples);
+     DebugMessage(M64MSG_VERBOSE, "Size: %i", obtained.size);
++
++    remote_media_audio = find_remote_media_audio();
++    if (remote_media_audio != NULL) {
++        void *silence = calloc(1, obtained.size);
++        if (silence != NULL) {
++            remote_media_audio(silence, obtained.size,
++                               (unsigned int)obtained.freq,
++                               (unsigned int)obtained.channels);
++            free(silence);
++        }
++        DebugMessage(M64MSG_INFO, "N64 Runtime remote media audio hook active.");
++    }
+ 
+     /* set playback volume */
+     SetPlaybackVolume();

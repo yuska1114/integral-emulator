@@ -1,0 +1,27 @@
+{
+  "battle_turbo": {
+    "gen2": {
+      "player_a": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUULL.UUR....|..A",
+      "player_b": "......AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUURRRUUL|A",
+      "press_frames": 8,
+      "step_frames": 60,
+      "sync_every_step": false
+    },
+    "gen1": {
+      "trade": {
+        "player_a": "..A......A........A..........A..........R..|A",
+        "player_b": "......A......A........A.................L..|A",
+        "press_frames": 20,
+        "step_frames": 60,
+        "sync_every_step": true
+      },
+      "battle": {
+        "player_a": "..A......A........A...........D...A..........R..|A",
+        "player_b": "......A......A........A......................L..|A",
+        "press_frames": 20,
+        "step_frames": 60,
+        "sync_every_step": true
+      }
+    }
+  }
+}

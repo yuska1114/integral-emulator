@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+if [ "${1:-}" = "uninstall" ]; then
+  if [ "$#" -ne 1 ]; then
+    echo "usage: integral-server uninstall" >&2
+    exit 2
+  fi
+  exec /usr/local/libexec/integral-server-uninstall
+fi
+
+export PYTHONPATH="/opt/integral-server/app/src${PYTHONPATH:+:${PYTHONPATH}}"
+exec /opt/integral-server/venv/bin/python3 -m integral_emulator.server_cli "$@"
