@@ -31,7 +31,7 @@ copy_common_legal() {
   copy_file "$project_root/runtimes/gb/third_party/libmobile/COPYING" "$target/LICENSES/third-party/libmobile/COPYING"
   copy_file "$project_root/runtimes/gb/third_party/libmobile/COPYING.LESSER" "$target/LICENSES/third-party/libmobile/COPYING.LESSER"
   copy_file "$project_root/runtimes/n64/third_party/mupen64plus-core/LICENSES" "$target/LICENSES/third-party/mupen64plus-core/LICENSES"
-  for license in gpl-license lgpl-license font-license; do copy_file "$project_root/runtimes/n64/third_party/mupen64plus-core/doc/$license" "$target/LICENSES/third-party/mupen64plus-core/$license"; done
+  for license in gpl-license lgpl-license; do copy_file "$project_root/runtimes/n64/third_party/mupen64plus-core/doc/$license" "$target/LICENSES/third-party/mupen64plus-core/$license"; done
   copy_file "$project_root/runtimes/n64/third_party/mupen64plus-input-sdl/COPYING" "$target/LICENSES/third-party/mupen64plus-input-sdl/COPYING"
   copy_file "$project_root/runtimes/n64/third_party/mupen64plus-input-sdl/LICENSES" "$target/LICENSES/third-party/mupen64plus-input-sdl/LICENSES"
   copy_file "$project_root/runtimes/n64/third_party/mupen64plus-audio-sdl/LICENSES" "$target/LICENSES/third-party/mupen64plus-audio-sdl/LICENSES"
@@ -45,7 +45,7 @@ copy_n64() {
   if [ "$platform" = linux ]; then frontend=integral_n64_runtime_frontend; core=libmupen64plus.so.2.0.0; ext=so; else frontend=integral_n64_runtime_frontend.exe; core=mupen64plus.dll; ext=dll; fi
   copy_file "$src/$frontend" "$dst/$frontend"; copy_file "$src/prefix/lib/$core" "$dst/prefix/lib/$core"
   for plugin in audio-sdl input-sdl rsp-hle video-GLideN64; do copy_file "$src/prefix/lib/mupen64plus/mupen64plus-$plugin.$ext" "$dst/prefix/lib/mupen64plus/mupen64plus-$plugin.$ext"; done
-  for data in font.ttf GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do copy_file "$src/prefix/share/mupen64plus/$data" "$dst/prefix/share/mupen64plus/$data"; done
+  for data in GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do copy_file "$src/prefix/share/mupen64plus/$data" "$dst/prefix/share/mupen64plus/$data"; done
 }
 
 mkdir -p "$linux_package/roms" "$linux_package/export" "$windows_package/roms" "$windows_package/export"

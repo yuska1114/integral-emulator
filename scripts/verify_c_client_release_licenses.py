@@ -16,7 +16,6 @@ COMMON_REQUIRED = (
     "LICENSES/third-party/mupen64plus-core/LICENSES",
     "LICENSES/third-party/mupen64plus-core/gpl-license",
     "LICENSES/third-party/mupen64plus-core/lgpl-license",
-    "LICENSES/third-party/mupen64plus-core/font-license",
     "LICENSES/third-party/GLideN64/LICENSE",
     "LICENSES/third-party/GLideN64/Glow/LICENSE",
     "LICENSES/third-party/GLideN64/gles2n64/LICENSE",
@@ -26,7 +25,6 @@ MACOS_REQUIRED = (
     "LICENSES/runtime-dependencies/FreeType/GPLv2.TXT",
 )
 NOTICE_REFERENCES = (
-    "LICENSES/third-party/mupen64plus-core/font-license",
     "LICENSES/third-party/mupen64plus-core/gpl-license",
     "LICENSES/third-party/mupen64plus-core/lgpl-license",
     "LICENSES/third-party/GLideN64/Glow/LICENSE",

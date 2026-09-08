@@ -125,7 +125,7 @@ cp -f "${PROJECT_ROOT}/runtimes/n64/build/prefix/lib/mupen64plus.dll" "${N64_RUN
 for plugin in mupen64plus-audio-sdl.dll mupen64plus-input-sdl.dll mupen64plus-rsp-hle.dll mupen64plus-video-GLideN64.dll; do
   cp -f "${PROJECT_ROOT}/runtimes/n64/build/prefix/lib/mupen64plus/${plugin}" "${N64_RUNTIME_DIR}/build/prefix/lib/mupen64plus/${plugin}"
 done
-for data in font.ttf GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do
+for data in GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do
   cp -f "${PROJECT_ROOT}/runtimes/n64/build/prefix/share/mupen64plus/${data}" "${N64_RUNTIME_DIR}/build/prefix/share/mupen64plus/${data}"
 done
 cp -f "${PROJECT_ROOT}/runtimes/gb/third_party/SameBoy/LICENSE" "${PACKAGE_DIR}/LICENSES/third-party/SameBoy-LICENSE"
@@ -139,7 +139,7 @@ mkdir -p "${PACKAGE_DIR}/LICENSES/third-party/mupen64plus-input-sdl" "${PACKAGE_
 cp -f "${PROJECT_ROOT}/runtimes/n64/third_party/mupen64plus-input-sdl/COPYING" "${PACKAGE_DIR}/LICENSES/third-party/mupen64plus-input-sdl/COPYING"
 cp -f "${PROJECT_ROOT}/runtimes/n64/third_party/mupen64plus-input-sdl/LICENSES" "${PACKAGE_DIR}/LICENSES/third-party/mupen64plus-input-sdl/LICENSES"
 cp -f "${PROJECT_ROOT}/runtimes/n64/third_party/GLideN64/LICENSE" "${PACKAGE_DIR}/LICENSES/third-party/GLideN64/LICENSE"
-for license in gpl-license lgpl-license font-license; do
+for license in gpl-license lgpl-license; do
   cp -f "${PROJECT_ROOT}/runtimes/n64/third_party/mupen64plus-core/doc/${license}" "${PACKAGE_DIR}/LICENSES/third-party/mupen64plus-core/${license}"
 done
 mkdir -p "${PACKAGE_DIR}/LICENSES/third-party/GLideN64/Glow" "${PACKAGE_DIR}/LICENSES/third-party/GLideN64/gles2n64"

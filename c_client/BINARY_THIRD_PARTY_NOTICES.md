@@ -10,8 +10,6 @@
 `LICENSES/runtime-dependencies/`に収録しています。各上流ライセンス原文の条件と
 表示が本書に優先します。
 
-N64 Runtimeの`font.ttf`はBitstream Vera Sansです。ライセンス原文は
-`LICENSES/third-party/mupen64plus-core/font-license`に収録しています。
 Mupen64Plus coreの追加GNU原文は
 `LICENSES/third-party/mupen64plus-core/gpl-license`と
 `LICENSES/third-party/mupen64plus-core/lgpl-license`、GLideN64同梱部分の追加原文は

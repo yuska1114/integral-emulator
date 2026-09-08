@@ -53,7 +53,7 @@ install -m 0755 "$project_root/runtimes/n64/build/prefix/lib/libmupen64plus.so.2
 for plugin in audio-sdl input-sdl rsp-hle video-GLideN64; do
   install -m 0755 "$project_root/runtimes/n64/build/prefix/lib/mupen64plus/mupen64plus-$plugin.so" "$output_dir/runtimes/n64/build/prefix/lib/mupen64plus/mupen64plus-$plugin.so"
 done
-for data in font.ttf GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do
+for data in GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do
   install -m 0644 "$project_root/runtimes/n64/build/prefix/share/mupen64plus/$data" "$output_dir/runtimes/n64/build/prefix/share/mupen64plus/$data"
 done
 
