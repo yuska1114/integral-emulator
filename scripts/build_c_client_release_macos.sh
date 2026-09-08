@@ -464,8 +464,31 @@ done
 
 if [[ "${INTEGRAL_EMULATOR_RELEASE_SKIP_CODESIGN}" != "1" ]] && command -v codesign >/dev/null; then
   echo "Ad-hoc signing app bundle..."
+  while IFS= read -r -d '' candidate; do
+    file -b "${candidate}" | grep -q 'Mach-O' || continue
+    codesign --force --sign - "${candidate}" >/dev/null
+  done < <(find "${APP_DIR}" -type f -print0)
   codesign --force --deep --sign - "${APP_DIR}" >/dev/null
+
+  while IFS= read -r -d '' candidate; do
+    file -b "${candidate}" | grep -q 'Mach-O' || continue
+    codesign --verify --strict "${candidate}"
+  done < <(find "${APP_DIR}" -type f -print0)
+  codesign --verify --deep --strict "${APP_DIR}"
 fi
+
+N64_PACKAGE_SMOKE_BMP="${PACKAGE_DIR}/.n64-menu-smoke.bmp"
+N64_PACKAGE_SMOKE_LOG="${PACKAGE_DIR}/.n64-menu-smoke.log"
+if ! SDL_VIDEODRIVER=dummy \
+  "${N64_RUNTIME_DIR}/build/integral_n64_runtime_frontend" \
+  --menu-smoke "${N64_PACKAGE_SMOKE_BMP}" \
+  >"${N64_PACKAGE_SMOKE_LOG}" 2>&1; then
+  cat "${N64_PACKAGE_SMOKE_LOG}" >&2
+  echo "Packaged N64 Runtime menu smoke failed." >&2
+  exit 1
+fi
+test -s "${N64_PACKAGE_SMOKE_BMP}"
+rm -f "${N64_PACKAGE_SMOKE_BMP}" "${N64_PACKAGE_SMOKE_LOG}"
 
 if grep -aR -l -F "${PROJECT_ROOT}" "${PACKAGE_DIR}" >/dev/null; then
   echo "Local build path remains in macOS artifacts." >&2

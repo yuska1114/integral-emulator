@@ -1,5 +1,5 @@
 {
-  "content_manifest_sha256": "ecdcec95b9aa9eaf16df066ee0bf6be2ebc94971867c027c619a0f517034a030",
+  "content_manifest_sha256": "ecb9e158b4a6feb026319c196ba55b78baa4ec8534227824ba6838097cfdfa88",
   "file_count": 1414,
   "file_modes": {
     ".gitignore": "100644",
@@ -2742,7 +2742,7 @@
     "runtimes/n64/tools/verify_sources.sh": "916ae252dea0bb777a4d8baca30c25ea6fded9a2b85fc9f1a3acef1a980889f6",
     "scripts/build_artifact_provenance.py": "57c1c5b76f05fe2e5bdd9b28993cb29093257e2402ad49ea38eb21dd9633a246",
     "scripts/build_c_client_release_linux.sh": "eff9672a1754b3db0e11ab6377401d466817d12137862268477c30892cf776f7",
-    "scripts/build_c_client_release_macos.sh": "1bc4ac57c52cb800795fccac0823a64f70c2012e44ea9bb1cb7dc91140e83610",
+    "scripts/build_c_client_release_macos.sh": "3e5bf9791f32c841488eb0fe7d50f414ad036a24747d38ffeafdba65ab9c3b77",
     "scripts/build_c_client_release_windows_msys2.sh": "c7bd899d2c5be950915c350591137c53c888fdfe727a0a7b1b5fabdd0ca0f4f6",
     "scripts/build_gb_runtime_windows_msys2.sh": "b112261d3f547fcc96f0b9e9d84e036a3e4abf0cf75423d9d34a8d4558a43932",
     "scripts/build_integral_server_distribution.py": "86103a14b3a00371f152b4f196e94b68a98b776cd22c3cf1331dad40ac0fc507",
@@ -2835,6 +2835,6 @@
   },
   "format": 4,
   "release_status": "FORMAL",
-  "source_commit": "5ee909efe32be23113f5b60e2e946eae0795b055",
-  "source_date_epoch": 1788878760
+  "source_commit": "d5aa0e9279465d7d9b620c4a97e736b93db1385b",
+  "source_date_epoch": 1788883083
 }
