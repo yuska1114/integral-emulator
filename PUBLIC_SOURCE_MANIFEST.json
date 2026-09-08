@@ -71,7 +71,7 @@
     }
   ],
   "asset_provenance_sha256": "1bf230e659f4162e4c204565008d25a2490fd5660946bf9a70e1f3e02d9af31f",
-  "candidate": true,
+  "candidate": false,
   "content_manifest_sha256": "0f5e8086cda59f6ab0da8347ca67929001a9f6f7eb07097b56c120f4adfff98b",
   "decision_gates": {
     "D1_PUBLICATION_FORM": "APPROVED",
@@ -2923,10 +2923,10 @@
   "included_game_packs": false,
   "integrity_scope": "file integrity only; this manifest is not a publication approval or an authenticity signature",
   "policy_sha256": "663fac990d78dc1008938409a9cf0e14bdf499a9700d297737063e7a35a037b0",
-  "release_status": "NOT LICENSED FOR FORMAL RELEASE",
-  "relevant_untracked_count": 9,
+  "release_status": "FORMAL",
+  "relevant_untracked_count": 0,
   "relevant_untracked_unclassified": 0,
-  "source_commit": "2fefcb6b3a2236cd73ae2db3e9d872c9db13137c",
-  "source_date_epoch": 1788856839,
-  "tracked_dirty": true
+  "source_commit": "b624b52834a47a9e062d52c30b7bc9465a97d896",
+  "source_date_epoch": 1788866688,
+  "tracked_dirty": false
 }
