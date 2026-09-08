@@ -180,6 +180,39 @@ def _git_modes(root: Path) -> dict[str, str]:
     return result
 
 
+def _git_eol_attributes(root: Path, paths: list[str]) -> dict[str, str]:
+    if not paths:
+        return {}
+    output = subprocess.check_output(
+        ["git", "check-attr", "-z", "--stdin", "eol"],
+        cwd=root,
+        input=b"\0".join(path.encode("utf-8") for path in paths) + b"\0",
+        stderr=subprocess.DEVNULL,
+    )
+    fields = output.split(b"\0")
+    if fields and fields[-1] == b"":
+        fields.pop()
+    if len(fields) % 3:
+        raise ExportError("cannot read Git end-of-line attributes")
+    result: dict[str, str] = {}
+    for index in range(0, len(fields), 3):
+        path = fields[index].decode("utf-8")
+        attribute = fields[index + 1].decode("ascii")
+        value = fields[index + 2].decode("ascii")
+        if attribute != "eol":
+            raise ExportError("unexpected Git attribute response")
+        if value in {"lf", "crlf"}:
+            result[path] = value
+    return result
+
+
+def _apply_checkout_eol(data: bytes, eol: str | None) -> bytes:
+    if eol not in {"lf", "crlf"}:
+        return data
+    normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return normalized if eol == "lf" else normalized.replace(b"\n", b"\r\n")
+
+
 def _source_identity(root: Path) -> tuple[str, int, bool]:
     commit = _git(root, "rev-parse", "HEAD").decode("ascii").strip()
     epoch = int(_git(root, "show", "-s", "--format=%ct", "HEAD").decode("ascii").strip())
@@ -384,6 +417,7 @@ def build_archive(root: Path, policy_path: Path, output: Path, *, candidate: boo
     selected = sorted(path for path, category in entries.items() if category in selected_categories)
     if not selected:
         raise ExportError("public-source manifest selects no files")
+    eol_attributes = _git_eol_attributes(root, selected)
     files: list[tuple[str, bytes, bool]] = []
     for relative in selected:
         source = root / relative
@@ -397,7 +431,7 @@ def build_archive(root: Path, policy_path: Path, output: Path, *, candidate: boo
             raise ExportError(f"selected path is not a regular file: {relative}")
         if modes.get(relative) == "120000":
             raise ExportError(f"Git symlinks are not allowed in public source: {relative}")
-        data = source.read_bytes()
+        data = _apply_checkout_eol(source.read_bytes(), eol_attributes.get(relative))
         _validate_data(relative, data, asset_provenance)
         executable = modes.get(relative) == "100755" or (relative not in modes and bool(metadata.st_mode & 0o111))
         files.append((relative, data, executable))
