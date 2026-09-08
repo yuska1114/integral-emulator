@@ -8,10 +8,9 @@ abs_dir() { [ -d "$1" ] || { echo "Directory not found: $1" >&2; exit 1; }; (CDP
 copy_file() { [ -f "$1" ] || { echo "Required release file not found: $1" >&2; exit 1; }; mkdir -p "$(dirname "$2")"; cp -f "$1" "$2"; }
 linux_input=$(abs_dir "$1"); windows_input=$(abs_dir "$2")
 output_arg=${3:-"$project_root/dist/releases"}; mkdir -p "$output_arg"; output_root=$(abs_dir "$output_arg")
-current_commit=$(git -C "$project_root" rev-parse HEAD)
-[ -z "$(git -C "$project_root" status --porcelain=v1 --untracked-files=all)" ] || { echo "Release integration requires a clean checkout." >&2; exit 1; }
-python3 "$project_root/scripts/build_artifact_provenance.py" "$linux_input" --platform linux --verify --expected-commit "$current_commit" --require-clean
-python3 "$project_root/scripts/build_artifact_provenance.py" "$windows_input" --platform windows --verify --expected-commit "$current_commit" --require-clean
+python3 "$project_root/scripts/public_source_integrity.py" --source-identity "$project_root" --require-clean >/dev/null
+python3 "$project_root/scripts/build_artifact_provenance.py" "$linux_input" --platform linux --verify --project-root "$project_root" --match-source --require-clean
+python3 "$project_root/scripts/build_artifact_provenance.py" "$windows_input" --platform windows --verify --project-root "$project_root" --match-source --require-clean
 formal_args=()
 if [ "$output_root" = "$project_root/dist/releases" ]; then python3 "$project_root/scripts/write_release_manifest.py" --preflight-formal; formal_args=(--formal); fi
 release_date=${INTEGRAL_CLIENT_RELEASE_DATE:-$(date +%Y%m%d)}

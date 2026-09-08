@@ -57,6 +57,11 @@ need_command zip
 need_command python3
 
 if [ "${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD}" != "1" ]; then
+  make -C "${PROJECT_ROOT}/c_client" clean
+  make -C "${PROJECT_ROOT}/runtimes/gb/src" clean
+  rm -rf "${PROJECT_ROOT}/runtimes/gb/third_party/SameBoy/build" \
+    "${PROJECT_ROOT}/runtimes/n64/build" "${PROJECT_ROOT}/runtimes/n64/release"
+
   echo "Building GB Runtime runtime binaries..."
   "${PROJECT_ROOT}/scripts/build_gb_runtime_windows_msys2.sh"
 
@@ -70,13 +75,21 @@ else
   exit 1
 fi
 
-for resource_id in 0x000003 0x00000e; do
-  if ! objdump -x "${PROJECT_ROOT}/c_client/build/integral_client.exe" |
-      grep -F "Entry: ID: ${resource_id}" >/dev/null; then
-    echo "Windows C Client icon resource ${resource_id} is missing." >&2
-    exit 1
-  fi
-done
+verify_icon_resources() {
+  local binary="$1"
+  local label="$2"
+  local resource_id
+  for resource_id in 0x000003 0x00000e; do
+    if ! objdump -x "${binary}" |
+        grep -F "Entry: ID: ${resource_id}" >/dev/null; then
+      echo "${label} icon resource ${resource_id} is missing." >&2
+      exit 1
+    fi
+  done
+}
+
+verify_icon_resources "${PROJECT_ROOT}/c_client/build/integral_client.exe" "Windows C Client"
+verify_icon_resources "${PROJECT_ROOT}/runtimes/gb/build_exp/integral_gb_runtime_frontend.exe" "Windows GB frontend"
 
 echo "Creating release package..."
 rm -rf "${PACKAGE_DIR}" "${ZIP_PATH}"
@@ -144,6 +157,7 @@ cc -O2 -Wall -Wextra -Werror -mwindows \
   "${PROJECT_ROOT}/c_client/windows_launcher.c" \
   "${PROJECT_ROOT}/c_client/build/integral_launcher.res.o" \
   -o "${PACKAGE_DIR}/${APP_NAME}.exe"
+verify_icon_resources "${PACKAGE_DIR}/${APP_NAME}.exe" "Windows launcher"
 
 cp -f "${PROJECT_ROOT}/c_client/RELEASE_README.txt" "${PACKAGE_DIR}/README.txt"
 cp -f "${PROJECT_ROOT}/LICENSE" "${PACKAGE_DIR}/LICENSE"

@@ -5,6 +5,7 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repository_root=$(CDPATH= cd -- "$project_root/../.." && pwd)
 version=$(sed -n '1p' "$project_root/VERSION")
 architecture=$(uname -m)
 release_name="N64 Runtime-$version-macos-$architecture"
@@ -12,7 +13,7 @@ release_dir="$project_root/release/$release_name"
 release_zip="$project_root/release/$release_name.zip"
 app="$release_dir/N64 Runtime.app"
 dependency_dir="$release_dir/build/deps"
-icon_source="$project_root/icon/icon_image.png"
+icon_source=${INTEGRAL_EMULATOR_ICON_PNG:-"$repository_root/assets/public/integral_emulator_icon.png"}
 skip_build=false
 no_zip=false
 
@@ -141,13 +142,14 @@ if [ -z "$version" ]; then
 fi
 
 for command in make cc otool install_name_tool codesign ditto awk cmp \
-               sdl2-config; do
+               python3 sdl2-config; do
     need_command "$command"
 done
 if [ ! -f "$icon_source" ]; then
     printf 'Application icon is missing: %s\n' "$icon_source" >&2
     exit 1
 fi
+python3 "$repository_root/scripts/verify_app_icon_assets.py" "$icon_source" --format png
 
 cd "$project_root"
 if [ "$skip_build" = false ]; then

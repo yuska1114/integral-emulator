@@ -257,7 +257,8 @@ class NamingContractTests(unittest.TestCase):
                 json.dumps({"source_commit": "abc123", "dirty": True}),
                 encoding="utf-8",
             )
-            self.assertEqual(module.source_state(handoff_root), ("abc123", True))
+            with self.assertRaisesRegex(SystemExit, "neither Git metadata nor PUBLIC_SOURCE_MANIFEST"):
+                module.current_source_identity(handoff_root)
 
     def test_release_launchers_use_neutral_package_layout(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -430,7 +431,10 @@ class NamingContractTests(unittest.TestCase):
         self.assertNotIn("APP_BIN := $(BUILD_DIR)/gb_runtime_", gb_makefile)
         self.assertNotIn("SERVER_BIN := $(BUILD_DIR)/gb_runtime_", gb_makefile)
         self.assertNotIn("$(BUILD_DIR)/remote_dual_", gb_makefile)
-        self.assertIn("frontend: source-stack build/integral_n64_runtime_frontend$(EXEEXT)", n64_makefile)
+        self.assertIn("frontend: build/integral_n64_runtime_frontend$(EXEEXT)", n64_makefile)
+        self.assertIn(
+            "src/platform/thread.h | source-stack", n64_makefile
+        )
         self.assertNotIn("build/N64 Runtime", n64_makefile)
         client_makefile = (root / "c_client" / "Makefile").read_text(encoding="utf-8")
         self.assertIn("../runtimes/n64/src/remote_media_ipc.c", client_makefile)

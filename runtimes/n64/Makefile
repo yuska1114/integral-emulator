@@ -45,9 +45,9 @@ all: frontend
 ai-context:
 	sh tools/build_ai_context_bundle.sh
 
-frontend: source-stack build/integral_n64_runtime_frontend$(EXEEXT)
+frontend: build/integral_n64_runtime_frontend$(EXEEXT)
 
-build/integral_n64_runtime_frontend$(EXEEXT): $(N64_RUNTIME_SOURCES) $(TRANSFER_PAK_HEADERS) src/platform/dynlib.h src/platform/thread.h
+build/integral_n64_runtime_frontend$(EXEEXT): $(N64_RUNTIME_SOURCES) $(TRANSFER_PAK_HEADERS) src/platform/dynlib.h src/platform/thread.h | source-stack
 	mkdir -p build
 	$(CC) $(N64_RUNTIME_CPPFLAGS) $(N64_RUNTIME_CFLAGS) \
 		$(N64_RUNTIME_SOURCES) -o $@ $(N64_RUNTIME_EXPORT_LDFLAGS) $(N64_RUNTIME_LDLIBS)

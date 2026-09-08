@@ -10,15 +10,20 @@ import hashlib
 import json
 import re
 import stat
-import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from public_source_integrity import IntegrityError, source_identity, verify_archive as verify_public_archive
+
 
 MANIFEST_NAME = "RELEASE_MANIFEST.json"
 SHA256_NAME = "SHA256SUMS"
-PUBLIC_MANIFEST_NAME = "PUBLIC_SOURCE_MANIFEST.json"
 FORBIDDEN_SUFFIXES = {
     ".gb", ".gbc", ".z64", ".n64", ".v64", ".sav", ".rtc",
     ".log", ".sqlite", ".sqlite3", ".db", ".db-wal", ".db-shm",
@@ -113,32 +118,14 @@ def executable_paths(platform: str, app_name: str) -> dict[str, str]:
     }
 
 
-def source_state(project_root: Path) -> tuple[str, bool]:
+def current_source_identity(project_root: Path) -> dict[str, object]:
     try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=project_root, text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-        dirty = bool(subprocess.check_output(
-            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
-            cwd=project_root, text=True, stderr=subprocess.DEVNULL,
-        ).strip())
-        return commit, dirty
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        handoff_path = project_root / "SOURCE_HANDOFF_MANIFEST.json"
-        if not handoff_path.is_file():
-            raise SystemExit(
-                "release manifest requires a Git checkout or SOURCE_HANDOFF_MANIFEST.json"
-            )
-        handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
-        commit = handoff.get("source_commit")
-        dirty = handoff.get("dirty")
-        if not isinstance(commit, str) or not commit or not isinstance(dirty, bool):
-            raise SystemExit("invalid source identity in SOURCE_HANDOFF_MANIFEST.json")
-        return commit, dirty
+        return source_identity(project_root)
+    except IntegrityError as error:
+        raise SystemExit(str(error)) from error
 
 
-def build_source_state(release_dir: Path, platform: str, project_root: Path) -> tuple[str, bool]:
+def build_source_state(release_dir: Path, platform: str, project_root: Path) -> dict[str, object]:
     record_path = release_dir / "BUILD_PROVENANCE.json"
     if not record_path.is_file():
         raise SystemExit("release is missing BUILD_PROVENANCE.json")
@@ -146,15 +133,18 @@ def build_source_state(release_dir: Path, platform: str, project_root: Path) -> 
         record = json.loads(record_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise SystemExit("release build provenance is invalid") from error
-    commit = record.get("source_commit")
-    dirty = record.get("dirty")
+    source = record.get("source")
     recorded_files = record.get("files")
-    if record.get("format") != 1 or record.get("platform") != platform:
+    if record.get("format") != 2 or record.get("platform") != platform:
         raise SystemExit("release build provenance platform does not match")
+    if not isinstance(source, dict):
+        raise SystemExit("release build provenance source identity is invalid")
+    commit = source.get("source_commit")
+    dirty = source.get("dirty")
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40,64}", commit):
-        raise SystemExit("release build provenance source_commit is invalid")
+        raise SystemExit("release build provenance source commit is invalid")
     if type(dirty) is not bool:
-        raise SystemExit("release build provenance dirty state is invalid")
+        raise SystemExit("release build provenance source dirty state is invalid")
     if not isinstance(recorded_files, dict) or not recorded_files:
         raise SystemExit("release build provenance file inventory is missing")
     actual_files = {
@@ -169,45 +159,29 @@ def build_source_state(release_dir: Path, platform: str, project_root: Path) -> 
             raise SystemExit(f"release build provenance hash is invalid: {relative}")
         if sha256_file(actual_files[relative]) != expected_hash:
             raise SystemExit(f"release build provenance hash mismatch: {relative}")
-    current_commit, current_dirty = source_state(project_root)
+    current_source = current_source_identity(project_root)
     if dirty:
         raise SystemExit("dirty build artifacts cannot be packaged")
-    if current_dirty:
+    if current_source["dirty"]:
         raise SystemExit("release packaging requires a clean checkout")
-    if commit != current_commit:
-        raise SystemExit("release build commit does not match the current checkout")
-    return commit, dirty
+    if source != current_source:
+        raise SystemExit("release build source identity does not match the current source tree")
+    return source
 
 
 def verify_formal_source(project_root: Path, archive_path: Path) -> dict[str, str]:
-    commit, dirty = source_state(project_root)
-    if dirty:
+    source = current_source_identity(project_root)
+    if source["dirty"]:
         raise SystemExit("formal dist/releases generation requires a clean worktree")
     if not archive_path.is_file():
         raise SystemExit(f"formal public source archive is missing: {archive_path}")
-    subprocess.run(
-        [
-            "python3", str(project_root / "scripts/build_public_source.py"),
-            "--root", str(project_root), "--verify", str(archive_path),
-        ],
-        cwd=project_root,
-        check=True,
-        stdout=subprocess.DEVNULL,
-    )
-    with zipfile.ZipFile(archive_path) as archive:
-        try:
-            public_manifest = json.loads(archive.read(PUBLIC_MANIFEST_NAME))
-        except KeyError as error:
-            raise SystemExit(
-                f"public source archive lacks {PUBLIC_MANIFEST_NAME}"
-            ) from error
-    if public_manifest.get("candidate") is not False:
-        raise SystemExit("formal product release requires a non-candidate public source archive")
-    if public_manifest.get("release_status") != "FORMAL":
-        raise SystemExit("public source archive is not marked FORMAL")
+    try:
+        public_manifest = verify_public_archive(archive_path, require_formal=True)
+    except (IntegrityError, zipfile.BadZipFile) as error:
+        raise SystemExit(str(error)) from error
     if public_manifest.get("tracked_dirty") is not False:
-        raise SystemExit("public source archive records a dirty worktree")
-    if public_manifest.get("source_commit") != commit:
+        raise SystemExit("public source archive records a dirty origin worktree")
+    if public_manifest.get("source_commit") != source["source_commit"]:
         raise SystemExit("public source archive commit does not match the product release")
     return {
         "filename": archive_path.name,
@@ -252,14 +226,13 @@ def write_manifest(
     missing_legal = sorted(required_legal - set(hashes))
     if missing_legal:
         raise SystemExit(f"release legal files are missing: {', '.join(missing_legal)}")
-    commit, dirty = build_source_state(release_dir, platform, project_root)
+    source = build_source_state(release_dir, platform, project_root)
     manifest = {
-        "format": 2,
+        "format": 3,
         "platform": platform,
         "version": version,
         "minimum_os": minimum_os or None,
-        "source_commit": commit,
-        "dirty": dirty,
+        "source": source,
         "source_archive": source_archive,
         "hash_scope": "all regular files except RELEASE_MANIFEST.json",
         "files": hashes,

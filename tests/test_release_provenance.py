@@ -46,12 +46,13 @@ class ReleaseProvenanceTest(unittest.TestCase):
             binary = artifacts / "client.bin"
             binary.write_bytes(b"binary")
             PROVENANCE.write_record(artifacts, checkout, "linux")
-            record = PROVENANCE.load_and_verify(artifacts, "linux", commit, True)
-            self.assertEqual(record["source_commit"], commit)
-            self.assertFalse(record["dirty"])
+            expected_source = PROVENANCE.source_identity(checkout)
+            record = PROVENANCE.load_and_verify(artifacts, "linux", expected_source, True)
+            self.assertEqual(record["source"]["source_commit"], commit)
+            self.assertFalse(record["source"]["dirty"])
             binary.write_bytes(b"changed")
             with self.assertRaises(SystemExit):
-                PROVENANCE.load_and_verify(artifacts, "linux", commit, True)
+                PROVENANCE.load_and_verify(artifacts, "linux", expected_source, True)
 
     def test_dirty_and_commit_mismatch_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -65,9 +66,11 @@ class ReleaseProvenanceTest(unittest.TestCase):
             (artifacts / "client.bin").write_bytes(b"binary")
             PROVENANCE.write_record(artifacts, checkout, "windows")
             with self.assertRaises(SystemExit):
-                PROVENANCE.load_and_verify(artifacts, "windows", commit, True)
+                PROVENANCE.load_and_verify(artifacts, "windows", None, True)
+            mismatched = PROVENANCE.source_identity(checkout)
+            mismatched["source_commit"] = "0" * 40
             with self.assertRaises(SystemExit):
-                PROVENANCE.load_and_verify(artifacts, "windows", "0" * 40, False)
+                PROVENANCE.load_and_verify(artifacts, "windows", mismatched, False)
 
     def test_missing_record_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -88,13 +91,14 @@ class ReleaseProvenanceTest(unittest.TestCase):
             commit = self.make_checkout(checkout)
             (source / "raw.bin").write_bytes(b"raw")
             source_record = PROVENANCE.write_record(source, checkout, "linux")
-            verified = PROVENANCE.load_and_verify(source, "linux", commit, True)
+            expected_source = PROVENANCE.source_identity(checkout)
+            verified = PROVENANCE.load_and_verify(source, "linux", expected_source, True)
             self.assertEqual(source_record.name, "BUILD_PROVENANCE.json")
             (integrated / "client" ).mkdir()
             (integrated / "client" / "client.bin").write_bytes(b"raw")
             PROVENANCE.write_record(integrated, checkout, "linux", verified)
-            result = PROVENANCE.load_and_verify(integrated, "linux", commit, True)
-            self.assertEqual(result["source_commit"], commit)
+            result = PROVENANCE.load_and_verify(integrated, "linux", expected_source, True)
+            self.assertEqual(result["source"]["source_commit"], commit)
             self.assertIn("client/client.bin", result["files"])
 
     def test_fixed_release_license_allowlist(self) -> None:

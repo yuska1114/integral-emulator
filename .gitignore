@@ -1,0 +1,19 @@
+# Public source build and test outputs.
+.DS_Store
+._*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+dist/
+c_client/build/
+c_client/runtime/
+c_client/screenshot/
+runtimes/gb/build/
+runtimes/gb/build_exp/
+runtimes/gb/third_party/SameBoy/build/
+runtimes/n64/build/
+runtimes/n64/release/
+runtimes/n64/runtime/
+runtimes/n64/screenshots/

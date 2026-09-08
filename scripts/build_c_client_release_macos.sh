@@ -26,6 +26,7 @@ INTEGRAL_EMULATOR_RELEASE_APP_NAME="${INTEGRAL_EMULATOR_RELEASE_APP_NAME:-INTEGR
 INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME="${INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME:-}"
 INTEGRAL_EMULATOR_RELEASE_SKIP_CODESIGN="${INTEGRAL_EMULATOR_RELEASE_SKIP_CODESIGN:-0}"
 INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD="${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD:-0}"
+INTEGRAL_EMULATOR_ICON_ICNS="${INTEGRAL_EMULATOR_ICON_ICNS:-${PROJECT_ROOT}/assets/public/integral_emulator_icon.icns}"
 MACOS_DEPLOYMENT_TARGET="${INTEGRAL_EMULATOR_MACOS_DEPLOYMENT_TARGET}"
 export MACOSX_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}"
 RELEASE_ROOT="${INTEGRAL_EMULATOR_RELEASE_ROOT}"
@@ -63,6 +64,11 @@ if [[ "$(cd "${RELEASE_ROOT}" && pwd)" == "${PROJECT_ROOT}/dist/releases" ]]; th
 fi
 
 if [[ "${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD}" != "1" ]]; then
+  make -C "${PROJECT_ROOT}/c_client" clean
+  make -C "${PROJECT_ROOT}/runtimes/gb/src" clean
+  rm -rf -- "${PROJECT_ROOT}/runtimes/gb/third_party/SameBoy/build" \
+    "${PROJECT_ROOT}/runtimes/n64/build" "${PROJECT_ROOT}/runtimes/n64/release"
+
   echo "Building c_client..."
   make -C "${PROJECT_ROOT}/c_client"
 
@@ -191,8 +197,9 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 PLIST
 
 make_icon() {
-  local source_icns="${PROJECT_ROOT}/assets/product/integral_emulator_icon.icns"
+  local source_icns="${INTEGRAL_EMULATOR_ICON_ICNS}"
   local icns="${RESOURCES_DIR}/AppIcon.icns"
+  python3 "${PROJECT_ROOT}/scripts/verify_app_icon_assets.py" "${source_icns}" --format icns
   [[ -s "${source_icns}" ]] || {
     echo "Required macOS application icon is missing: ${source_icns}" >&2
     exit 1

@@ -40,6 +40,7 @@ SDL2_CFLAGS := $(shell $(SDL2_CONFIG) --cflags)
 SDL2_LIBS := $(shell $(SDL2_CONFIG) --libs)
 GB_RUNTIME_PLATFORM_LIBS :=
 APP_RESOURCE_OBJECTS :=
+INTEGRAL_EMULATOR_ICON_ICO ?= ../../../assets/public/integral_emulator_icon.ico
 GB_LINK_ENGINE_DETERMINISM_CFLAGS := $(CFLAGS)
 ifneq ($(filter Linux MINGW% MSYS% CYGWIN%,$(PLATFORM)),)
 # SameBoy's internal save-state header intentionally uses four-character
@@ -56,7 +57,7 @@ endif
 COMMON_HEADERS := common/file_util.h common/key_config.h common/log_util.h common/mdns.h common/net_compat.h common/parse_util.h common/process_util.h common/protocol.h common/sdl_text.h common/string_util.h
 COMMON_SOURCES := common/file_util.c common/key_config.c common/log_util.c common/mdns.c common/net_compat.c common/parse_util.c common/process_util.c common/sdl_text.c common/string_util.c
 APP_HEADERS := app/choice_list.h app/key_config_menu.h app/menu_config.h app/menu_draw.h app/menu_paths.h app/menu_state.h app/screenshot_viewer.h
-APP_RESOURCES := app/windows_resource.rc ../assets/windows_app_icon.ico
+APP_RESOURCES := app/windows_resource.rc $(BUILD_DIR)/integral_emulator_icon.ico ../../../scripts/verify_app_icon_assets.py
 SERVER_HEADERS := server/audio_player.h server/input_router.h server/lan_remote.h server/link_bridge.h server/rom_profile.h server/screenshot.h server/server_cleanup.h server/server_options.h server/sgb_boot_resource.h server/slot.h server/slot2_upload_wait.h server/stream_server.h server/video_window.h server/wait_window.h serial/serial_peripheral.h
 SERVER_SOURCES := server/main.c server/audio_player.c server/input_router.c server/lan_remote.c server/link_bridge.c server/rom_profile.c server/screenshot.c server/server_cleanup.c server/server_options.c server/sgb_boot_resource.c server/slot.c server/slot2_upload_wait.c server/stream_server.c server/video_window.c server/wait_window.c serial/serial_peripheral.c
 APP_SOURCES := app/main.c app/choice_list.c app/key_config_menu.c app/menu_config.c app/menu_draw.c app/menu_paths.c app/menu_state.c app/screenshot_viewer.c
@@ -126,6 +127,10 @@ $(APP_BIN): $(APP_SOURCES) $(APP_HEADERS) $(COMMON_SOURCES) $(COMMON_HEADERS) $(
 
 $(BUILD_DIR)/gb_runtime.res.o: $(APP_RESOURCES) | $(BUILD_DIR)
 	$(WINDRES) app/windows_resource.rc -O coff -o $@
+
+$(BUILD_DIR)/integral_emulator_icon.ico: $(INTEGRAL_EMULATOR_ICON_ICO) ../../../scripts/verify_app_icon_assets.py | $(BUILD_DIR)
+	python3 ../../../scripts/verify_app_icon_assets.py "$(INTEGRAL_EMULATOR_ICON_ICO)" --format ico
+	cp -f "$(INTEGRAL_EMULATOR_ICON_ICO)" $@
 
 $(SERVER_BIN): $(SERVER_SOURCES) $(COMMON_SOURCES) $(SERVER_HEADERS) $(COMMON_HEADERS) $(SAMEBOY_LIB) $(BUILD_DIR)/bootroms/sgb2_boot.bin | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(GB_RUNTIME_CPPFLAGS) $(SDL2_CFLAGS) $(CFLAGS) $(SERVER_SOURCES) $(COMMON_SOURCES) $(LDFLAGS) $(GB_RUNTIME_LDFLAGS) $(SDL2_LIBS) $(GB_RUNTIME_PLATFORM_LIBS) -o $@

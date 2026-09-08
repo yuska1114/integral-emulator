@@ -7,6 +7,7 @@ set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 output_dir=${1:-"$project_root/dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_BUILD"}
+icon_bmp=${INTEGRAL_EMULATOR_ICON_BMP:-"$project_root/assets/public/integral_emulator_icon.bmp"}
 for command in cc make cmake pkg-config sdl2-config strip python3; do
   command -v "$command" >/dev/null || { echo "Missing command: $command" >&2; exit 1; }
 done
@@ -26,7 +27,9 @@ export CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS:-} $prefix_flags"
 
 make -C "$project_root/c_client" clean
 make -C "$project_root/runtimes/gb/src" clean
-rm -rf -- "$project_root/runtimes/n64/build" "$project_root/runtimes/n64/release"
+rm -rf -- "$project_root/runtimes/gb/third_party/SameBoy/build" \
+  "$project_root/runtimes/n64/build" "$project_root/runtimes/n64/release"
+python3 "$project_root/scripts/verify_app_icon_assets.py" "$icon_bmp" --format bmp
 make -C "$project_root/runtimes/gb/src" server mobile-runtime
 make -C "$project_root/c_client"
 make -C "$project_root/runtimes/n64" frontend
@@ -36,7 +39,7 @@ mkdir -p "$output_dir/runtimes/gb/libmobile" \
   "$output_dir/runtimes/n64/build/prefix/lib/mupen64plus" \
   "$output_dir/runtimes/n64/build/prefix/share/mupen64plus" \
   "$output_dir/assets"
-install -m 0644 "$project_root/assets/product/integral_emulator_icon.bmp" \
+install -m 0644 "$icon_bmp" \
   "$output_dir/assets/integral_emulator_icon.bmp"
 install -m 0755 "$project_root/c_client/build/integral_client" "$output_dir/integral_client"
 install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_dual_server" "$output_dir/integral_gb_runtime_dual_server"

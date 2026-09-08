@@ -16,6 +16,7 @@ UNAME_S := $(shell uname -s)
 PLATFORM_LIBS :=
 EXEEXT :=
 WINDOWS_CLIENT_RESOURCE :=
+INTEGRAL_EMULATOR_ICON_ICO ?= ../assets/public/integral_emulator_icon.ico
 ifeq ($(HAS_SDL_TTF),1)
 CFLAGS += -DINTEGRAL_USE_SDL_TTF
 SDL_CFLAGS += $(SDL_TTF_CFLAGS)
@@ -37,9 +38,7 @@ ifneq ($(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)),)
 CFLAGS += -Wno-format-truncation -Wno-unused-function
 PLATFORM_LIBS += -lws2_32 -liphlpapi -lbcrypt -ladvapi32 -lmfplat -lmfuuid -lmf -lole32 -luuid
 EXEEXT := .exe
-ifneq ($(wildcard ../assets/product/integral_emulator_icon.ico),)
 WINDOWS_CLIENT_RESOURCE := build/integral_client.res.o
-endif
 endif
 
 BUILD_DIR := build
@@ -75,6 +74,21 @@ SOURCES := login_client.c sdl_text.c sdl_unicode_text.c http_client.c client_con
 	../runtimes/gb/src/common/key_config.c ../runtimes/gb/src/common/string_util.c \
 	../runtimes/n64/src/remote_media_ipc.c
 
+SAMEBOY_HEADERS := $(wildcard $(SAMEBOY_DIR)/Core/*.h)
+GB_ENGINE_HEADERS := ../runtimes/gb/src/common/file_util.h ../runtimes/gb/src/common/key_config.h \
+	../runtimes/gb/src/common/net_compat.h ../runtimes/gb/src/common/protocol.h \
+	../runtimes/gb/src/common/string_util.h ../runtimes/gb/src/server/content_hash.h \
+	../runtimes/gb/src/server/gb_link_engine.h ../runtimes/gb/src/server/rom_profile.h \
+	../runtimes/gb/src/server/secure_memory.h ../runtimes/gb/src/server/sgb_boot_resource.h \
+	../runtimes/gb/src/server/slot.h ../runtimes/gb/src/serial/serial_peripheral.h \
+	../runtimes/n64/src/remote_media_ipc.h $(SAMEBOY_HEADERS)
+CLIENT_HEADERS := client_config.h credential_store.h http_client.h mobile_session_contract.h \
+	room_poll_worker.h media_relay_client.h n64_runtime_media_stream.h media_codec.h media_h264.h \
+	rom_metadata.h sdl_text.h sdl_unicode_text.h gb_runtime_fixed_host_rom_resolver.h \
+	gb_runtime_fixed_host_runtime.h gb_runtime_fixed_host_product_runtime.h \
+	gb_runtime_fixed_host_snapshot_ipc.h gb_runtime_fixed_host_result_ipc.h \
+	gb_runtime_fixed_host_child_runtime.h $(GB_ENGINE_HEADERS)
+
 .PHONY: all gb-runtime-fixed-host-product gb-runtime-fixed-host-product-smoke gb-runtime-fixed-host-trade-terminal-smoke gb-runtime-fixed-host-runtime-test gb-runtime-fixed-host-product-runtime-test gb-runtime-fixed-host-snapshot-ipc-test gb-runtime-fixed-host-result-ipc-test gb-runtime-fixed-host-scheduler-test gb-runtime-fixed-host-rom-resolver-test rom-metadata-test client-config-controller-test clean smoke media-relay-smoke media-codec-test media-foundation-probe media-h264-test media-h264-interop room-poll-worker-test current-api-contract-test room-matching-response-test mobile-session-contract-test n64-runtime-stop-process-test
 
 all: $(TARGET) $(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET)
@@ -82,11 +96,15 @@ all: $(TARGET) $(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(TARGET): $(SOURCES) $(SAMEBOY_LIB) $(WINDOWS_CLIENT_RESOURCE) | $(BUILD_DIR)
+$(TARGET): $(SOURCES) $(CLIENT_HEADERS) $(SAMEBOY_LIB) $(WINDOWS_CLIENT_RESOURCE) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -std=gnu11 -I../runtimes/gb/src/common -I../runtimes/gb/third_party/SameBoy/Core -Wno-multichar -o $@ $(SOURCES) $(WINDOWS_CLIENT_RESOURCE) $(SAMEBOY_LIB) -lm $(SDL_LIBS) $(PLATFORM_LIBS)
 
 ifneq ($(WINDOWS_CLIENT_RESOURCE),)
-$(WINDOWS_CLIENT_RESOURCE): windows_launcher.rc ../assets/product/integral_emulator_icon.ico | $(BUILD_DIR)
+build/integral_emulator_icon.ico: $(INTEGRAL_EMULATOR_ICON_ICO) ../scripts/verify_app_icon_assets.py | $(BUILD_DIR)
+	$(PYTHON) ../scripts/verify_app_icon_assets.py "$(INTEGRAL_EMULATOR_ICON_ICO)" --format ico
+	cp -f "$(INTEGRAL_EMULATOR_ICON_ICO)" $@
+
+$(WINDOWS_CLIENT_RESOURCE): windows_launcher.rc build/integral_emulator_icon.ico | $(BUILD_DIR)
 	$(WINDRES) windows_launcher.rc -O coff -o $@
 endif
 
@@ -152,7 +170,12 @@ GB_RUNTIME_FIXED_HOST_PRODUCT_SOURCES := integral_gb_runtime_fixed_host.c gb_run
 	../runtimes/gb/src/common/key_config.c ../runtimes/gb/src/common/string_util.c \
 	../runtimes/n64/src/remote_media_ipc.c
 
-$(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET): $(GB_RUNTIME_FIXED_HOST_PRODUCT_SOURCES) $(SAMEBOY_LIB) | $(BUILD_DIR)
+GB_RUNTIME_FIXED_HOST_PRODUCT_HEADERS := gb_runtime_fixed_host_product_runtime.h \
+	gb_runtime_fixed_host_scheduler.h gb_runtime_fixed_host_snapshot_ipc.h \
+	gb_runtime_fixed_host_result_ipc.h gb_runtime_fixed_host_runtime.h media_relay_client.h \
+	media_codec.h media_h264.h n64_runtime_media_stream.h sdl_text.h $(GB_ENGINE_HEADERS)
+
+$(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET): $(GB_RUNTIME_FIXED_HOST_PRODUCT_SOURCES) $(GB_RUNTIME_FIXED_HOST_PRODUCT_HEADERS) $(SAMEBOY_LIB) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) \
 		-std=gnu11 -I../runtimes/gb/src/common \
 		-I../runtimes/gb/third_party/SameBoy/Core -Wno-multichar -o $@ \

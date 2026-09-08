@@ -65,6 +65,22 @@ python3 scripts/verify_libmobile_dependency.py runtimes/gb/third_party/libmobile
 
 個別コンポーネントのビルド・検証方法は各文書を参照してください。
 
+公開ソースZIPは、展開前に同梱manifestと内容が一致するかを単独で検証できます。
+
+```bash
+python3 scripts/build_public_source.py --verify <公開ソースZIP>
+```
+
+展開後は、ソースツリーのルートで次を実行します。ビルド生成物は許可されますが、
+収録ソースの改変・欠落や想定外のファイルは拒否されます。
+
+```bash
+python3 scripts/public_source_integrity.py --directory .
+```
+
+この検証はファイルの整合性確認です。公開承認や配布元の真正性を証明するものでは
+ありません。また、候補版を正式版として検証する場合は拒否されます。
+
 ## ドキュメント
 
 - [API概要](docs/API.md)

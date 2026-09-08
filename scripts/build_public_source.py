@@ -23,6 +23,16 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from public_source_integrity import (
+    INTEGRITY_SCOPE,
+    IntegrityError,
+    verify_archive as verify_public_archive,
+)
+
 
 PUBLIC_CATEGORIES = {
     "PUBLIC_REQUIRED",
@@ -63,7 +73,7 @@ FORBIDDEN_SUFFIXES = {
     ".z64",
     ".zip",
 }
-ASSET_SUFFIXES = {".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".otf", ".png", ".ttf", ".webp", ".woff", ".woff2"}
+ASSET_SUFFIXES = {".bmp", ".gif", ".icns", ".ico", ".jpeg", ".jpg", ".otf", ".png", ".ttf", ".webp", ".woff", ".woff2"}
 EXECUTABLE_MAGICS = (
     b"\x7fELF",
     b"MZ",
@@ -86,6 +96,7 @@ EXPORTER_RELATIVE_PATH = "scripts/build_public_source.py"
 DEFAULT_CONFIG = "config/public_source_manifest.json"
 DEFAULT_CANDIDATE_OUTPUT = "dist/source/INTEGRAL_EMULATOR_PUBLIC_SOURCE_CANDIDATE.zip"
 DEFAULT_FORMAL_OUTPUT = "dist/source/INTEGRAL_EMULATOR_PUBLIC_SOURCE.zip"
+PUBLIC_GITIGNORE_SOURCE = "config/public_gitignore"
 RELEVANT_UNTRACKED_ROOTS = {
     "assets",
     "c_client",
@@ -391,15 +402,31 @@ def build_archive(root: Path, policy_path: Path, output: Path, *, candidate: boo
         executable = modes.get(relative) == "100755" or (relative not in modes and bool(metadata.st_mode & 0o111))
         files.append((relative, data, executable))
 
+    public_gitignore = root / PUBLIC_GITIGNORE_SOURCE
+    if not public_gitignore.is_file():
+        raise ExportError(f"public .gitignore source is unavailable: {PUBLIC_GITIGNORE_SOURCE}")
+    if any(relative == ".gitignore" for relative, _, _ in files):
+        raise ExportError("public .gitignore must be generated from its separate source")
+    public_gitignore_data = public_gitignore.read_bytes()
+    if not public_gitignore_data.endswith(b"\n"):
+        raise ExportError("public .gitignore source must end with a newline")
+    files.append((".gitignore", public_gitignore_data, False))
+    files.sort(key=lambda item: item[0])
+
     file_hashes = {path: hashlib.sha256(data).hexdigest() for path, data, _ in files}
+    file_modes = {path: "100755" if executable else "100644" for path, _, executable in files}
     content_digest = hashlib.sha256(_canonical_json(file_hashes)).hexdigest()
-    asset_provenance_digest = hashlib.sha256(_canonical_json(policy["asset_provenance"])).hexdigest()
+    public_asset_provenance = sorted(
+        (record for record in policy["asset_provenance"] if record["path"] in file_hashes),
+        key=lambda record: record["path"],
+    )
+    asset_provenance_digest = hashlib.sha256(_canonical_json(public_asset_provenance)).hexdigest()
     policy_digest = hashlib.sha256(_canonical_json(policy)).hexdigest()
     exporter_digest = file_hashes.get(EXPORTER_RELATIVE_PATH)
     if exporter_digest is None:
         raise ExportError(f"public exporter is absent from the selected source: {EXPORTER_RELATIVE_PATH}")
     generated = {
-        "format": 2,
+        "format": 3,
         "candidate": candidate,
         "included_game_packs": include_game_packs,
         "game_pack_release_policy": policy["game_pack_release_policy"],
@@ -412,10 +439,13 @@ def build_archive(root: Path, policy_path: Path, output: Path, *, candidate: boo
         "relevant_untracked_unclassified": 0,
         "file_count": len(files),
         "content_manifest_sha256": content_digest,
+        "asset_provenance": public_asset_provenance,
         "asset_provenance_sha256": asset_provenance_digest,
         "policy_sha256": policy_digest,
         "exporter_sha256": exporter_digest,
         "files": file_hashes,
+        "file_modes": file_modes,
+        "integrity_scope": INTEGRITY_SCOPE,
     }
     generated_bytes = _canonical_json(generated)
 
@@ -435,91 +465,48 @@ def build_archive(root: Path, policy_path: Path, output: Path, *, candidate: boo
     return generated
 
 
-def verify_archive(archive_path: Path, policy: dict[str, Any]) -> None:
+def verify_archive(archive_path: Path, policy: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Verify public integrity, then optionally enforce the private release policy."""
+    generated = verify_public_archive(archive_path)
+    if policy is None:
+        return generated
+
     entries = validate_policy(policy)
     asset_provenance = validate_asset_provenance(policy, entries)
+    selected_categories = set(PUBLIC_CATEGORIES)
+    if generated["included_game_packs"]:
+        selected_categories.add(OPTIONAL_GAME_PACK_CATEGORY)
+    expected = {path for path, category in entries.items() if category in selected_categories}
+    expected.add(".gitignore")
+    if set(generated["files"]) != expected:
+        raise ExportError("archive file set does not match the private reviewed policy")
+    if generated["decision_gates"] != policy["decision_gates"]:
+        raise ExportError("archive decision gates differ from the private reviewed policy")
+    if generated["game_pack_release_policy"] != policy["game_pack_release_policy"]:
+        raise ExportError("archive game-pack policy differs from the private reviewed policy")
+    if generated["policy_sha256"] != hashlib.sha256(_canonical_json(policy)).hexdigest():
+        raise ExportError("archive private policy digest is inconsistent")
+    expected_public_provenance = sorted(
+        (record for record in policy["asset_provenance"] if record["path"] in generated["files"]),
+        key=lambda record: record["path"],
+    )
+    if generated["asset_provenance"] != expected_public_provenance:
+        raise ExportError("archive asset provenance differs from the private reviewed policy")
     with zipfile.ZipFile(archive_path, "r") as archive:
-        generated = json.loads(archive.read(GENERATED_MANIFEST_NAME))
-        include_game_packs = generated.get("included_game_packs", False)
-        if type(include_game_packs) is not bool:
-            raise ExportError("generated manifest game-pack selection is invalid")
-        selected_categories = set(PUBLIC_CATEGORIES)
-        if include_game_packs:
-            selected_categories.add(OPTIONAL_GAME_PACK_CATEGORY)
-        expected = {path for path, category in entries.items() if category in selected_categories}
-        infos = archive.infolist()
-        names = [info.filename for info in infos]
-        if len(names) != len(set(names)):
-            raise ExportError("archive contains duplicate paths")
-        actual = set(names)
-        if actual != expected | {GENERATED_MANIFEST_NAME}:
-            raise ExportError("archive file set does not match the reviewed manifest")
-        normalized: set[str] = set()
-        folded: set[str] = set()
-        for info in infos:
-            path = _safe_path(info.filename)
-            if info.is_dir():
-                raise ExportError(f"directory entry is not allowed: {path}")
-            nfc = unicodedata.normalize("NFC", info.filename)
-            if nfc in normalized or nfc.casefold() in folded:
-                raise ExportError(f"archive path collision: {path}")
-            normalized.add(nfc)
-            folded.add(nfc.casefold())
-            data = archive.read(info)
-            if info.filename != GENERATED_MANIFEST_NAME:
-                _validate_data(info.filename, data, asset_provenance)
-        if generated.get("format") != 2:
-            raise ExportError("generated manifest format is inconsistent")
-        generated_files = generated.get("files")
-        if not isinstance(generated_files, dict) or set(generated_files) != expected:
-            raise ExportError("generated manifest file set does not match the reviewed manifest")
-        if generated.get("file_count") != len(expected):
-            raise ExportError("generated manifest file_count is inconsistent")
-        expected_content_digest = hashlib.sha256(_canonical_json(generated_files)).hexdigest()
-        if generated.get("content_manifest_sha256") != expected_content_digest:
-            raise ExportError("generated manifest content digest is inconsistent")
-        if generated.get("decision_gates") != policy["decision_gates"]:
-            raise ExportError("generated manifest decision gates differ from the reviewed policy")
-        if generated.get("game_pack_release_policy") != policy["game_pack_release_policy"]:
-            raise ExportError("generated manifest game-pack policy differs from the reviewed policy")
-        expected_asset_digest = hashlib.sha256(_canonical_json(policy["asset_provenance"])).hexdigest()
-        if generated.get("asset_provenance_sha256") != expected_asset_digest:
-            raise ExportError("generated manifest asset provenance digest is inconsistent")
-        expected_policy_digest = hashlib.sha256(_canonical_json(policy)).hexdigest()
-        if generated.get("policy_sha256") != expected_policy_digest:
-            raise ExportError("generated manifest policy digest is inconsistent")
-        expected_exporter_digest = hashlib.sha256(archive.read(EXPORTER_RELATIVE_PATH)).hexdigest()
-        if generated.get("exporter_sha256") != expected_exporter_digest:
-            raise ExportError("generated manifest exporter digest is inconsistent")
-        source_commit = generated.get("source_commit")
-        if not isinstance(source_commit, str) or not re.fullmatch(r"[0-9a-f]{40,64}", source_commit):
-            raise ExportError("generated manifest source commit is invalid")
-        source_epoch = generated.get("source_date_epoch")
-        if type(source_epoch) is not int or source_epoch < 0:
-            raise ExportError("generated manifest source date epoch is invalid")
-        tracked_dirty = generated.get("tracked_dirty")
-        if type(tracked_dirty) is not bool:
-            raise ExportError("generated manifest tracked-dirty state is invalid")
-        candidate = generated.get("candidate")
-        expected_status = "NOT LICENSED FOR FORMAL RELEASE" if candidate is True else "FORMAL"
-        if type(candidate) is not bool or generated.get("release_status") != expected_status:
-            raise ExportError("generated manifest release status is inconsistent")
-        if candidate is False and (
-            tracked_dirty
-            or not policy.get("release_ready")
-            or any(value != "APPROVED" for value in policy["decision_gates"].values())
-            or (
-                include_game_packs
-                and policy["game_pack_release_policy"] != "APPROVED_FOR_PUBLIC_RELEASE"
-            )
-        ):
-            raise ExportError("generated formal-release state violates the reviewed policy")
-        if generated.get("relevant_untracked_unclassified") != 0:
-            raise ExportError("generated manifest reports unclassified relevant worktree files")
-        for relative, expected_hash in generated_files.items():
-            actual_hash = hashlib.sha256(archive.read(relative)).hexdigest()
-            if actual_hash != expected_hash:
-                raise ExportError(f"archive content hash mismatch: {relative}")
+        for relative in generated["files"]:
+            if relative != ".gitignore":
+                _validate_data(relative, archive.read(relative), asset_provenance)
+    if generated["candidate"] is False and (
+        generated["tracked_dirty"]
+        or not policy.get("release_ready")
+        or any(value != "APPROVED" for value in policy["decision_gates"].values())
+        or (
+            generated["included_game_packs"]
+            and policy["game_pack_release_policy"] != "APPROVED_FOR_PUBLIC_RELEASE"
+        )
+    ):
+        raise ExportError("generated formal-release state violates the private reviewed policy")
+    return generated
 
 
 def main() -> int:
@@ -529,21 +516,28 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--candidate", action="store_true", help="allow dirty/unapproved review builds")
     parser.add_argument("--include-game-packs", action="store_true", help="include optional installed game packs")
-    parser.add_argument("--verify", type=Path, help="verify an existing archive instead of building")
+    parser.add_argument("--verify", type=Path, help="verify an archive using only its public manifest")
+    parser.add_argument("--verify-policy", type=Path, help="also enforce the private reviewed policy")
     args = parser.parse_args()
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     policy_path = (args.manifest or root / DEFAULT_CONFIG).resolve()
     try:
-        policy = load_policy(policy_path)
+        if args.verify and args.verify_policy:
+            parser.error("--verify and --verify-policy are mutually exclusive")
         if args.verify:
-            verify_archive(args.verify.resolve(), policy)
+            verify_archive(args.verify.resolve())
             print(f"public source archive verified: {args.verify.resolve()}")
+            return 0
+        policy = load_policy(policy_path)
+        if args.verify_policy:
+            verify_archive(args.verify_policy.resolve(), policy)
+            print(f"public source archive and private policy verified: {args.verify_policy.resolve()}")
             return 0
         default_output = DEFAULT_CANDIDATE_OUTPUT if args.candidate else DEFAULT_FORMAL_OUTPUT
         output = (args.output or root / default_output).resolve()
         result = build_archive(root, policy_path, output, candidate=args.candidate,
                                include_game_packs=args.include_game_packs)
-    except (ExportError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile, KeyError, TypeError) as error:
+    except (ExportError, IntegrityError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile, KeyError, TypeError) as error:
         print(f"public source export failed: {error}", file=sys.stderr)
         return 1
     print(f"public source archive: {output}")

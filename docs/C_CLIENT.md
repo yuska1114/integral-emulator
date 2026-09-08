@@ -247,6 +247,12 @@ WindowsおよびmacOSのrelease builderも同じ形式のビルド記録を成�
 生成します。`SKIP_BUILD`による既存バイナリの再包装は、信頼できるビルド時点を
 記録できないためrelease作成では受け付けません。
 
+公開ソースでは`assets/public/`の全面黒プレースホルダーを既定アイコンとして
+使用します。公式ブランド画像は公開ソースへ含めません。管理者が非公開の公式画像を
+使う場合だけ、`INTEGRAL_EMULATOR_ICON_PNG`、`INTEGRAL_EMULATOR_ICON_ICO`、
+`INTEGRAL_EMULATOR_ICON_ICNS`、`INTEGRAL_EMULATOR_ICON_BMP`へ対応形式のパスを
+明示します。欠落または不正形式の画像を指定するとビルドは失敗します。
+
 検証済みのLinuxビルドディレクトリとWindowsビルドディレクトリから、
 配布用のtar.gzとZIPを同時に作成できます。
 
@@ -271,11 +277,29 @@ Windowsパッケージはランチャー、GB／N64 Runtime、DLL、TLS証明書
 互換コピーを作らず失敗します。レビュー用成果物が必要な場合は、代替出力先を
 `dist/release-candidates/<短縮commit>/`として明示的に指定します。Linux／Windows
 パッケージャーでは第3引数、macOSビルダーでは出力先overrideで指定します。
-候補版のmanifestにも実際のcommitとdirty状態をそのまま記録し、
+候補版のmanifestにも実際の出自とdirty状態をそのまま記録し、
 `dist/releases/`の正式版とは区別します。
 このスクリプトは再ビルドを行わず、両入力の`BUILD_PROVENANCE.json`に記録された
-commitが現在のclean checkoutと一致し、dirtyがfalseで、全入力hashが一致する
-場合だけ配布整形します。記録欠落、改変、commit不一致、dirty入力は失敗します。
+出自が現在のcleanなソースと一致し、dirtyがfalseで、全入力hashが一致する場合だけ
+配布整形します。記録欠落、改変、出自不一致、dirty入力は失敗します。
+
+公開Git cloneでは、公開リポジトリのcheckout commitと、
+`PUBLIC_SOURCE_MANIFEST.json`が示す内部正本の元commitを別々に記録します。
+Git管理外へ展開した公開ZIPでは、公開manifestと全ソースの一致を検証してから、
+manifestの元commitとmanifest自体のSHA-256を記録します。偽のGit commitは補いません。
+通常のビルド生成物は公開`.gitignore`と同じ限定された規則で除外しますが、既存ソースの
+改変・欠落や想定外のソース追加は拒否します。
+
+公開ソースZIPは、内部policyファイルなしで次のように検証できます。
+
+```bash
+python3 scripts/build_public_source.py --verify /path/to/public-source.zip
+python3 scripts/public_source_integrity.py --directory /path/to/extracted-source
+```
+
+この検証はファイル一覧、hash、件数、関連digest、パス安全性、重複・衝突、欠落・
+余分なファイルを確認するものです。発行元の真正性や公開承認を証明する署名では
+ありません。候補ZIPを正式版として要求する検証は失敗します。
 
 macOS成果物名も
 `INTEGRAL_EMULATOR_C_CLIENT_<version>_MACOS_ARM64_<YYYYMMDD>.zip`とし、

@@ -85,7 +85,7 @@ login.serverにはIntegral Server APIのベースURLを指定します。URLに�
   LICENSE_SCOPE.md、THIRD_PARTY_NOTICES.md  ライセンスの適用範囲と第三者告知
   LICENSES/     GNUライセンス原文と同梱コンポーネントのライセンス原文
   RUNTIME_DEPENDENCIES.md  同梱共有ライブラリとライセンスの対応表
-  BUILD_PROVENANCE.json  ビルド元commit、dirty状態、成果物hash
+  BUILD_PROVENANCE.json  ビルド元の出自、dirty状態、成果物hash
 
 展開後のSHA256SUMSには、配布物内ファイルのハッシュが記録されています。
 アーカイブと同じ場所にある.sha256ファイルには、tar.gzまたはZIP自体のハッシュが
