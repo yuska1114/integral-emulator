@@ -72,7 +72,7 @@
   ],
   "asset_provenance_sha256": "1bf230e659f4162e4c204565008d25a2490fd5660946bf9a70e1f3e02d9af31f",
   "candidate": true,
-  "content_manifest_sha256": "9279f5c3a7f8ef870c7d95ea6ae006a20864fa57e07463ebcd0c41a6e85fc5da",
+  "content_manifest_sha256": "e663bda8cd4c1bdca31cae0e1ae94271d4b2106a0319f481c69ced24ddbba660",
   "decision_gates": {
     "D1_PUBLICATION_FORM": "APPROVED",
     "D2_COPYRIGHT_AND_PROVENANCE": "APPROVED",
@@ -1502,7 +1502,7 @@
     "tests/test_third_party_lock.py": "100644"
   },
   "files": {
-    ".gitignore": "c2cb68cb6774a7e6bf84c816fb25d91acea7e71eb3b074964bba78b6abbf487a",
+    ".gitignore": "091914c73ed1e5c8ba14b8f417582b787da0dca06cb90ec2c84d9d31db4dfa2d",
     "ASSET_PROVENANCE.md": "981965c4a39559c15d0f3f4a0ab41e7af4e9459f9e4f1cf0df524e00e1bcb70b",
     "LICENSE": "10add1687bbee3974589a48f9f6746e78ee973a42fccc0a9e50bf4757ca9191f",
     "LICENSES/AGPL-3.0-or-later.txt": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",

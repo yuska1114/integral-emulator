@@ -10,6 +10,7 @@ dist/
 c_client/build/
 c_client/runtime/
 c_client/screenshot/
+c_client/*.log
 runtimes/gb/build/
 runtimes/gb/build_exp/
 runtimes/gb/third_party/SameBoy/build/
