@@ -152,6 +152,24 @@ class ApiTests(unittest.TestCase):
             self.app.handle_request("GET", "/time")
         reconcile.assert_not_called()
 
+    def test_network_mode_is_explicit_and_controls_relay_and_admin_cookie(self) -> None:
+        self.assertEqual(self.app.network_mode, "tls")
+        self.assertEqual(self.app.n64_runtime_media_relay_transport, "tls")
+        self.assertTrue(self.app.admin_cookie_secure)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(
+                os.environ, {"INTEGRAL_EMULATOR_NETWORK_MODE": "plain"}
+            ):
+                plain = LeagueApplication(Path(directory))
+        self.assertEqual(plain.n64_runtime_media_relay_transport, "plain")
+        self.assertFalse(plain.admin_cookie_secure)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(
+                os.environ, {"INTEGRAL_EMULATOR_NETWORK_MODE": "automatic"}
+            ):
+                with self.assertRaisesRegex(ValidationError, "must be tls or plain"):
+                    LeagueApplication(Path(directory))
+
     def test_api_overview_lists_only_current_implemented_routes(self) -> None:
         overview = (Path(__file__).resolve().parents[1] / "docs" / "API.md").read_text(
             encoding="utf-8"
@@ -1444,6 +1462,7 @@ class ApiTests(unittest.TestCase):
             self.assertTrue(set_cookie.startswith("integral_admin_session="))
             self.assertNotIn("gsc" + "_admin_session", set_cookie)
             self.assertIn("Path=/sample-api", set_cookie)
+            self.assertIn("Secure", set_cookie)
             self.assertNotIn("Path=/admin", set_cookie)
             cookie = set_cookie.split(";", 1)[0]
 
@@ -1904,6 +1923,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(remote_start["media_session"]["status"], "WAITING_PEER")
         self.assertEqual(host_start["connection"]["scope"], "n64_runtime_media")
         self.assertEqual(host_start["connection"]["relay_host"], "relay.example.invalid")
+        self.assertEqual(host_start["connection"]["relay_transport"], "tls")
         self.assertTrue(media_session["no_save"])
         self.assertNotIn("host_save_id", media_session)
         self.assertNotIn("remote_save_id", media_session)
@@ -2283,6 +2303,7 @@ class ApiTests(unittest.TestCase):
             f"/gb-runtime-fixed-host-sessions/{link['id']}/relay-ticket", {}, token=token_b
         )["connection"]
         self.assertEqual(host_connection["scope"], "gb-runtime-fixed-host-media-v1")
+        self.assertEqual(host_connection["relay_transport"], "tls")
         self.assertEqual((host_connection["role"], remote_connection["role"]), ("host", "remote"))
         self.assertEqual(host_connection["runtime_config"]["save_policy"], "discard")
         self.assertEqual(host_connection["runtime_config"]["requested_mode"], "battle")

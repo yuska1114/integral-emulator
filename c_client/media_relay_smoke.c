@@ -24,8 +24,8 @@ static void wait_milliseconds(unsigned milliseconds)
 
 int main(int argc, char **argv)
 {
-    if (argc != 8) {
-        fprintf(stderr, "usage: %s HOST PORT SESSION ROLE SCOPE TICKET CERT\n", argv[0]);
+    if (argc != 9) {
+        fprintf(stderr, "usage: %s HOST PORT TRANSPORT SESSION ROLE SCOPE TICKET CERT\n", argv[0]);
         return 2;
     }
     char error[160];
@@ -37,6 +37,7 @@ int main(int argc, char **argv)
                                 argv[5],
                                 argv[6],
                                 argv[7],
+                                strcmp(argv[3], "tls") == 0 ? argv[8] : NULL,
                                 &connection,
                                 error,
                                 sizeof(error)) != 0) {
@@ -66,7 +67,7 @@ int main(int argc, char **argv)
             int status = integral_media_relay_poll(connection, error, sizeof(error));
             if (status > 0) {
                 paired = 1;
-                puts("MEDIA TLS PAIRED");
+                printf("MEDIA %s PAIRED\n", argv[3]);
             }
             else if (status < 0) {
                 fprintf(stderr, "%s\n", error);
@@ -74,7 +75,7 @@ int main(int argc, char **argv)
                 return 1;
             }
         }
-        else if (strcmp(argv[4], "remote") == 0) {
+        else if (strcmp(argv[5], "remote") == 0) {
             if (!input_sent) {
                 int sent = integral_media_relay_send_controller(connection, 1u, 0x153u, error, sizeof(error));
                 if (sent < 0) {

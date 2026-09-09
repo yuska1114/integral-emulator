@@ -23,6 +23,7 @@ INCLUDE = (
     Path("docs/INTEGRAL_SERVER_APPLICATION.md"),
     Path("deploy/integral-server"),
     Path("deploy/systemd/integral-server.service"),
+    Path("deploy/systemd/integral-server-media-relay.service"),
     Path("src/integral_emulator"),
     Path("config/allowed_roms"),
     Path("config/gb_runtime_link_macros.json"),

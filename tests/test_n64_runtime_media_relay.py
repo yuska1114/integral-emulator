@@ -106,6 +106,92 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
             thread.join(timeout=2)
         self.assertEqual(sorted(results), [False, True])
 
+    def test_secondary_environment_ticket_is_accepted_by_shared_relay(self) -> None:
+        database = AuthorityDatabase(self.root)
+        secondary_storage = SQLiteRuntimeRepositories(
+            LeagueStorage(self.root / "servers" / "secondary"),
+            database,
+            "secondary",
+        )
+        secondary_manager = N64RuntimeMediaSessionManager(secondary_storage)
+        session = secondary_manager.create_or_get(
+            room_number=65,
+            host_user_id="user-host",
+            remote_user_id="user-remote",
+            host_n64_slot="ROM1",
+            host_gb_slot="ROM2",
+            remote_gb_slot="ROM3",
+            host_n64_rom_id="secondary-n64-rom",
+            host_gb_rom_id="secondary-host-gb-rom",
+            remote_gb_rom_id="secondary-remote-gb-rom",
+            host_n64_save_id="secondary-n64-save",
+            host_save_id="secondary-host-save",
+            remote_save_id="secondary-remote-save",
+            game_type="sample_secondary",
+        )
+        _, _, ticket = secondary_manager.issue_ticket(session.id, "user-host")
+        relay = AuthenticatedN64RuntimeMediaRelay(
+            [self.root, self.root / "servers" / "secondary"]
+        )
+        self.assertTrue(
+            relay.validate_credentials(
+                session.id, "host", MEDIA_TICKET_SCOPE, ticket
+            )
+        )
+
+    def test_plain_transport_uses_the_same_authenticated_pairing(self) -> None:
+        _, _, host_ticket = self.manager.issue_ticket(
+            self.session.id, "user-host"
+        )
+        _, _, remote_ticket = self.manager.issue_ticket(
+            self.session.id, "user-remote"
+        )
+        relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+        host_server, host_peer = socket.socketpair()
+        remote_server, remote_peer = socket.socketpair()
+        self.addCleanup(host_peer.close)
+        self.addCleanup(remote_peer.close)
+        threads = [
+            threading.Thread(
+                target=relay.handle_client,
+                args=(host_server, ("127.0.0.1", 1), None, "plain"),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=relay.handle_client,
+                args=(remote_server, ("127.0.0.1", 2), None, "plain"),
+                daemon=True,
+            ),
+        ]
+        threads[0].start()
+        host_peer.sendall(
+            f"{HANDSHAKE_MAGIC} {self.session.id} host {MEDIA_TICKET_SCOPE} {host_ticket}\n".encode(
+                "ascii"
+            )
+        )
+        self.assertIn(b"AUTHENTICATED", self._recv_line(host_peer))
+        threads[1].start()
+        remote_peer.sendall(
+            f"{HANDSHAKE_MAGIC} {self.session.id} remote {MEDIA_TICKET_SCOPE} {remote_ticket}\n".encode(
+                "ascii"
+            )
+        )
+        self.assertIn(b"AUTHENTICATED", self._recv_line(remote_peer))
+        self.assertIn(b"PAIRED", self._recv_line(host_peer))
+        self.assertIn(b"PAIRED", self._recv_line(remote_peer))
+        host_peer.close()
+        remote_peer.close()
+        for thread in threads:
+            thread.join(timeout=2)
+
+    def test_transport_context_mismatch_is_rejected(self) -> None:
+        relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+        with self.assertRaisesRegex(ValueError, "requires a TLS context"):
+            relay.serve("127.0.0.1", 0, None, "tls")
+        context = object()
+        with self.assertRaisesRegex(ValueError, "must not receive"):
+            relay.serve("127.0.0.1", 0, context, "plain")
+
     def test_product_scope_is_fail_closed_and_does_not_consume_other_tickets(self) -> None:
         invalid_ticket = "invalid-ticket-0123456789abcdef"
         relay = AuthenticatedN64RuntimeMediaRelay([self.root])

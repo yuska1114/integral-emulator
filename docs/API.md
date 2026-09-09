@@ -132,6 +132,9 @@ ROOM開始時に発行されたfixed HostセッションIDに対して、次の�
 基本フローは、ROOM開始、両参加者のpreflight、HostによるSAVスナップショット取得、
 両参加者のrelay ticket取得、Runtime実行、両者の終了結果確認、確定処理の順です。
 
+relay ticketの`connection.relay_transport`は必須で、`tls`または`plain`です。
+Clientは指定された方式だけを使用し、別の方式へfallbackしません。
+
 User1が固定Hostとなり、2つのGB Runtime slotとローカルLink Cableを実行します。
 Hostには、両参加者が選択したROMと同じROMヘッダータイトルのROMが必要です。
 
@@ -162,6 +165,7 @@ SAVの取得と更新には、LOCAL実行と同じ`GET /saves/{save_id}`と
 N64 mediaセッションは、N64 ROOMで各参加者が
 `POST /rooms/{room_number}/start`を呼び出したときに作成または取得されます。
 各参加者には、それぞれのGame Session Lockとrelay ticketが発行されます。
+ROOM開始応答の`connection.relay_transport`は必須で、`tls`または`plain`です。
 
 `kind`は`n64`、`host-gb`、`remote-gb`のいずれかです。
 この経路で取得するSAVはRuntime用の一時データであり、N64 ROOMの実行結果は

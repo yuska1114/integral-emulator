@@ -22,8 +22,15 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from .errors import LeagueError
+from .network_mode import (
+    NETWORK_MODE_PLAIN,
+    NETWORK_MODE_TLS,
+    configured_network_mode,
+)
 
-SERVICE_NAME = "integral-server.service"
+API_SERVICE_NAME = "integral-server.service"
+MEDIA_RELAY_SERVICE_NAME = "integral-server-media-relay.service"
+SERVICE_NAMES = (API_SERVICE_NAME, MEDIA_RELAY_SERVICE_NAME)
 SERVICE_USER = "integral-server"
 DEFAULT_CONFIG = Path("/etc/integral-server/integral-server.env")
 DEFAULT_STORAGE = Path("/var/lib/integral-server")
@@ -198,11 +205,16 @@ def write_initial_configuration(path: Path, storage: Path) -> bool:
             "# Keep HTTP on loopback when a reverse proxy provides public HTTPS.",
             "INTEGRAL_EMULATOR_API_HOST=127.0.0.1",
             "INTEGRAL_EMULATOR_API_PORT=8080",
+            "INTEGRAL_EMULATOR_NETWORK_MODE=tls",
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_HOST=127.0.0.1",
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PUBLIC_HOST=localhost",
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PORT=25164",
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_FILE=/etc/integral-server/media-relay.crt",
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_KEY_FILE=/etc/integral-server/media-relay.key",
             f"INTEGRAL_EMULATOR_STORAGE_ROOT={storage}",
             f"INTEGRAL_EMULATOR_GB_RUNTIME_MOBILE_PACKAGE_ROOT={storage / 'mobile-packages'}",
             "INTEGRAL_EMULATOR_PUBLIC_BASE_PATH=",
             f"INTEGRAL_EMULATOR_ADMIN_PASSWORD={password}",
-            "INTEGRAL_EMULATOR_ADMIN_COOKIE_SECURE=0",
             "# Set to 0 to require a match in config/allowed_roms/*.json.",
             "INTEGRAL_EMULATOR_ALLOW_UNLISTED_ROMS=1",
             "# Set to 1 to allow users to register themselves through the public API.",
@@ -287,11 +299,68 @@ def command_run(args: argparse.Namespace) -> int:
     config = Path(args.config).expanduser().resolve()
     apply_environment(config, required=False)
     host, port, storage = resolved_runtime(args)
+    network_mode = configured_network_mode()
     storage.mkdir(parents=True, exist_ok=True)
     from .api import run_server
 
     print(f"INTEGRAL EMULATOR API listening on http://{host}:{port}", flush=True)
+    if network_mode == NETWORK_MODE_PLAIN:
+        print(
+            "WARNING: API credentials and data are not encrypted; "
+            "use only on the same machine or a trusted local network",
+            flush=True,
+        )
     run_server(host, port, storage)
+    return 0
+
+
+def resolved_media_relay() -> tuple[str, int, str, Path | None, Path | None]:
+    transport = configured_network_mode()
+    host = os.environ.get(
+        "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_HOST", "127.0.0.1"
+    ).strip()
+    if not host:
+        raise ConfigurationError("media relay host must not be empty")
+    try:
+        port = int(
+            os.environ.get(
+                "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PORT", "25164"
+            )
+        )
+    except ValueError as error:
+        raise ConfigurationError("media relay port must be an integer") from error
+    if not 1 <= port <= 65535:
+        raise ConfigurationError("media relay port must be between 1 and 65535")
+    cert_value = os.environ.get(
+        "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_FILE", ""
+    ).strip()
+    key_value = os.environ.get(
+        "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_KEY_FILE", ""
+    ).strip()
+    cert_file = Path(cert_value).expanduser().absolute() if cert_value else None
+    key_file = Path(key_value).expanduser().absolute() if key_value else None
+    return host, port, transport, cert_file, key_file
+
+
+def command_media_relay(args: argparse.Namespace) -> int:
+    config = Path(args.config).expanduser().resolve()
+    apply_environment(config, required=True)
+    host, port, transport, cert_file, key_file = resolved_media_relay()
+    _api_host, _api_port, storage = resolved_runtime(args)
+    from .n64_runtime_media_relay import AuthenticatedN64RuntimeMediaRelay
+
+    relay = AuthenticatedN64RuntimeMediaRelay(
+        [storage, storage / "servers" / "secondary"]
+    )
+    if transport == NETWORK_MODE_TLS:
+        if cert_file is None or key_file is None:
+            raise ConfigurationError(
+                "TLS media relay requires certificate and private-key paths"
+            )
+        tls_context = relay.create_tls_context(cert_file, key_file)
+    else:
+        tls_context = None
+    relay.serve(host, port, tls_context, transport)
     return 0
 
 
@@ -326,6 +395,40 @@ def command_doctor(args: argparse.Namespace) -> int:
         values.get("INTEGRAL_EMULATOR_ADMIN_PASSWORD", ""),
     )
     checks.append((bool(admin_password), "administrator password configured"))
+    try:
+        relay_host, relay_port, transport, cert_file, key_file = resolved_media_relay()
+        socket.getaddrinfo(relay_host, relay_port, type=socket.SOCK_STREAM)
+        public_host = os.environ.get(
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PUBLIC_HOST", ""
+        ).strip()
+        checks.append((bool(public_host), "media relay public host configured"))
+        checks.append(
+            (True, f"media relay setting valid: {relay_host}:{relay_port} ({transport})")
+        )
+        if transport == NETWORK_MODE_TLS:
+            try:
+                certificate_ok = bool(
+                    cert_file and cert_file.is_file() and os.access(cert_file, os.R_OK)
+                )
+            except OSError:
+                certificate_ok = False
+            try:
+                private_key_ok = bool(
+                    key_file and key_file.is_file() and os.access(key_file, os.R_OK)
+                )
+            except OSError:
+                private_key_ok = False
+            checks.append((certificate_ok, "media relay TLS certificate readable"))
+            checks.append((private_key_ok, "media relay TLS private key readable"))
+        elif transport == NETWORK_MODE_PLAIN:
+            checks.append(
+                (
+                    True,
+                    "WARNING: API and media relay transport is not encrypted; trusted local network only",
+                )
+            )
+    except Exception as error:
+        checks.append((False, f"media relay configuration invalid: {error}"))
     try:
         from .mobile.package_installation import installed_packages
 
@@ -413,12 +516,15 @@ def command_systemctl(args: argparse.Namespace) -> int:
     command = ["systemctl", args.command]
     if args.command == "status":
         command.append("--no-pager")
-    command.append(SERVICE_NAME)
+    command.extend(SERVICE_NAMES)
     return subprocess.run(command, check=False).returncode
 
 
 def command_logs(args: argparse.Namespace) -> int:
-    command = ["journalctl", "-u", SERVICE_NAME, "-n", str(args.lines)]
+    command = ["journalctl"]
+    for service_name in SERVICE_NAMES:
+        command.extend(("-u", service_name))
+    command.extend(("-n", str(args.lines)))
     if args.follow:
         command.append("--follow")
     else:
@@ -634,11 +740,11 @@ def command_mobile_package(args: argparse.Namespace) -> int:
     for package_id, release_id, display_name in packages:
         print(f"installed: {package_id} {release_id} ({display_name})")
     active = subprocess.run(
-        ["systemctl", "is-active", "--quiet", SERVICE_NAME], check=False
+        ["systemctl", "is-active", "--quiet", API_SERVICE_NAME], check=False
     ).returncode == 0
     if active:
         restarted = subprocess.run(
-            ["systemctl", "restart", SERVICE_NAME], check=False
+            ["systemctl", "restart", API_SERVICE_NAME], check=False
         ).returncode
         if restarted:
             print("package installed, but service restart failed", file=sys.stderr)
@@ -665,6 +771,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--port", type=int)
     run_parser.add_argument("--storage-root")
     run_parser.set_defaults(handler=command_run)
+
+    relay_parser = subparsers.add_parser(
+        "media-relay", help="run the configured media relay in the foreground"
+    )
+    relay_parser.add_argument("--storage-root")
+    relay_parser.set_defaults(host=None, port=None, handler=command_media_relay)
 
     init_parser = subparsers.add_parser(
         "init", help="create initial configuration and storage"
@@ -743,7 +855,7 @@ def normalized_argv(argv: list[str]) -> list[str]:
     if not argv:
         return ["run"]
     commands = {
-        "run", "init", "doctor", "start", "stop", "restart", "status", "logs",
+        "run", "media-relay", "init", "doctor", "start", "stop", "restart", "status", "logs",
         "mobile-package", "user-issue", "user-password-reset", "open-admin",
         "edit-config", "uninstall",
     }

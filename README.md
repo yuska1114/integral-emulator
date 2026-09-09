@@ -32,12 +32,15 @@ Ubuntu 24.04 LTSで、ソースツリーのルートから次を実行します�
 
 ```bash
 sudo ./install.sh
+integral-server edit-config
 sudo integral-server doctor
 sudo integral-server start
 curl http://127.0.0.1:8080/health
 ```
 
 正常に起動していれば、`/health`から`{"ok": true}`が返ります。
+初回起動前に、公開サーバー向けの`tls`または信頼できる家庭LAN向けの`plain`を
+設定してください。
 
 設定、ユーザー発行、バックアップ等は[サーバー運用](docs/INTEGRAL_SERVER_APPLICATION.md)を参照してください。C ClientとRuntimeのビルドは[C Client](docs/C_CLIENT.md)、[GB Runtime](runtimes/gb/README.md)、[N64 Runtime](runtimes/n64/README.md)を参照してください。
 

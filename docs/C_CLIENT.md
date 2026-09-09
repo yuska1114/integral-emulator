@@ -61,9 +61,10 @@ cp integral_client.conf.example config/integral_client.conf
 ./build/integral_client
 ```
 
-外部サーバーへ接続する場合は、パス接頭辞を含むHTTPS URLを指定してください。
-同じPC上のIntegral Serverへ接続する場合は、例えば
-`http://127.0.0.1:8080`を使用できます。
+公開サーバーへ接続する場合は、パス接頭辞を含むHTTPS URLを指定してください。
+同じPCまたは信頼できる家庭LANで、サーバー側が`plain`を明示的に選択している場合は、
+例えば`http://127.0.0.1:8080`や`http://192.168.1.20:8080`を使用できます。
+HTTP接続ではログイン情報、token、ROMメタデータ、SAVが暗号化されません。
 
 ## Windows 11ネイティブ版の作成
 

@@ -76,6 +76,10 @@ login.serverにはIntegral Server APIのベースURLを指定します。URLに�
 指定できます。login.server_idにはprimaryまたはsecondaryを指定します。
 ログイン情報を記憶する場合だけ、login.rememberを1にしてください。
 
+公開サーバーにはHTTPSで接続してください。HTTPは、サーバー管理者が平文モードを
+選択した同じPCまたは信頼できる家庭LANでのみ使用してください。HTTPではログイン情報、
+トークン、ROMメタデータ、SAVが暗号化されません。
+
 パスワードとBearerトークンは、この設定ファイルには保存されません。
 
 フォルダ構成

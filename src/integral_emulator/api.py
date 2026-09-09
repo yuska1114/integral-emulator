@@ -62,6 +62,7 @@ from .room import (
     parse_enabled_room_numbers,
 )
 from .n64_runtime_media_sessions import N64RuntimeMediaSessionManager
+from .network_mode import NETWORK_MODE_TLS, configured_network_mode
 from .mobile.session_service import MobileSessionManager
 from .mobile.package_catalog import MobilePackageCatalog
 from .models import SaveRecord, User
@@ -264,9 +265,9 @@ class LeagueApplication:
                 "25164",
             )
         )
-        self.admin_cookie_secure = (
-            os.environ.get("INTEGRAL_EMULATOR_ADMIN_COOKIE_SECURE", "0") == "1"
-        )
+        self.network_mode = configured_network_mode()
+        self.n64_runtime_media_relay_transport = self.network_mode
+        self.admin_cookie_secure = self.network_mode == NETWORK_MODE_TLS
         self.log_file = Path(
             os.environ.get(
                 "INTEGRAL_EMULATOR_LOG_FILE",
@@ -1197,6 +1198,7 @@ class LeagueApplication:
                 "connection": {
                     "relay_host": self.n64_runtime_media_relay_host,
                     "relay_port": self.n64_runtime_media_relay_port,
+                    "relay_transport": self.n64_runtime_media_relay_transport,
                     "role": role,
                     "scope": GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE,
                     "ticket": ticket,
@@ -2201,6 +2203,7 @@ class LeagueApplication:
                 "connection": {
                     "relay_host": self.n64_runtime_media_relay_host,
                     "relay_port": self.n64_runtime_media_relay_port,
+                    "relay_transport": self.n64_runtime_media_relay_transport,
                     "role": role,
                     "scope": media_session.ticket_scope,
                     "ticket": ticket,

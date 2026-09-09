@@ -2,8 +2,9 @@
 
 この文書は、独立アプリケーション版INTEGRAL EMULATORサーバーの導入と日常運用を説明します。
 
-サーバーはPython HTTP APIとして動作します。インターネットへの外部公開、TLS、リバースプロキシ、
-ファイアウォール、ドメイン等の構築・運用は公式サポート対象外です。
+サーバーはPython HTTP APIと、GB／N64 ROOM用のMedia Relayで構成されます。
+インターネットへの外部公開、リバースプロキシ、ファイアウォール、ドメイン等の
+構築・運用は公式サポート対象外です。
 
 ## 配布内容
 
@@ -11,7 +12,7 @@
 
 - Pythonサーバー
 - 公開設定
-- systemdユニット
+- APIとMedia Relayのsystemdユニット
 - インストーラーと運用CLI
 - 本手順書
 
@@ -45,6 +46,7 @@ sudo ./install.sh
 インストール後、診断してからサービスを起動します。
 
 ```bash
+integral-server edit-config
 sudo integral-server doctor
 sudo integral-server start
 integral-server status
@@ -73,6 +75,7 @@ SAVは維持されます。
 - `/var/lib/integral-server`: SQLiteデータベース、SAV等の永続データ
 - `/var/lib/integral-server/mobile-packages`: GB Mobile追加パッケージ
 - `/etc/systemd/system/integral-server.service`: systemdユニット
+- `/etc/systemd/system/integral-server-media-relay.service`: Media Relayのsystemdユニット
 - `/usr/local/bin/integral-server`: 運用CLI
 
 ## 運用コマンド
@@ -99,9 +102,9 @@ sudo integral-server uninstall
 
 - `doctor`: Python、設定ファイル、保存領域、管理者パスワード、ROM登録ポリシー、
   GB Mobileパッケージ、起動中のHTTPヘルスを確認します。
-- `start`、`stop`、`restart`: systemdサービスを操作します。
-- `status`: サービスの状態を表示します。
-- `logs`: サービスログを表示します。`-n 200`で行数を指定し、`--follow`または
+- `start`、`stop`、`restart`: APIとMedia Relayのsystemdサービスを操作します。
+- `status`: 両サービスの状態を表示します。
+- `logs`: 両サービスのログを表示します。`-n 200`で行数を指定し、`--follow`または
   `-f`で追跡できます。
 
 `doctor`は主要な運用条件を診断しますが、すべての設定をサーバー起動と同じ経路で
@@ -265,15 +268,58 @@ sudo integral-server uninstall
 `/opt/integral-server`内に直接追加したROMカタログはアンインストール時に削除されます。
 後述のとおり、カタログ原本は`/etc/integral-server/rom-catalogs`へ保存してください。
 
-## GB/N64 ROOM用の共有TLSメディアリレー
+## ネットワークモードとMedia Relay
 
-HTTP APIはサーバー配布物だけで動作します。
+`integral-server start`はHTTP APIとMedia Relayを起動します。ネットワークモードは
+次の設定で選び、APIとMedia Relayで共通に使用します。
 
-一方、GB Runtime Fixed HostとN64 ROOMの対戦・映像通信には、別途共有TLSメディア
-リレーが必要です。`integral-server.service`はメディアリレーを起動しません。
+```text
+INTEGRAL_EMULATOR_NETWORK_MODE=tls
+```
 
-メディアリレー、TLS、インターネット公開に関する具体的な構築手順は、この公開
-手順書の対象外です。
+指定できる値は`tls`と`plain`です。既定値は`tls`で、接続失敗時に別のモードへ
+自動的に切り替わることはありません。
+
+### 公開サーバーで使用する場合
+
+`tls`を使用します。HTTP APIはloopbackで待ち受け、外部のHTTPSリバースプロキシから
+転送してください。Media Relayは設定した証明書と秘密鍵を使って直接TLS通信します。
+
+```text
+INTEGRAL_EMULATOR_NETWORK_MODE=tls
+INTEGRAL_EMULATOR_API_HOST=127.0.0.1
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_HOST=0.0.0.0
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PUBLIC_HOST=relay.example.com
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PORT=25164
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_FILE=/etc/integral-server/media-relay.crt
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_KEY_FILE=/etc/integral-server/media-relay.key
+```
+
+証明書は`PUBLIC_HOST`に指定したホスト名に対して有効である必要があります。
+
+### 同じPCまたは家庭LANで使用する場合
+
+信頼できるネットワーク内に限り、`plain`を明示的に選択できます。
+
+```text
+INTEGRAL_EMULATOR_NETWORK_MODE=plain
+INTEGRAL_EMULATOR_API_HOST=0.0.0.0
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_HOST=0.0.0.0
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PUBLIC_HOST=192.168.1.20
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PORT=25164
+```
+
+同じPCだけから接続する場合は、待受先と公開先に`127.0.0.1`を使用できます。
+`plain`では、パスワード、token、ROMメタデータ、SAV、映像、音声、入力が暗号化されません。
+公衆Wi-Fi、共有ネットワーク、インターネットへのポート転送では使用しないでください。
+
+設定後は、診断、再起動、状態確認を行います。
+
+```bash
+sudo integral-server doctor
+sudo integral-server restart
+integral-server status
+```
 
 ## GB Mobile追加パッケージ
 

@@ -361,6 +361,7 @@ typedef struct AppState {
     char n64_runtime_media_session_id[96];
     char n64_runtime_media_relay_host[128];
     unsigned n64_runtime_media_relay_port;
+    char n64_runtime_media_relay_transport[8];
     char n64_runtime_media_role[16];
     char n64_runtime_media_scope[32];
     char n64_runtime_media_ticket[128];
@@ -1582,6 +1583,7 @@ static void draw_login(SDL_Renderer *renderer, const LoginState *state)
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
     SDL_Color value = {238, 238, 238, 255};
+    SDL_Color warning = {236, 142, 108, 255};
 
     draw_header(renderer, "ACCOUNT LOGIN", NULL, NULL);
 
@@ -1624,7 +1626,15 @@ static void draw_login(SDL_Renderer *renderer, const LoginState *state)
                       1,
                       state->selected == FIELD_REMEMBER ? selected : value);
 
-    integral_sdl_draw_text_fit(renderer, 22, 408, state->status, 1, muted, INTEGRAL_WINDOW_WIDTH - 44);
+    bool plain_http = strncmp(state->server, "http://", 7) == 0;
+    if (plain_http) {
+        integral_sdl_draw_text_fit(renderer, 22, 398,
+                                   "WARNING HTTP CONNECTION NOT ENCRYPTED",
+                                   1, warning, INTEGRAL_WINDOW_WIDTH - 44);
+    }
+    integral_sdl_draw_text_fit(renderer, 22, plain_http ? 416 : 408,
+                               state->status, 1, muted,
+                               INTEGRAL_WINDOW_WIDTH - 44);
     integral_sdl_draw_text(renderer, 22, 438, "TAB MOVE  LEFT/RIGHT ENV  F2 EDIT  F3 SHOW PASS", 1, muted);
     integral_sdl_draw_text(renderer, 22, 458, "ESC CANCEL", 1, muted);
     SDL_RenderPresent(renderer);
@@ -4279,6 +4289,7 @@ static void reset_n64_runtime_media_connection(AppState *state)
     state->n64_runtime_media_session_id[0] = '\0';
     state->n64_runtime_media_relay_host[0] = '\0';
     state->n64_runtime_media_relay_port = 0;
+    state->n64_runtime_media_relay_transport[0] = '\0';
     state->n64_runtime_media_role[0] = '\0';
     state->n64_runtime_media_scope[0] = '\0';
     state->n64_runtime_media_authenticated = false;
@@ -4314,6 +4325,8 @@ static bool request_n64_runtime_media_session(AppState *state)
                                      state->n64_runtime_media_relay_host,
                                      sizeof(state->n64_runtime_media_relay_host),
                                      &state->n64_runtime_media_relay_port,
+                                     state->n64_runtime_media_relay_transport,
+                                     sizeof(state->n64_runtime_media_relay_transport),
                                      state->n64_runtime_media_role,
                                      sizeof(state->n64_runtime_media_role),
                                      state->n64_runtime_media_scope,
@@ -4349,6 +4362,7 @@ static bool request_n64_runtime_media_session(AppState *state)
     }
     if (integral_media_relay_connect(state->n64_runtime_media_relay_host,
                                 state->n64_runtime_media_relay_port,
+                                state->n64_runtime_media_relay_transport,
                                 state->n64_runtime_media_session_id,
                                 state->n64_runtime_media_role,
                                 state->n64_runtime_media_scope,
@@ -4364,7 +4378,7 @@ static bool request_n64_runtime_media_session(AppState *state)
         clear_secret(state->n64_runtime_media_ticket, sizeof(state->n64_runtime_media_ticket));
         state->n64_runtime_media_session_id[0] = '\0';
         state->n64_runtime_media_retry_after_ticks = SDL_GetTicks() + 5000u;
-        snprintf(state->login.status, sizeof(state->login.status), "N64 MEDIA TLS FAILED %s", error);
+        snprintf(state->login.status, sizeof(state->login.status), "N64 MEDIA RELAY FAILED %s", error);
         return false;
     }
     clear_secret(state->n64_runtime_media_ticket, sizeof(state->n64_runtime_media_ticket));
@@ -4373,13 +4387,20 @@ static bool request_n64_runtime_media_session(AppState *state)
     state->n64_runtime_media_retry_after_ticks = 0;
     client_log(state,
                "n64_runtime_media_authenticated",
-               "session=%s role=%s",
+               "session=%s role=%s transport=%s",
                state->n64_runtime_media_session_id,
-               state->n64_runtime_media_role);
-    snprintf(state->login.status,
-             sizeof(state->login.status),
-             "MEDIA TLS AUTH %s  WAITING PEER  NO SAV OVERWRITE",
-             state->n64_runtime_media_role);
+               state->n64_runtime_media_role,
+               state->n64_runtime_media_relay_transport);
+    if (strcmp(state->n64_runtime_media_relay_transport, "plain") == 0) {
+        copy_text(state->login.status, sizeof(state->login.status),
+                  "WARNING PLAIN LOCAL NETWORK  WAITING PEER");
+    }
+    else {
+        snprintf(state->login.status,
+                 sizeof(state->login.status),
+                 "MEDIA TLS AUTH %s  WAITING PEER  NO SAV OVERWRITE",
+                 state->n64_runtime_media_role);
+    }
     return true;
 }
 
@@ -6029,6 +6050,7 @@ static const char *gb_runtime_fixed_host_key_spec_for_role(
 
 static void gb_runtime_fixed_host_set_child_environment(
     const char *role, const char *relay_host, unsigned relay_port,
+    const char *relay_transport,
     const char *session_id, const char *ticket,
     const IntegralGBRuntimeFixedHostRomResolution *resolution,
     const IntegralConfigKeys *keys,
@@ -6044,6 +6066,7 @@ static void gb_runtime_fixed_host_set_child_environment(
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE", role);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST", relay_host);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT", port);
+    SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_TRANSPORT", relay_transport);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SESSION", session_id);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_TICKET", ticket);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_CA", integral_gb_runtime_fixed_host_ca_file());
@@ -6058,6 +6081,7 @@ static void gb_runtime_fixed_host_set_child_environment(
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE", role, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST", relay_host, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT", port, 1);
+    setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_TRANSPORT", relay_transport, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SESSION", session_id, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_TICKET", ticket, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_CA", integral_gb_runtime_fixed_host_ca_file(), 1);
@@ -6078,6 +6102,7 @@ static void gb_runtime_fixed_host_clear_parent_environment(void)
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT",
+        "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_TRANSPORT",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SESSION",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_TICKET",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_CA",
@@ -6095,7 +6120,8 @@ static void gb_runtime_fixed_host_clear_parent_environment(void)
 static bool start_room_gb_runtime_fixed_host_runtime(
     AppState *state, const char *role, const IntegralGBRuntimeFixedHostRomResolution *resolution)
 {
-    char relay_host[128] = {0}, ticket_role[16] = {0}, scope[48] = {0};
+    char relay_host[128] = {0}, relay_transport[8] = {0};
+    char ticket_role[16] = {0}, scope[48] = {0};
     char ticket[192] = {0}, error[192] = {0};
     char save_policy[32] = {0};
     unsigned relay_port = 0u;
@@ -6127,7 +6153,8 @@ static bool start_room_gb_runtime_fixed_host_runtime(
     if (integral_api_gb_runtime_fixed_host_issue_relay_ticket(
             state->login.server, state->login.token,
             state->room_link_session_id, relay_host, sizeof(relay_host),
-            &relay_port, ticket_role, sizeof(ticket_role), scope, sizeof(scope),
+            &relay_port, relay_transport, sizeof(relay_transport),
+            ticket_role, sizeof(ticket_role), scope, sizeof(scope),
             ticket, sizeof(ticket),
             save_policy, sizeof(save_policy),
             error, sizeof(error)) != 0 ||
@@ -6168,6 +6195,7 @@ static bool start_room_gb_runtime_fixed_host_runtime(
             startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         }
         gb_runtime_fixed_host_set_child_environment(role, relay_host, relay_port,
+                                         relay_transport,
                                          state->room_link_session_id, ticket,
                                          resolution, &state->keys,
                                          (intptr_t)child_result_write, save_policy);
@@ -6216,6 +6244,7 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                 close(descriptors[0]);
             }
             gb_runtime_fixed_host_set_child_environment(role, relay_host, relay_port,
+                                             relay_transport,
                                              state->room_link_session_id, ticket,
                                              resolution, &state->keys,
                                              (intptr_t)result_descriptors[1], save_policy);
@@ -6278,9 +6307,12 @@ static bool start_room_gb_runtime_fixed_host_runtime(
     copy_text(state->room_gb_runtime_fixed_host_save_policy,
               sizeof(state->room_gb_runtime_fixed_host_save_policy), save_policy);
     copy_text(state->login.status, sizeof(state->login.status),
-              host ? "FIXED HOST BATTLE RUNNING" : "FIXED HOST REMOTE RUNNING");
-    client_log(state, "gb_runtime_fixed_host_runtime_started", "role=%s session=%s",
-               role, state->room_link_session_id);
+              strcmp(relay_transport, "plain") == 0
+                  ? "WARNING PLAIN LOCAL NETWORK  FIXED HOST RUNNING"
+                  : (host ? "FIXED HOST BATTLE RUNNING" : "FIXED HOST REMOTE RUNNING"));
+    client_log(state, "gb_runtime_fixed_host_runtime_started",
+               "role=%s session=%s transport=%s",
+               role, state->room_link_session_id, relay_transport);
     return true;
 }
 

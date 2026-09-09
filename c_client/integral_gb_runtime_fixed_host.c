@@ -42,6 +42,7 @@ typedef struct Options {
     const char *role;
     const char *relay_host;
     unsigned relay_port;
+    const char *relay_transport;
     const char *session_id;
     const char *rom1;
     const char *rom2;
@@ -144,7 +145,8 @@ static void usage(const char *program)
 {
     fprintf(stderr,
             "usage: %s --role host|remote --relay-host HOST --session SESSION "
-            "[--relay-port 25164] [--ca FILE] [--rom1 FILE --rom2 FILE] "
+            "[--relay-port 25164] --relay-transport tls|plain "
+            "[--ca FILE] [--rom1 FILE --rom2 FILE] "
             "[--snapshot-stdin]\n",
             program);
 }
@@ -174,6 +176,7 @@ static int parse_options(int argc, char **argv, Options *options)
             if (!end || *end || !port || port > 65535u) return -1;
             options->relay_port = (unsigned)port;
         }
+        else if (strcmp(name, "--relay-transport") == 0) options->relay_transport = value;
         else if (strcmp(name, "--session") == 0) options->session_id = value;
         else if (strcmp(name, "--rom1") == 0) options->rom1 = value;
         else if (strcmp(name, "--rom2") == 0) options->rom2 = value;
@@ -188,6 +191,9 @@ static int parse_options(int argc, char **argv, Options *options)
             options->relay_host = value;
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT")))
             options->relay_port = (unsigned)strtoul(value, NULL, 10);
+        if (!options->relay_transport &&
+            (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_TRANSPORT")))
+            options->relay_transport = value;
         if (!options->session_id && (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SESSION")))
             options->session_id = value;
         if (!options->rom1 && (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROM1")))
@@ -214,7 +220,10 @@ static int parse_options(int argc, char **argv, Options *options)
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_KEYS")) &&
             integral_gb_runtime_key_config_parse(&options->keys, value) != 0) return -1;
     }
-    if (!options->role || !options->relay_host || !options->session_id) return -1;
+    if (!options->role || !options->relay_host || !options->session_id ||
+        !options->relay_transport ||
+        (strcmp(options->relay_transport, "tls") != 0 &&
+         strcmp(options->relay_transport, "plain") != 0)) return -1;
     bool host = strcmp(options->role, "host") == 0;
     if (!host && strcmp(options->role, "remote") != 0) return -1;
     if (host && (!options->rom1 || !options->rom2)) return -1;
@@ -932,6 +941,7 @@ int main(int argc, char **argv)
     IntegralMediaRelayConnection *connection = NULL;
     char error[192] = {0};
     if (integral_media_relay_connect(options.relay_host, options.relay_port,
+                                      options.relay_transport,
                                       options.session_id, options.role, GB_FIXED_SCOPE,
                                       token, options.ca_file, &connection,
                                       error, sizeof(error)) != 0 || wait_paired(connection) != 0) {

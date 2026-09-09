@@ -1893,6 +1893,8 @@ int integral_api_start_n64_room(const char *server_url,
                                  char *relay_host_out,
                                  size_t relay_host_out_size,
                                  unsigned *relay_port_out,
+                                 char *relay_transport_out,
+                                 size_t relay_transport_out_size,
                                  char *role_out,
                                  size_t role_out_size,
                                  char *scope_out,
@@ -1902,8 +1904,13 @@ int integral_api_start_n64_room(const char *server_url,
                                  char *error_out,
                                  size_t error_out_size)
 {
+    if (!relay_transport_out || relay_transport_out_size == 0u) {
+        set_error(error_out, error_out_size, "N64 MEDIA START PARAMETERS INVALID");
+        return -1;
+    }
     if (session_id_out_size > 0) session_id_out[0] = '\0';
     if (relay_host_out_size > 0) relay_host_out[0] = '\0';
+    if (relay_transport_out_size > 0) relay_transport_out[0] = '\0';
     if (role_out_size > 0) role_out[0] = '\0';
     if (scope_out_size > 0) scope_out[0] = '\0';
     if (ticket_out_size > 0) ticket_out[0] = '\0';
@@ -1918,6 +1925,8 @@ int integral_api_start_n64_room(const char *server_url,
     if (extract_json_string(response, "id", session_id_out, session_id_out_size) != 0 ||
         extract_json_string(response, "relay_host", relay_host_out, relay_host_out_size) != 0 ||
         extract_json_int(response, "relay_port", &relay_port) != 0 || relay_port <= 0 || relay_port > 65535 ||
+        extract_json_string(response, "relay_transport", relay_transport_out, relay_transport_out_size) != 0 ||
+        (strcmp(relay_transport_out, "tls") != 0 && strcmp(relay_transport_out, "plain") != 0) ||
         extract_json_string(response, "role", role_out, role_out_size) != 0 ||
         extract_json_string(response, "scope", scope_out, scope_out_size) != 0 ||
         extract_json_string(response, "ticket", ticket_out, ticket_out_size) != 0) {
@@ -2120,6 +2129,8 @@ int integral_api_gb_runtime_fixed_host_issue_relay_ticket(const char *server_url
                                           char *relay_host_out,
                                           size_t relay_host_out_size,
                                           unsigned *relay_port_out,
+                                          char *relay_transport_out,
+                                          size_t relay_transport_out_size,
                                           char *role_out,
                                           size_t role_out_size,
                                           char *scope_out,
@@ -2135,8 +2146,10 @@ int integral_api_gb_runtime_fixed_host_issue_relay_ticket(const char *server_url
     char response[INTEGRAL_API_CONTROL_JSON_MAX + INTEGRAL_HTTP_HEADER_MAX + 1u];
     int relay_port = 0;
     int result = -1;
+    if (relay_transport_out && relay_transport_out_size) relay_transport_out[0] = '\0';
     if (!safe_path_token(session_id) || relay_host_out == NULL ||
         relay_port_out == NULL || role_out == NULL || scope_out == NULL ||
+        relay_transport_out == NULL || relay_transport_out_size == 0u ||
         ticket_out == NULL || save_policy_out == NULL || save_policy_out_size == 0u) {
         set_error(error_out, error_out_size, "FIXED HOST RELAY REQUEST INVALID");
         return -1;
@@ -2148,6 +2161,10 @@ int integral_api_gb_runtime_fixed_host_issue_relay_ticket(const char *server_url
                             relay_host_out_size) == 0 &&
         extract_json_int(response, "relay_port", &relay_port) == 0 &&
         relay_port > 0 && relay_port <= 65535 &&
+        extract_json_string(response, "relay_transport", relay_transport_out,
+                            relay_transport_out_size) == 0 &&
+        (strcmp(relay_transport_out, "tls") == 0 ||
+         strcmp(relay_transport_out, "plain") == 0) &&
         extract_json_string(response, "role", role_out, role_out_size) == 0 &&
         extract_json_string(response, "scope", scope_out, scope_out_size) == 0 &&
         extract_json_string(response, "ticket", ticket_out, ticket_out_size) == 0 &&

@@ -93,7 +93,7 @@ int integral_n64_runtime_media_stream_open_host(IntegralN64RuntimeMediaStream *s
                                          char *error_out,
                                          size_t error_out_size);
 
-/* Pulls new RGB/PCM snapshots, encodes them, and queues them to the TLS relay. */
+/* Pulls new RGB/PCM snapshots, encodes them, and queues them to the authenticated relay. */
 int integral_n64_runtime_media_stream_pump_host(IntegralN64RuntimeMediaStream *stream,
                                          IntegralMediaRelayConnection *connection,
                                          uint64_t now_us,

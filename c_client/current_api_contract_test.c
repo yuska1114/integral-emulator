@@ -7,8 +7,9 @@
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s SERVER_URL\n", argv[0]);
+    if (argc != 3 ||
+        (strcmp(argv[2], "tls") != 0 && strcmp(argv[2], "plain") != 0)) {
+        fprintf(stderr, "usage: %s SERVER_URL tls|plain\n", argv[0]);
         return 2;
     }
     unsigned char data[16];
@@ -85,6 +86,28 @@ int main(int argc, char **argv)
     }
     if (data_size != 3u || memcmp(data, "abc", 3u) != 0 || revision != 7) {
         fprintf(stderr, "unexpected save response\n");
+        return 1;
+    }
+    char n64_media_session[96] = {0};
+    char n64_relay_host[64] = {0};
+    char n64_relay_transport[8] = {0};
+    char n64_role[16] = {0};
+    char n64_scope[32] = {0};
+    char n64_ticket[64] = {0};
+    unsigned n64_relay_port = 0u;
+    if (integral_api_start_n64_room(
+            argv[1], "current-token", 65u,
+            n64_media_session, sizeof(n64_media_session),
+            n64_relay_host, sizeof(n64_relay_host), &n64_relay_port,
+            n64_relay_transport, sizeof(n64_relay_transport),
+            n64_role, sizeof(n64_role), n64_scope, sizeof(n64_scope),
+            n64_ticket, sizeof(n64_ticket), error, sizeof(error)) != 0 ||
+        strcmp(n64_media_session, "n64-media-current") != 0 ||
+        strcmp(n64_relay_host, "relay.example") != 0 ||
+        n64_relay_port != 25164u || strcmp(n64_relay_transport, argv[2]) != 0 ||
+        strcmp(n64_role, "remote") != 0 ||
+        strcmp(n64_scope, "n64_runtime_media") != 0) {
+        fprintf(stderr, "N64 ROOM media relay config failed: %s\n", error);
         return 1;
     }
     IntegralApiHeartbeatStatus heartbeat;
@@ -226,6 +249,7 @@ int main(int argc, char **argv)
         return 1;
     }
     char fixed_relay_host[64] = {0};
+    char fixed_relay_transport[8] = {0};
     char fixed_ticket_role[16] = {0};
     char fixed_scope[48] = {0};
     char fixed_ticket[64] = {0};
@@ -234,12 +258,14 @@ int main(int argc, char **argv)
     if (integral_api_gb_runtime_fixed_host_issue_relay_ticket(
             argv[1], "current-token", "fixed-session",
             fixed_relay_host, sizeof(fixed_relay_host), &fixed_relay_port,
+            fixed_relay_transport, sizeof(fixed_relay_transport),
             fixed_ticket_role, sizeof(fixed_ticket_role), fixed_scope,
             sizeof(fixed_scope), fixed_ticket, sizeof(fixed_ticket),
             fixed_save_policy, sizeof(fixed_save_policy),
             error, sizeof(error)) != 0 ||
         strcmp(fixed_relay_host, "relay.example") != 0 ||
-        fixed_relay_port != 25164u || strcmp(fixed_ticket_role, "host") != 0 ||
+        fixed_relay_port != 25164u || strcmp(fixed_relay_transport, argv[2]) != 0 ||
+        strcmp(fixed_ticket_role, "host") != 0 ||
         strcmp(fixed_scope, "gb-runtime-fixed-host-media-v1") != 0 ||
         strcmp(fixed_save_policy, "discard") != 0) {
         fprintf(stderr, "fixed Host relay config failed: %s\n", error);

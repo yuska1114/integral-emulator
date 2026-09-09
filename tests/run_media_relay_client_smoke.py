@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end TLS/auth/pair smoke test for the C media relay client."""
+"""End-to-end TLS/plain auth/pair smoke for the C media relay client."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import closing
 from pathlib import Path
 
 
@@ -18,10 +19,7 @@ SCOPE = "n64_runtime_media"
 TICKETS = {"host": "s64ticket_host_smoke", "remote": "s64ticket_remote_smoke"}
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        raise SystemExit(f"usage: {sys.argv[0]} MEDIA_RELAY_SMOKE_BINARY")
-    binary = Path(sys.argv[1]).resolve()
+def run_transport(binary: Path, transport: str) -> None:
     with tempfile.TemporaryDirectory() as temp_name:
         temp = Path(temp_name)
         cert = temp / "relay.crt"
@@ -68,7 +66,12 @@ def main() -> int:
 
         def handle(raw: socket.socket) -> None:
             try:
-                with context.wrap_socket(raw, server_side=True) as client:
+                wrapped = (
+                    context.wrap_socket(raw, server_side=True)
+                    if transport == "tls"
+                    else closing(raw)
+                )
+                with wrapped as client:
                     line = b""
                     while not line.endswith(b"\n") and len(line) <= 1024:
                         chunk = client.recv(1)
@@ -105,7 +108,8 @@ def main() -> int:
 
         processes = [
             subprocess.Popen(
-                [str(binary), "localhost", str(port), SESSION_ID, role, SCOPE, TICKETS[role], str(cert)],
+                [str(binary), "localhost", str(port), transport, SESSION_ID,
+                 role, SCOPE, TICKETS[role], str(cert)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -124,16 +128,41 @@ def main() -> int:
         for thread in threads:
             thread.join(timeout=10)
         if failures:
-            raise failures[0]
+            raise RuntimeError(
+                f"{transport} server failure: {failures[0]}; outputs={outputs!r}"
+            ) from failures[0]
         for process, (stdout, stderr) in zip(processes, outputs):
             expected_input = "MEDIA INPUT SENT" if "remote" in process.args else "MEDIA INPUT RECEIVED"
             expected_media = "MEDIA FRAME RECEIVED" if "remote" in process.args else None
-            if (process.returncode != 0 or "MEDIA TLS PAIRED" not in stdout or
+            if (process.returncode != 0 or f"MEDIA {transport} PAIRED" not in stdout or
                     expected_input not in stdout or (expected_media and stdout.count(expected_media) != 3)):
                 raise RuntimeError(f"media relay smoke failed: rc={process.returncode} stdout={stdout!r} stderr={stderr!r}")
             if "host" in process.args and "MEDIA INPUT DROPPED" not in stdout:
                 raise RuntimeError(f"host did not drop invalid controller frame: stdout={stdout!r}")
-        print("C media relay TLS/auth/pair smoke: OK")
+        print(f"C media relay {transport}/auth/pair smoke: OK")
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        raise SystemExit(f"usage: {sys.argv[0]} MEDIA_RELAY_SMOKE_BINARY")
+    binary = Path(sys.argv[1]).resolve()
+    for transport in ("tls", "plain"):
+        run_transport(binary, transport)
+
+    invalid = subprocess.run(
+        [str(binary), "127.0.0.1", "1", "automatic", SESSION_ID,
+         "host", SCOPE, TICKETS["host"], "unused"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if invalid.returncode == 0 or "PARAMETERS INVALID" not in invalid.stderr:
+        raise RuntimeError(
+            f"unknown relay transport was not rejected: rc={invalid.returncode} "
+            f"stdout={invalid.stdout!r} stderr={invalid.stderr!r}"
+        )
+    print("C media relay unknown transport rejection: OK")
 
     return 0
 

@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""TLS-authenticated, session-isolated TCP relay for N64 Runtime media traffic.
+"""Authenticated, session-isolated TCP relay for N64 Runtime media traffic.
 
-The first production transport keeps controller input, H.264 video, and ADPCM
-audio inside the authenticated TLS stream. UDP remains disabled until an
-authenticated datagram design is available.
+TLS is the public-server default. Explicit plain transport supports trusted
+same-machine and household-LAN installations. UDP remains disabled.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from .errors import NotFoundError, ValidationError
 from .gb_runtime_fixed_host_protocol import GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE
 from .gb_runtime_fixed_host_sessions import GBRuntimeFixedHostSessionManager
 from .n64_runtime_media_sessions import MEDIA_TICKET_SCOPE, N64RuntimeMediaSessionManager
+from .network_mode import NETWORK_MODE_PLAIN, NETWORK_MODE_TLS, NETWORK_MODES
 from .storage import LeagueStorage
 from .runtime_repositories import SQLiteRuntimeRepositories
 
@@ -269,7 +269,19 @@ class AuthenticatedN64RuntimeMediaRelay:
         context.load_cert_chain(certfile=cert_file, keyfile=key_file)
         return context
 
-    def serve(self, host: str, port: int, tls_context: ssl.SSLContext) -> None:
+    def serve(
+        self,
+        host: str,
+        port: int,
+        tls_context: ssl.SSLContext | None,
+        transport: str = NETWORK_MODE_TLS,
+    ) -> None:
+        if transport not in NETWORK_MODES:
+            raise ValueError("media relay transport must be tls or plain")
+        if transport == NETWORK_MODE_TLS and tls_context is None:
+            raise ValueError("TLS media relay requires a TLS context")
+        if transport == NETWORK_MODE_PLAIN and tls_context is not None:
+            raise ValueError("plain media relay must not receive a TLS context")
         for manager in self.gb_runtime_fixed_host_session_managers:
             for session_id in manager.abort_relay_orphans():
                 print(
@@ -279,12 +291,20 @@ class AuthenticatedN64RuntimeMediaRelay:
                 )
         with socket.create_server((host, port), reuse_port=False) as server:
             server.listen(64)
-            print(f"N64 Runtime TLS media relay listening on {host}:{port}; UDP disabled", flush=True)
+            print(
+                f"N64 Runtime {transport} media relay listening on {host}:{port}; UDP disabled",
+                flush=True,
+            )
+            if transport == NETWORK_MODE_PLAIN:
+                print(
+                    "WARNING: media relay traffic is not encrypted; use only on a trusted local network",
+                    flush=True,
+                )
             while True:
                 raw_sock, addr = server.accept()
                 thread = threading.Thread(
                     target=self.handle_client,
-                    args=(raw_sock, addr, tls_context),
+                    args=(raw_sock, addr, tls_context, transport),
                     daemon=True,
                 )
                 thread.start()
@@ -293,12 +313,18 @@ class AuthenticatedN64RuntimeMediaRelay:
         self,
         raw_sock: socket.socket,
         addr: tuple[str, int],
-        tls_context: ssl.SSLContext,
+        tls_context: ssl.SSLContext | None,
+        transport: str = NETWORK_MODE_TLS,
     ) -> None:
         sock: socket.socket = raw_sock
         try:
             raw_sock.settimeout(10.0)
-            sock = tls_context.wrap_socket(raw_sock, server_side=True)
+            if transport == NETWORK_MODE_TLS:
+                if tls_context is None:
+                    raise ValueError("TLS context is missing")
+                sock = tls_context.wrap_socket(raw_sock, server_side=True)
+            elif transport != NETWORK_MODE_PLAIN:
+                raise ValueError("invalid media relay transport")
             session_id, role, scope, ticket = self.read_handshake(sock)
             if not self.validate_credentials(session_id, role, scope, ticket):
                 raise ValueError("invalid media relay credentials")
@@ -595,11 +621,12 @@ class AuthenticatedN64RuntimeMediaRelay:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="TLS-authenticated N64 Runtime media relay (TCP only)")
+    parser = argparse.ArgumentParser(description="Authenticated N64 Runtime media relay (TCP only)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=25164)
-    parser.add_argument("--cert-file", type=Path, required=True)
-    parser.add_argument("--key-file", type=Path, required=True)
+    parser.add_argument("--transport", choices=sorted(NETWORK_MODES), default=NETWORK_MODE_TLS)
+    parser.add_argument("--cert-file", type=Path)
+    parser.add_argument("--key-file", type=Path)
     parser.add_argument(
         "--storage-root",
         action="append",
@@ -613,8 +640,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     relay = AuthenticatedN64RuntimeMediaRelay(args.storage_root)
-    tls_context = relay.create_tls_context(args.cert_file, args.key_file)
-    relay.serve(args.host, args.port, tls_context)
+    if args.transport == NETWORK_MODE_TLS:
+        if args.cert_file is None or args.key_file is None:
+            raise SystemExit("TLS transport requires --cert-file and --key-file")
+        tls_context = relay.create_tls_context(args.cert_file, args.key_file)
+    else:
+        if args.cert_file is not None or args.key_file is not None:
+            raise SystemExit("plain transport does not accept --cert-file or --key-file")
+        tls_context = None
+    relay.serve(args.host, args.port, tls_context, args.transport)
 
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ struct IntegralMediaRelayConnection {
     SSL_CTX *ctx;
     SSL *ssl;
 #endif
+    bool use_tls;
     char session_id[96];
     char role[8];
     unsigned char *receive_buffer;
@@ -193,23 +194,104 @@ static IntegralMediaSocket connect_tcp(const char *host, unsigned port)
 #endif
 
 #ifdef INTEGRAL_USE_OPENSSL
-static int ssl_send_all(SSL *ssl, const char *data, size_t size)
+static bool socket_would_block(void)
+{
+#ifdef _WIN32
+    int error = WSAGetLastError();
+    return error == WSAEWOULDBLOCK || error == WSAEINPROGRESS;
+#else
+    return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINPROGRESS;
+#endif
+}
+
+static int transport_write(IntegralMediaRelayConnection *connection,
+                           const void *data,
+                           int size,
+                           bool *would_block)
+{
+    *would_block = false;
+    if (connection->use_tls) {
+        int count = SSL_write(connection->ssl, data, size);
+        if (count > 0) return count;
+        int error = SSL_get_error(connection->ssl, count);
+        if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
+            *would_block = true;
+            return 0;
+        }
+        return -1;
+    }
+#ifdef _WIN32
+    int count = send(connection->sock, (const char *)data, size, 0);
+    if (count == SOCKET_ERROR) {
+#else
+    int count = (int)send(connection->sock, data, (size_t)size, 0);
+    if (count < 0) {
+#endif
+        if (socket_would_block()) {
+            *would_block = true;
+            return 0;
+        }
+        return -1;
+    }
+    return count > 0 ? count : -1;
+}
+
+static int transport_read(IntegralMediaRelayConnection *connection,
+                          void *data,
+                          int size,
+                          bool *would_block)
+{
+    *would_block = false;
+    if (connection->use_tls) {
+        int count = SSL_read(connection->ssl, data, size);
+        if (count > 0) return count;
+        int error = SSL_get_error(connection->ssl, count);
+        if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
+            *would_block = true;
+            return 0;
+        }
+        return -1;
+    }
+#ifdef _WIN32
+    int count = recv(connection->sock, (char *)data, size, 0);
+    if (count == SOCKET_ERROR) {
+#else
+    int count = (int)recv(connection->sock, data, (size_t)size, 0);
+    if (count < 0) {
+#endif
+        if (socket_would_block()) {
+            *would_block = true;
+            return 0;
+        }
+        return -1;
+    }
+    return count > 0 ? count : -1;
+}
+
+static int transport_send_all(IntegralMediaRelayConnection *connection,
+                              const char *data,
+                              size_t size)
 {
     size_t sent = 0;
     while (sent < size) {
-        int count = SSL_write(ssl, data + sent, (int)(size - sent));
+        bool would_block = false;
+        int count = transport_write(connection, data + sent,
+                                    (int)(size - sent), &would_block);
         if (count <= 0) return -1;
         sent += (size_t)count;
     }
     return 0;
 }
 
-static int ssl_read_line(SSL *ssl, char *out, size_t out_size)
+static int transport_read_line(IntegralMediaRelayConnection *connection,
+                               char *out,
+                               size_t out_size)
 {
     size_t used = 0;
     while (used + 1 < out_size) {
         char ch;
-        int count = SSL_read(ssl, &ch, 1);
+        bool would_block = false;
+        int count = transport_read(connection, &ch, 1, &would_block);
         if (count != 1) return -1;
         if (ch == '\n') {
             out[used] = '\0';
@@ -238,15 +320,15 @@ static int flush_send_buffer(IntegralMediaRelayConnection *connection,
     while (connection->send_offset < connection->send_size) {
         size_t remaining = connection->send_size - connection->send_offset;
         int request = remaining > (size_t)INT_MAX ? INT_MAX : (int)remaining;
-        int count = SSL_write(connection->ssl,
-                              connection->send_buffer + connection->send_offset,
-                              request);
+        bool would_block = false;
+        int count = transport_write(connection,
+                                    connection->send_buffer + connection->send_offset,
+                                    request, &would_block);
         if (count > 0) {
             connection->send_offset += (size_t)count;
             continue;
         }
-        int ssl_error = SSL_get_error(connection->ssl, count);
-        if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) return 0;
+        if (would_block) return 0;
         copy_error(error_out, error_out_size, "MEDIA FRAME SEND FAILED");
         return -1;
     }
@@ -277,6 +359,7 @@ void integral_media_relay_close(IntegralMediaRelayConnection *connection)
 
 int integral_media_relay_connect(const char *host,
                             unsigned port,
+                            const char *transport,
                             const char *session_id,
                             const char *role,
                             const char *scope,
@@ -288,6 +371,7 @@ int integral_media_relay_connect(const char *host,
 {
     if (connection_out) *connection_out = NULL;
     if (!connection_out || !field_is_safe(host) || port == 0 || port > 65535 ||
+        (!transport || (strcmp(transport, "tls") != 0 && strcmp(transport, "plain") != 0)) ||
         !field_is_safe(session_id) || !field_is_safe(role) || !field_is_safe(scope) ||
         !field_is_safe(ticket)) {
         copy_error(error_out, error_out_size, "MEDIA RELAY PARAMETERS INVALID");
@@ -304,6 +388,7 @@ int integral_media_relay_connect(const char *host,
         return -1;
     }
     connection->sock = INTEGRAL_MEDIA_INVALID_SOCKET;
+    connection->use_tls = strcmp(transport, "tls") == 0;
     connection->receive_capacity = INTEGRAL_MEDIA_RECEIVE_CAPACITY;
     connection->receive_buffer = malloc(connection->receive_capacity);
     if (!connection->receive_buffer) {
@@ -317,35 +402,37 @@ int integral_media_relay_connect(const char *host,
         integral_media_relay_close(connection);
         return -1;
     }
-    connection->ctx = SSL_CTX_new(TLS_client_method());
-    if (!connection->ctx || SSL_CTX_set_min_proto_version(connection->ctx, TLS1_3_VERSION) != 1) {
-        copy_error(error_out, error_out_size, "MEDIA RELAY TLS SETUP FAILED");
-        integral_media_relay_close(connection);
-        return -1;
-    }
-    int trust_loaded = ca_file && ca_file[0]
-                           ? SSL_CTX_load_verify_locations(connection->ctx, ca_file, NULL)
-                           : SSL_CTX_set_default_verify_paths(connection->ctx);
-    if (trust_loaded != 1) {
-        copy_error(error_out, error_out_size, "MEDIA RELAY CA LOAD FAILED");
-        integral_media_relay_close(connection);
-        return -1;
-    }
-    SSL_CTX_set_verify(connection->ctx, SSL_VERIFY_PEER, NULL);
-    connection->ssl = SSL_new(connection->ctx);
-    if (!connection->ssl || SSL_set_fd(connection->ssl, (int)connection->sock) != 1 ||
-        SSL_set_tlsext_host_name(connection->ssl, host) != 1) {
-        copy_error(error_out, error_out_size, "MEDIA RELAY TLS SESSION FAILED");
-        integral_media_relay_close(connection);
-        return -1;
-    }
-    X509_VERIFY_PARAM *verify = SSL_get0_param(connection->ssl);
-    X509_VERIFY_PARAM_set_hostflags(verify, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-    if (X509_VERIFY_PARAM_set1_host(verify, host, 0) != 1 || SSL_connect(connection->ssl) != 1 ||
-        SSL_get_verify_result(connection->ssl) != X509_V_OK) {
-        copy_error(error_out, error_out_size, "MEDIA RELAY CERTIFICATE REJECTED");
-        integral_media_relay_close(connection);
-        return -1;
+    if (connection->use_tls) {
+        connection->ctx = SSL_CTX_new(TLS_client_method());
+        if (!connection->ctx || SSL_CTX_set_min_proto_version(connection->ctx, TLS1_3_VERSION) != 1) {
+            copy_error(error_out, error_out_size, "MEDIA RELAY TLS SETUP FAILED");
+            integral_media_relay_close(connection);
+            return -1;
+        }
+        int trust_loaded = ca_file && ca_file[0]
+                               ? SSL_CTX_load_verify_locations(connection->ctx, ca_file, NULL)
+                               : SSL_CTX_set_default_verify_paths(connection->ctx);
+        if (trust_loaded != 1) {
+            copy_error(error_out, error_out_size, "MEDIA RELAY CA LOAD FAILED");
+            integral_media_relay_close(connection);
+            return -1;
+        }
+        SSL_CTX_set_verify(connection->ctx, SSL_VERIFY_PEER, NULL);
+        connection->ssl = SSL_new(connection->ctx);
+        if (!connection->ssl || SSL_set_fd(connection->ssl, (int)connection->sock) != 1 ||
+            SSL_set_tlsext_host_name(connection->ssl, host) != 1) {
+            copy_error(error_out, error_out_size, "MEDIA RELAY TLS SESSION FAILED");
+            integral_media_relay_close(connection);
+            return -1;
+        }
+        X509_VERIFY_PARAM *verify = SSL_get0_param(connection->ssl);
+        X509_VERIFY_PARAM_set_hostflags(verify, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+        if (X509_VERIFY_PARAM_set1_host(verify, host, 0) != 1 || SSL_connect(connection->ssl) != 1 ||
+            SSL_get_verify_result(connection->ssl) != X509_V_OK) {
+            copy_error(error_out, error_out_size, "MEDIA RELAY CERTIFICATE REJECTED");
+            integral_media_relay_close(connection);
+            return -1;
+        }
     }
     char handshake[INTEGRAL_MEDIA_LINE_MAX];
     int handshake_size = snprintf(handshake,
@@ -357,7 +444,7 @@ int integral_media_relay_connect(const char *host,
                                   scope,
                                   ticket);
     if (handshake_size <= 0 || (size_t)handshake_size >= sizeof(handshake) ||
-        ssl_send_all(connection->ssl, handshake, (size_t)handshake_size) != 0) {
+        transport_send_all(connection, handshake, (size_t)handshake_size) != 0) {
         copy_error(error_out, error_out_size, "MEDIA RELAY AUTH SEND FAILED");
         integral_media_relay_close(connection);
         return -1;
@@ -366,7 +453,7 @@ int integral_media_relay_connect(const char *host,
     char response[INTEGRAL_MEDIA_LINE_MAX];
     char expected[INTEGRAL_MEDIA_LINE_MAX];
     snprintf(expected, sizeof(expected), "%s AUTHENTICATED %s %s", INTEGRAL_MEDIA_MAGIC, session_id, role);
-    if (ssl_read_line(connection->ssl, response, sizeof(response)) != 0 || strcmp(response, expected) != 0) {
+    if (transport_read_line(connection, response, sizeof(response)) != 0 || strcmp(response, expected) != 0) {
         copy_error(error_out, error_out_size, "MEDIA RELAY AUTH REJECTED");
         integral_media_relay_close(connection);
         return -1;
@@ -398,9 +485,12 @@ int integral_media_relay_poll(IntegralMediaRelayConnection *connection,
     return -1;
 #else
     while (connection->receive_used + 1 < connection->receive_capacity) {
-        int count = SSL_read(connection->ssl,
-                             connection->receive_buffer + connection->receive_used,
-                             (int)(connection->receive_capacity - connection->receive_used - 1));
+        bool would_block = false;
+        int count = transport_read(
+            connection,
+            connection->receive_buffer + connection->receive_used,
+            (int)(connection->receive_capacity - connection->receive_used - 1),
+            &would_block);
         if (count > 0) {
             connection->receive_used += (size_t)count;
             connection->receive_buffer[connection->receive_used] = '\0';
@@ -421,8 +511,7 @@ int integral_media_relay_poll(IntegralMediaRelayConnection *connection,
             connection->paired = true;
             return 1;
         }
-        int ssl_error = SSL_get_error(connection->ssl, count);
-        if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) return 0;
+        if (would_block) return 0;
         copy_error(error_out, error_out_size, "MEDIA RELAY CONNECTION CLOSED");
         return -1;
     }
@@ -454,10 +543,10 @@ int integral_media_relay_send_controller(IntegralMediaRelayConnection *connectio
     write_be32(frame + 8u, sequence);
     write_be32(frame + 12u, INTEGRAL_MEDIA_CONTROL_INPUT_SIZE);
     write_be64(frame + INTEGRAL_MEDIA_CONTROL_HEADER_SIZE, buttons);
-    int count = SSL_write(connection->ssl, frame, (int)sizeof(frame));
+    bool would_block = false;
+    int count = transport_write(connection, frame, (int)sizeof(frame), &would_block);
     if (count == (int)sizeof(frame)) return 1;
-    int ssl_error = SSL_get_error(connection->ssl, count);
-    if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) return 0;
+    if (would_block) return 0;
     copy_error(error_out, error_out_size, "MEDIA CONTROLLER SEND FAILED");
     return -1;
 #endif
@@ -522,15 +611,17 @@ int integral_media_relay_poll_controller(IntegralMediaRelayConnection *connectio
                 return 1;
             }
         }
-        int count = SSL_read(connection->ssl,
-                             connection->receive_buffer + connection->receive_used,
-                             (int)(connection->receive_capacity - connection->receive_used));
+        bool would_block = false;
+        int count = transport_read(
+            connection,
+            connection->receive_buffer + connection->receive_used,
+            (int)(connection->receive_capacity - connection->receive_used),
+            &would_block);
         if (count > 0) {
             connection->receive_used += (size_t)count;
             continue;
         }
-        int ssl_error = SSL_get_error(connection->ssl, count);
-        if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) return 0;
+        if (would_block) return 0;
         copy_error(error_out, error_out_size, "MEDIA CONTROLLER CONNECTION CLOSED");
         return -1;
     }
@@ -660,15 +751,17 @@ int integral_media_relay_poll_control(IntegralMediaRelayConnection *connection,
                 return 1;
             }
         }
-        int count = SSL_read(connection->ssl,
-                             connection->receive_buffer + connection->receive_used,
-                             (int)(connection->receive_capacity - connection->receive_used));
+        bool would_block = false;
+        int count = transport_read(
+            connection,
+            connection->receive_buffer + connection->receive_used,
+            (int)(connection->receive_capacity - connection->receive_used),
+            &would_block);
         if (count > 0) {
             connection->receive_used += (size_t)count;
             continue;
         }
-        int ssl_error = SSL_get_error(connection->ssl, count);
-        if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) return 0;
+        if (would_block) return 0;
         copy_error(error_out, error_out_size, "MEDIA CONTROL CONNECTION CLOSED");
         return -1;
     }
@@ -819,15 +912,17 @@ int integral_media_relay_poll_media(IntegralMediaRelayConnection *connection,
                 return 1;
             }
         }
-        int count = SSL_read(connection->ssl,
-                             connection->receive_buffer + connection->receive_used,
-                             (int)(connection->receive_capacity - connection->receive_used));
+        bool would_block = false;
+        int count = transport_read(
+            connection,
+            connection->receive_buffer + connection->receive_used,
+            (int)(connection->receive_capacity - connection->receive_used),
+            &would_block);
         if (count > 0) {
             connection->receive_used += (size_t)count;
             continue;
         }
-        int ssl_error = SSL_get_error(connection->ssl, count);
-        if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) return 0;
+        if (would_block) return 0;
         copy_error(error_out, error_out_size, "MEDIA FRAME CONNECTION CLOSED");
         return -1;
     }

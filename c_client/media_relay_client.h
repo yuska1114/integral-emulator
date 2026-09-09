@@ -31,6 +31,7 @@ typedef struct IntegralMediaRelayConnection IntegralMediaRelayConnection;
 
 int integral_media_relay_connect(const char *host,
                             unsigned port,
+                            const char *transport,
                             const char *session_id,
                             const char *role,
                             const char *scope,
@@ -45,7 +46,7 @@ int integral_media_relay_poll(IntegralMediaRelayConnection *connection,
                          char *error_out,
                          size_t error_out_size);
 
-/* Controller frames are carried only inside the authenticated TLS stream. */
+/* Controller frames are carried only inside the authenticated relay stream. */
 int integral_media_relay_send_controller(IntegralMediaRelayConnection *connection,
                                     uint32_t sequence,
                                     uint64_t buttons,

@@ -9,6 +9,7 @@ CONFIG_ROOT="/etc/integral-server"
 CONFIG_FILE="${CONFIG_ROOT}/integral-server.env"
 STORAGE_ROOT="/var/lib/integral-server"
 SERVICE_FILE="/etc/systemd/system/integral-server.service"
+MEDIA_RELAY_SERVICE_FILE="/etc/systemd/system/integral-server-media-relay.service"
 UNINSTALL_HELPER="/usr/local/libexec/integral-server-uninstall"
 
 if [[ ${EUID} -ne 0 ]]; then
@@ -69,10 +70,12 @@ chown -R integral-server:integral-server "${STORAGE_ROOT}"
 install -d -m 2750 -o root -g integral-server "${STORAGE_ROOT}/mobile-packages"
 
 install -m 0644 "${SOURCE_ROOT}/deploy/systemd/integral-server.service" "${SERVICE_FILE}"
+install -m 0644 "${SOURCE_ROOT}/deploy/systemd/integral-server-media-relay.service" "${MEDIA_RELAY_SERVICE_FILE}"
 systemctl daemon-reload
-systemctl enable integral-server.service
+systemctl enable integral-server.service integral-server-media-relay.service
 
 echo "INTEGRAL EMULATOR server installed."
-echo "Run 'sudo integral-server start' to start it."
+echo "Review network mode and media relay settings in ${CONFIG_FILE}."
+echo "Run 'sudo integral-server start' to start the API and media relay."
 echo "Run 'sudo integral-server doctor' to inspect the installation."
 echo "Run 'sudo integral-server uninstall' to remove the application and keep persistent data."

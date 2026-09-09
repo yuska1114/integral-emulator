@@ -1,0 +1,18 @@
+[Unit]
+Description=INTEGRAL EMULATOR standalone media relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=integral-server
+Group=integral-server
+WorkingDirectory=/opt/integral-server/app
+Environment=INTEGRAL_SERVER_CONFIG=/etc/integral-server/integral-server.env
+ExecStart=/opt/integral-server/venv/bin/integral-server media-relay
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

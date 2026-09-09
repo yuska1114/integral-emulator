@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 N64_RUNTIME_SAVE = "/n64-runtime-media-sessions/current-session/runtime-saves/n64"
+N64_ROOM_START = "/rooms/65/start"
 MOBILE = "/mobile-sessions"
 MOBILE_SCENARIOS = "/mobile-scenarios"
 MOBILE_COMPLETE = "/mobile-sessions/mobile-1/complete"
@@ -30,7 +31,7 @@ ROM_APPLY = "/rom-slots/apply"
 AUTH_LOGIN = "/auth/login"
 
 
-def run_case(binary: Path, base_path: str = "") -> list[str]:
+def run_case(binary: Path, base_path: str = "", relay_transport: str = "tls") -> list[str]:
     paths: list[str] = []
 
     def canonical_path(raw_path: str) -> str:
@@ -213,6 +214,7 @@ def run_case(binary: Path, base_path: str = "") -> list[str]:
                     "connection": {
                         "relay_host": "relay.example",
                         "relay_port": 25164,
+                        "relay_transport": relay_transport,
                         "role": "host",
                         "scope": "gb-runtime-fixed-host-media-v1",
                         "ticket": "gbfixedticket-current-secret",
@@ -223,6 +225,19 @@ def run_case(binary: Path, base_path: str = "") -> list[str]:
                             "step_frames": 60,
                             "save_policy": "discard",
                         },
+                    },
+                }
+            elif path == N64_ROOM_START:
+                status = 200
+                payload = {
+                    "media_session": {"id": "n64-media-current"},
+                    "connection": {
+                        "relay_host": "relay.example",
+                        "relay_port": 25164,
+                        "relay_transport": relay_transport,
+                        "role": "remote",
+                        "scope": "n64_runtime_media",
+                        "ticket": "n64ticket-current-secret",
                     },
                 }
             elif path == MOBILE_SCENARIOS:
@@ -314,7 +329,8 @@ def run_case(binary: Path, base_path: str = "") -> list[str]:
     thread.start()
     try:
         result = subprocess.run(
-            [str(binary), f"http://127.0.0.1:{server.server_port}{base_path}"],
+            [str(binary), f"http://127.0.0.1:{server.server_port}{base_path}",
+             relay_transport],
             check=False,
             capture_output=True,
             text=True,
@@ -338,11 +354,13 @@ def main() -> int:
     binary = Path(sys.argv[1]).resolve()
     fixed_paths = [FIXED_MANIFEST, FIXED_PREFLIGHT, GAME_STATUS, FIXED_TICKET, FIXED_SNAPSHOTS]
     room_paths = [ROOM_CREATE, ROOM_CURRENT, ROOM_JOIN]
-    expected = [AUTH_LOGIN] + room_paths + [ROM_APPLY, N64_RUNTIME_SAVE, ROOM_HEARTBEAT, GAME_START, MOBILE_SCENARIOS, MOBILE, MOBILE, MOBILE, MOBILE_COMPLETE] + fixed_paths
-    if run_case(binary) != expected:
+    expected = [AUTH_LOGIN] + room_paths + [ROM_APPLY, N64_RUNTIME_SAVE,
+        N64_ROOM_START, ROOM_HEARTBEAT, GAME_START, MOBILE_SCENARIOS, MOBILE,
+        MOBILE, MOBILE, MOBILE_COMPLETE] + fixed_paths
+    if run_case(binary, relay_transport="tls") != expected:
         raise RuntimeError("client request sequence was not canonical-only")
     prefixed_expected = [f"/sample-api{path}" for path in expected]
-    if run_case(binary, "/sample-api") != prefixed_expected:
+    if run_case(binary, "/sample-api", relay_transport="plain") != prefixed_expected:
         raise RuntimeError("client request sequence did not preserve the configured API prefix")
     print("C current API contract: OK")
     return 0
