@@ -8,7 +8,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { WIDTH = 640, HEIGHT = 480, FRAME_COUNT = 90 };
+enum {
+    N64_WIDTH = 640,
+    N64_HEIGHT = 480,
+    GB_WIDTH = 160,
+    GB_HEIGHT = 144,
+    FRAME_COUNT = 90,
+};
 
 static int write_u32(FILE *file, uint32_t value)
 {
@@ -30,11 +36,14 @@ static int read_u32(FILE *file, uint32_t *value)
     return 0;
 }
 
-static void fill_frame(uint8_t *rgb, unsigned index)
+static void fill_frame(uint8_t *rgb,
+                       unsigned width,
+                       unsigned height,
+                       unsigned index)
 {
-    for (unsigned y = 0; y < HEIGHT; y++) {
-        for (unsigned x = 0; x < WIDTH; x++) {
-            size_t offset = ((size_t)y * WIDTH + x) * 3u;
+    for (unsigned y = 0; y < height; y++) {
+        for (unsigned x = 0; x < width; x++) {
+            size_t offset = ((size_t)y * width + x) * 3u;
             rgb[offset] = (uint8_t)(x + index);
             rgb[offset + 1u] = (uint8_t)(y + index * 2u);
             rgb[offset + 2u] = (uint8_t)(x / 2u + y / 2u + index * 3u);
@@ -42,9 +51,9 @@ static void fill_frame(uint8_t *rgb, unsigned index)
     }
 }
 
-static int write_stream(const char *path)
+static int write_stream(const char *path, unsigned width, unsigned height)
 {
-    uint8_t *rgb = malloc((size_t)WIDTH * HEIGHT * 3u);
+    uint8_t *rgb = malloc((size_t)width * height * 3u);
     uint8_t *config = malloc(65536u);
     uint8_t *frame = malloc(2u * 1024u * 1024u);
     FILE *file = NULL;
@@ -56,7 +65,8 @@ static int write_stream(const char *path)
     if (!rgb || !config || !frame) goto done;
     file = fopen(path, "wb");
     if (!file) goto done;
-    encoder = integral_h264_encoder_create(WIDTH, HEIGHT, error, sizeof(error));
+    encoder = integral_h264_encoder_create((uint16_t)width, (uint16_t)height,
+                                            error, sizeof(error));
     if (!encoder) {
         fprintf(stderr, "encoder create: %s\n", error);
         goto done;
@@ -64,7 +74,7 @@ static int write_stream(const char *path)
     for (unsigned index = 0; index < FRAME_COUNT; index++) {
         uint32_t config_size = 0, frame_size = 0;
         bool keyframe = false;
-        fill_frame(rgb, index);
+        fill_frame(rgb, width, height, index);
         int result = integral_h264_encoder_encode_rgb24(encoder,
                                                     rgb,
                                                     false,
@@ -106,7 +116,9 @@ done:
     return exit_code;
 }
 
-static int read_stream(const char *path)
+static int read_stream(const char *path,
+                       unsigned expected_width,
+                       unsigned expected_height)
 {
     uint8_t magic[8];
     uint32_t config_size = 0;
@@ -151,7 +163,15 @@ static int read_stream(const char *path)
             goto done;
         }
         if (result > 0) {
-            if (width != WIDTH || height != HEIGHT) goto done;
+            if (width != expected_width || height != expected_height) {
+                fprintf(stderr,
+                        "H264 interop dimensions mismatch: expected=%ux%u actual=%ux%u\n",
+                        expected_width,
+                        expected_height,
+                        width,
+                        height);
+                goto done;
+            }
             decoded_frames++;
         }
         input_frames++;
@@ -179,10 +199,18 @@ done:
 int main(int argc, char **argv)
 {
     if (argc != 3) {
-        fprintf(stderr, "usage: %s --write|--read PATH\n", argv[0]);
+        fprintf(stderr,
+                "usage: %s --write|--read|--write-gb|--read-gb PATH\n",
+                argv[0]);
         return 2;
     }
-    if (strcmp(argv[1], "--write") == 0) return write_stream(argv[2]);
-    if (strcmp(argv[1], "--read") == 0) return read_stream(argv[2]);
+    if (strcmp(argv[1], "--write") == 0)
+        return write_stream(argv[2], N64_WIDTH, N64_HEIGHT);
+    if (strcmp(argv[1], "--read") == 0)
+        return read_stream(argv[2], N64_WIDTH, N64_HEIGHT);
+    if (strcmp(argv[1], "--write-gb") == 0)
+        return write_stream(argv[2], GB_WIDTH, GB_HEIGHT);
+    if (strcmp(argv[1], "--read-gb") == 0)
+        return read_stream(argv[2], GB_WIDTH, GB_HEIGHT);
     return 2;
 }

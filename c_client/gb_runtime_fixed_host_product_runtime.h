@@ -13,8 +13,13 @@ typedef enum IntegralGBRuntimeFixedHostProductRole {
 
 typedef enum IntegralGBRuntimeFixedHostExitSelection {
     INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONTINUE = 0,
-    INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONFIRMED = 1,
+    INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_HOST_FINISH = 1,
+    INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_REMOTE_LEAVE = 2,
 } IntegralGBRuntimeFixedHostExitSelection;
+
+/* A confirmed Remote close is not a transport failure and must not trigger
+ * the parent's 20-second automatic reconnect path. */
+#define INTEGRAL_GB_RUNTIME_FIXED_HOST_REMOTE_LEAVE_EXIT_CODE 3
 
 typedef struct IntegralGBRuntimeFixedHostProductRuntime {
     IntegralGBRuntimeFixedHostProductRole role;

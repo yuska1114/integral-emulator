@@ -3,6 +3,7 @@
 #include "mobile_runtime_host.h"
 
 #include "../common/net_compat.h"
+#include "../common/display_scale.h"
 #include "../server/audio_player.h"
 #include "../server/content_hash.h"
 #include "../server/input_router.h"
@@ -29,7 +30,8 @@
 typedef struct RuntimeOptions {
   const char *rom_path, *save_path, *config_path, *manifest_path, *result_path;
   const char *input_script_path;
-  unsigned scale, frame_limit, screenshot_every;
+  unsigned scale, window_width, window_height, frame_limit, screenshot_every;
+  int64_t rtc_offset_seconds;
   bool headless, dump_screenshot;
 } RuntimeOptions;
 
@@ -59,9 +61,19 @@ static int parse_unsigned(const char *text, unsigned *out) {
   *out = (unsigned)value;
   return 0;
 }
+static int parse_rtc_offset_seconds(const char *text, int64_t *out) {
+  char *end = NULL;
+  errno = 0;
+  long long value = strtoll(text, &end, 10);
+  if (errno || !end || *end || value < -315360000LL || value > 315360000LL)
+    return -1;
+  *out = (int64_t)value;
+  return 0;
+}
 static int parse_options(int argc, char **argv, RuntimeOptions *o) {
   memset(o, 0, sizeof(*o));
-  o->scale = 3u;
+  o->scale = integral_display_scale_from_environment(
+      "INTEGRAL_EMULATOR_DISPLAY_SCALE");
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--rom") && i + 1 < argc)
       o->rom_path = argv[++i];
@@ -73,10 +85,22 @@ static int parse_options(int argc, char **argv, RuntimeOptions *o) {
       o->manifest_path = argv[++i];
     else if (!strcmp(argv[i], "--runtime-result") && i + 1 < argc)
       o->result_path = argv[++i];
+    else if (!strcmp(argv[i], "--rtc-offset-seconds") && i + 1 < argc) {
+      if (parse_rtc_offset_seconds(argv[++i], &o->rtc_offset_seconds))
+        return -1;
+    }
     else if (!strcmp(argv[i], "--input-script") && i + 1 < argc)
       o->input_script_path = argv[++i];
     else if (!strcmp(argv[i], "--scale") && i + 1 < argc) {
-      if (parse_unsigned(argv[++i], &o->scale) || o->scale < 1 || o->scale > 8)
+      if (integral_display_scale_parse(argv[++i], &o->scale))
+        return -1;
+    } else if (!strcmp(argv[i], "--window-width") && i + 1 < argc) {
+      if (parse_unsigned(argv[++i], &o->window_width) ||
+          o->window_width < 160u || o->window_width > 16384u)
+        return -1;
+    } else if (!strcmp(argv[i], "--window-height") && i + 1 < argc) {
+      if (parse_unsigned(argv[++i], &o->window_height) ||
+          o->window_height < 144u || o->window_height > 16384u)
         return -1;
     } else if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
       if (parse_unsigned(argv[++i], &o->frame_limit))
@@ -93,7 +117,8 @@ static int parse_options(int argc, char **argv, RuntimeOptions *o) {
       return -1;
   }
   return o->rom_path && o->save_path && o->config_path && o->manifest_path &&
-                 o->result_path
+                 o->result_path &&
+                 ((o->window_width == 0u) == (o->window_height == 0u))
              ? 0
              : -1;
 }
@@ -335,7 +360,9 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
     fprintf(
         stderr,
         "Usage: %s --rom PATH --save PATH --config PATH --session-manifest "
-        "PATH --runtime-result PATH [--headless] [--frames N] [--scale N] "
+        "PATH --runtime-result PATH [--rtc-offset-seconds N] [--headless] "
+        "[--frames N] [--scale auto|1|2|3|4|5|6] "
+        "[--window-width N --window-height N] "
         "[--input-script PATH] [--screenshot-every N] [--dump-screenshot]\n",
         argv[0]);
     return 2;
@@ -400,6 +427,10 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
                                        .skip_boot_rom = true};
     if (integral_gb_runtime_slot_init(&slot, &cfg))
       running = false;
+    else if (o.rtc_offset_seconds != 0 &&
+             integral_gb_runtime_slot_apply_rtc_offset_seconds(
+                 &slot, o.rtc_offset_seconds) < 0)
+      running = false;
   }
   IntegralGBRuntimeMobileAdapterBridge bridge;
   memset(&bridge, 0, sizeof(bridge));
@@ -414,8 +445,9 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
     integral_gb_runtime_input_router_disable_speed_controls(&input);
   }
   if (running && !o.headless &&
-      integral_gb_runtime_video_window_open_titled_unthrottled(
-          &window, o.scale, 1, "INTEGRAL EMULATOR MOBILE MODE"))
+      integral_gb_runtime_video_window_open_titled_unthrottled_sized(
+          &window, o.scale, 1, "INTEGRAL EMULATOR MOBILE MODE",
+          o.window_width, o.window_height))
     running = false;
   if (running && window && integral_gb_runtime_audio_player_open(&audio, 120u))
     running = false;
@@ -426,6 +458,8 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
       IntegralGBRuntimeVideoWindowPollResult pr =
           integral_gb_runtime_video_window_poll(window, &input, &slot, NULL);
       if (pr != INTEGRAL_GB_RUNTIME_VIDEO_WINDOW_CONTINUE) {
+        if (pr == INTEGRAL_GB_RUNTIME_VIDEO_WINDOW_RETURN_MENU)
+          clean = true;
         break;
       }
     }

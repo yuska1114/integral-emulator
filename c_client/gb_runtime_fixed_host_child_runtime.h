@@ -12,6 +12,7 @@ typedef struct IntegralGBRuntimeFixedHostChildConfig {
     const char *remote_rom_path;
     IntegralGBRuntimeFixedHostProductRole role;
     int64_t rtc_offset_seconds;
+    uint64_t rtc_target_unix;
 } IntegralGBRuntimeFixedHostChildConfig;
 
 typedef struct IntegralGBRuntimeFixedHostChildRuntime {

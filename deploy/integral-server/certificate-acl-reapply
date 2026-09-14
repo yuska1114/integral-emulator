@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${INTEGRAL_EMULATOR_CERTIFICATE_ACL_CONFIG:-/etc/integral-server/certificate-acl-watch.env}"
+
+if [[ ${EUID} -ne 0 ]]; then
+  echo "Certificate ACL reapply must run as root." >&2
+  exit 1
+fi
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  echo "Certificate ACL configuration not found: ${CONFIG_FILE}" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+source "${CONFIG_FILE}"
+: "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_USER:?certificate ACL user is required}"
+: "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_CERT_FILE:?certificate file is required}"
+: "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_KEY_FILE:?private-key file is required}"
+
+if ! id "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_USER}" >/dev/null 2>&1; then
+  echo "Certificate ACL user does not exist." >&2
+  exit 1
+fi
+for command in flock getfacl runuser setfacl; do
+  if ! command -v "${command}" >/dev/null 2>&1; then
+    echo "Required command is unavailable: ${command}" >&2
+    exit 1
+  fi
+done
+
+exec 9>/run/lock/integral-server-certificate-acl.lock
+flock 9
+
+for target in \
+  "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_CERT_FILE}" \
+  "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_KEY_FILE}"
+do
+  if [[ ! -f "${target}" || -L "${target}" ]]; then
+    echo "Certificate ACL target must be a regular non-symlink file: ${target}" >&2
+    exit 1
+  fi
+done
+
+for target in \
+  "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_CERT_FILE}" \
+  "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_KEY_FILE}"
+do
+  if ! getfacl -cp -- "${target}" |
+    grep -Fx "user:${INTEGRAL_EMULATOR_CERTIFICATE_ACL_USER}:r--" >/dev/null
+  then
+    setfacl -m "u:${INTEGRAL_EMULATOR_CERTIFICATE_ACL_USER}:r--" -- "${target}"
+  fi
+  getfacl -cp -- "${target}" |
+    grep -Fx "user:${INTEGRAL_EMULATOR_CERTIFICATE_ACL_USER}:r--" >/dev/null
+  runuser -u "${INTEGRAL_EMULATOR_CERTIFICATE_ACL_USER}" -- test -r "${target}"
+done
+
+echo "Integral Server certificate ACL is current."

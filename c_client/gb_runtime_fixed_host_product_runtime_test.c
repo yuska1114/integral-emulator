@@ -32,7 +32,9 @@ int main(void)
         integral_gb_runtime_fixed_host_product_runtime_toggle_exit_selection(&runtime);
         CHECK(runtime.exit_confirming && runtime.exit_confirm_yes);
         CHECK(integral_gb_runtime_fixed_host_product_runtime_select_exit(&runtime) ==
-              INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONFIRMED);
+              (runtime.role == INTEGRAL_GB_RUNTIME_FIXED_HOST_PRODUCT_HOST
+                   ? INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_HOST_FINISH
+                   : INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_REMOTE_LEAVE));
         integral_gb_runtime_fixed_host_product_runtime_cancel_exit(&runtime);
         integral_gb_runtime_fixed_host_product_runtime_focus_lost(&runtime);
         CHECK(runtime.buttons == 0u);

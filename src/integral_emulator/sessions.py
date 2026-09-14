@@ -588,11 +588,15 @@ class LinkSessionManager:
         saves: list[Any] | None = None,
         operation_id: str | None = None,
     ) -> GameSessionLock:
+        if execution_mode == "N64_RUNTIME_CLIENT":
+            duration_seconds = self.policy.n64_local_seconds
+        elif execution_mode == "MOBILE_CLIENT":
+            duration_seconds = self.policy.gb_mobile_seconds
+        else:
+            duration_seconds = self.policy.gb_local_seconds
         expires_at = self.policy.deadline(
             datetime.now(timezone.utc),
-            self.policy.n64_runtime_seconds
-            if execution_mode.startswith("N64_RUNTIME")
-            else self.policy.link_seconds,
+            duration_seconds,
         )
         return self.game_session_authority.acquire_single(
             user_id=user_id,

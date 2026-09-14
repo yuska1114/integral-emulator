@@ -18,12 +18,14 @@ VERSION = "0.1.1"
 PACKAGE_ROOT = f"integral-server-{VERSION}"
 INCLUDE = (
     Path("install.sh"),
+    Path("install-certificate-acl-watch.sh"),
     Path("pyproject.toml"),
     Path("LICENSES/AGPL-3.0-or-later.txt"),
     Path("docs/INTEGRAL_SERVER_APPLICATION.md"),
     Path("deploy/integral-server"),
     Path("deploy/systemd/integral-server.service"),
     Path("deploy/systemd/integral-server-media-relay.service"),
+    Path("deploy/systemd/integral-server-certificate-acl.service"),
     Path("src/integral_emulator"),
     Path("config/allowed_roms"),
     Path("config/gb_runtime_link_macros.json"),
@@ -54,7 +56,9 @@ def normalized_info(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
     elif info.name.endswith(
         (
             "/install.sh",
+            "/install-certificate-acl-watch.sh",
             "/deploy/integral-server/integral-server",
+            "/deploy/integral-server/certificate-acl-reapply",
             "/deploy/integral-server/uninstall",
         )
     ):

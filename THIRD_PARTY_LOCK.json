@@ -125,7 +125,7 @@
           "license": "GPL-2.0-or-later",
           "order": 1,
           "path": "runtimes/n64/patches/mupen64plus-input-sdl-physical-scancode.patch",
-          "sha256": "a200946fc33a17e4506f1ebbd4d64c1a5d9868469a5038492136acb659a4b2f5"
+          "sha256": "5c2ea2b42e0fbb786f83f3d671874a74ba4bd41e76e2a95ebe666b89464760e4"
         },
         {
           "license": "GPL-2.0-or-later",

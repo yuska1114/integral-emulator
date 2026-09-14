@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "protocol.h"
+#include "display_scale.h"
 
 const char *integral_gb_runtime_menu_mode_name(IntegralGBRuntimeMode mode)
 {
@@ -133,6 +134,17 @@ void integral_gb_runtime_menu_cycle_selected(IntegralGBRuntimeMenu *menu, int di
                 menu->rtc_offset_minutes--;
             }
         }
+    }
+    else if (menu->selected_row == 10) {
+        int scale = (int)menu->display_scale + direction;
+        if (scale < INTEGRAL_DISPLAY_SCALE_AUTO) {
+            scale = INTEGRAL_DISPLAY_SCALE_MAX;
+        }
+        if (scale > INTEGRAL_DISPLAY_SCALE_MAX) {
+            scale = INTEGRAL_DISPLAY_SCALE_AUTO;
+        }
+        menu->display_scale = (unsigned)scale;
+        menu->display_scale_dirty = true;
     }
 }
 

@@ -12,6 +12,9 @@ SDL_TTF_LIBS := $(shell $(PKG_CONFIG) --libs-only-L SDL2_ttf 2>/dev/null) -lSDL2
 HAS_OPENSSL := $(shell $(PKG_CONFIG) --exists openssl 2>/dev/null && echo 1)
 OPENSSL_CFLAGS := $(shell $(PKG_CONFIG) --cflags openssl 2>/dev/null)
 OPENSSL_LIBS := $(shell $(PKG_CONFIG) --libs openssl 2>/dev/null)
+HAS_OPENH264 := $(shell $(PKG_CONFIG) --exists openh264 2>/dev/null && echo 1)
+OPENH264_CFLAGS := $(shell $(PKG_CONFIG) --cflags openh264 2>/dev/null)
+OPENH264_LIBS := $(shell $(PKG_CONFIG) --libs openh264 2>/dev/null)
 UNAME_S := $(shell uname -s)
 PLATFORM_LIBS :=
 EXEEXT :=
@@ -32,6 +35,13 @@ PLATFORM_LIBS += -framework Security -framework CoreText -framework CoreGraphics
 	-framework CoreMedia -framework CoreVideo -framework VideoToolbox
 endif
 ifeq ($(UNAME_S),Linux)
+ifeq ($(HAS_OPENH264),1)
+CFLAGS += -DINTEGRAL_USE_OPENH264
+SDL_CFLAGS += $(OPENH264_CFLAGS)
+PLATFORM_LIBS += $(OPENH264_LIBS)
+else
+$(error Linux ROOM support requires the openh264 development package)
+endif
 CFLAGS += -Wno-format-truncation
 endif
 ifneq ($(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)),)
@@ -71,11 +81,11 @@ SOURCES := login_client.c sdl_text.c sdl_unicode_text.c http_client.c client_con
 	../runtimes/gb/src/server/gb_link_engine.c ../runtimes/gb/src/server/secure_memory.c ../runtimes/gb/src/server/content_hash.c \
 	../runtimes/gb/src/server/rom_profile.c ../runtimes/gb/src/server/sgb_boot_resource.c ../runtimes/gb/src/server/slot.c \
 	../runtimes/gb/src/serial/serial_peripheral.c ../runtimes/gb/src/common/file_util.c ../runtimes/gb/src/common/net_compat.c \
-	../runtimes/gb/src/common/key_config.c ../runtimes/gb/src/common/string_util.c \
+	../runtimes/gb/src/common/display_scale.c ../runtimes/gb/src/common/key_config.c ../runtimes/gb/src/common/string_util.c \
 	../runtimes/n64/src/remote_media_ipc.c
 
 SAMEBOY_HEADERS := $(wildcard $(SAMEBOY_DIR)/Core/*.h)
-GB_ENGINE_HEADERS := ../runtimes/gb/src/common/file_util.h ../runtimes/gb/src/common/key_config.h \
+GB_ENGINE_HEADERS := ../runtimes/gb/src/common/display_scale.h ../runtimes/gb/src/common/file_util.h ../runtimes/gb/src/common/key_config.h \
 	../runtimes/gb/src/common/net_compat.h ../runtimes/gb/src/common/protocol.h \
 	../runtimes/gb/src/common/string_util.h ../runtimes/gb/src/server/content_hash.h \
 	../runtimes/gb/src/server/gb_link_engine.h ../runtimes/gb/src/server/rom_profile.h \
@@ -167,7 +177,7 @@ GB_RUNTIME_FIXED_HOST_CORE_SOURCES := gb_runtime_fixed_host_runtime.c \
 
 GB_RUNTIME_FIXED_HOST_PRODUCT_SOURCES := integral_gb_runtime_fixed_host.c gb_runtime_fixed_host_product_runtime.c gb_runtime_fixed_host_scheduler.c gb_runtime_fixed_host_snapshot_ipc.c gb_runtime_fixed_host_result_ipc.c $(GB_RUNTIME_FIXED_HOST_CORE_SOURCES) media_relay_client.c \
 	media_codec.c media_h264.c n64_runtime_media_stream.c sdl_text.c \
-	../runtimes/gb/src/common/key_config.c ../runtimes/gb/src/common/string_util.c \
+	../runtimes/gb/src/common/display_scale.c ../runtimes/gb/src/common/key_config.c ../runtimes/gb/src/common/string_util.c \
 	../runtimes/n64/src/remote_media_ipc.c
 
 GB_RUNTIME_FIXED_HOST_PRODUCT_HEADERS := gb_runtime_fixed_host_product_runtime.h \

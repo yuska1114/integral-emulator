@@ -1910,7 +1910,13 @@ class LeagueApplication:
             session = self.sessions.get_session(session_id)
             if session.host_process_id:
                 self.host_processes.poll(session.host_process_id)
-            result = self.sessions.commit_changed_staged_saves(session_id)
+            if session.protocol_id == GB_RUNTIME_FIXED_HOST_PROTOCOL_ID:
+                control = self.reconcile_gb_runtime_fixed_host_trade(session_id)
+                if control.state != "FINISHED" or control.commit_result is None:
+                    return None
+                result = dict(control.commit_result)
+            else:
+                result = self.sessions.commit_changed_staged_saves(session_id)
         except LeagueError:
             if not suppress_errors:
                 raise

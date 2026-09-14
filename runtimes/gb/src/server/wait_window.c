@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "key_config.h"
+#include "display_scale.h"
 #include "protocol.h"
 #include "sdl_text.h"
 #include "string_util.h"
@@ -28,15 +29,13 @@ int integral_gb_runtime_wait_window_open(IntegralGBRuntimeWaitWindow **window_ou
                                unsigned port,
                                SDL_Keycode escape_key)
 {
-    SDL_SetHint(SDL_HINT_IME_SHOW_UI, "0");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_JOYSTICK |
                  SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return -1;
     }
     (void)integral_gb_runtime_key_config_open_game_controllers();
-    SDL_StopTextInput();
-
     IntegralGBRuntimeWaitWindow *window = calloc(1, sizeof(*window));
     if (!window) {
         SDL_Quit();
@@ -51,12 +50,20 @@ int integral_gb_runtime_wait_window_open(IntegralGBRuntimeWaitWindow **window_ou
     window->port = port;
     window->escape_key = escape_key;
 
+    SDL_Rect usable = {0, 0, 480, 480};
+    if (SDL_GetDisplayUsableBounds(0, &usable) != 0) {
+        usable.w = 480;
+        usable.h = 480;
+    }
+    unsigned scale = integral_display_scale_resolve(
+        integral_display_scale_from_environment("INTEGRAL_EMULATOR_DISPLAY_SCALE"),
+        usable.w, usable.h, 480, 480);
     window->window = SDL_CreateWindow("INTEGRAL EMULATOR - GB Runtime Waiting",
                                       SDL_WINDOWPOS_CENTERED,
                                       SDL_WINDOWPOS_CENTERED,
-                                      480,
-                                      480,
-                                      SDL_WINDOW_SHOWN);
+                                      480 * (int)scale,
+                                      480 * (int)scale,
+                                      SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!window->window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         integral_gb_runtime_wait_window_close(window);
@@ -64,7 +71,6 @@ int integral_gb_runtime_wait_window_open(IntegralGBRuntimeWaitWindow **window_ou
     }
     SDL_RaiseWindow(window->window);
     (void)SDL_SetWindowInputFocus(window->window);
-    SDL_StopTextInput();
 
     window->renderer = SDL_CreateRenderer(window->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!window->renderer) {
@@ -75,6 +81,12 @@ int integral_gb_runtime_wait_window_open(IntegralGBRuntimeWaitWindow **window_ou
         integral_gb_runtime_wait_window_close(window);
         return -1;
     }
+    if (SDL_RenderSetLogicalSize(window->renderer, 480, 480) != 0) {
+        fprintf(stderr, "SDL_RenderSetLogicalSize failed: %s\n", SDL_GetError());
+        integral_gb_runtime_wait_window_close(window);
+        return -1;
+    }
+    (void)SDL_RenderSetIntegerScale(window->renderer, SDL_TRUE);
 
     *window_out = window;
     return 0;

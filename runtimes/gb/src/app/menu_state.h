@@ -13,7 +13,7 @@
 #include "menu_paths.h"
 
 enum {
-    INTEGRAL_GB_RUNTIME_MENU_ROWS = 10,
+    INTEGRAL_GB_RUNTIME_MENU_ROWS = 11,
     INTEGRAL_GB_RUNTIME_KEY_CONFIG_MENU_ROWS = 5,
 };
 
@@ -56,6 +56,8 @@ typedef struct IntegralGBRuntimeMenu {
     SDL_Keycode reset_keycode;
     int rtc_offset_minutes;
     unsigned speed_multiplier;
+    unsigned display_scale;
+    bool display_scale_dirty;
     bool client_sends_slot2_paths;
     bool client_auto_discover;
     IntegralGBRuntimeMode mode;

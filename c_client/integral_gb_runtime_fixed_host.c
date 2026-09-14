@@ -9,6 +9,7 @@
 #include "gb_runtime_fixed_host_snapshot_ipc.h"
 #include "gb_runtime_fixed_host_result_ipc.h"
 #include "../runtimes/gb/src/common/key_config.h"
+#include "../runtimes/gb/src/common/display_scale.h"
 #include "../runtimes/gb/src/server/content_hash.h"
 #include "../runtimes/gb/src/server/secure_memory.h"
 
@@ -33,7 +34,6 @@
 #define GB_FIXED_TOKEN_ENV "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_TICKET"
 #define GB_WIDTH 160u
 #define GB_HEIGHT 144u
-#define GB_DISPLAY_SCALE 3u
 #define METRICS_US UINT64_C(5000000)
 #define INPUT_HEARTBEAT_US UINT64_C(250000)
 #define PING_INTERVAL_US UINT64_C(1000000)
@@ -47,10 +47,13 @@ typedef struct Options {
     const char *rom1;
     const char *rom2;
     const char *ca_file;
+    uint64_t rtc_target_unix;
     const char *test_macro_host;
     const char *test_macro_remote;
     unsigned test_macro_press_frames;
     unsigned test_macro_step_frames;
+    unsigned window_width;
+    unsigned window_height;
     IntegralGBRuntimeKeyConfig keys;
     bool snapshot_stdin;
     IntegralGBRuntimeFixedHostSnapshotPair snapshots;
@@ -63,7 +66,34 @@ typedef struct HostVideo {
     SDL_Window *window;
     SDL_Renderer *renderer;
     SDL_Texture *texture;
+    unsigned scale;
+    int canvas_width;
+    int canvas_height;
+    int content_x;
+    int content_y;
 } HostVideo;
+
+static void host_video_set_layout(HostVideo *video, int width, int height)
+{
+    video->canvas_width = width;
+    video->canvas_height = height;
+    video->scale = integral_display_scale_resolve(
+        INTEGRAL_DISPLAY_SCALE_AUTO, width, height, GB_WIDTH, GB_HEIGHT);
+    video->content_x = (width - (int)(GB_WIDTH * video->scale)) / 2;
+    video->content_y = (height - (int)(GB_HEIGHT * video->scale)) / 2;
+}
+
+static int host_video_update_layout(HostVideo *video)
+{
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(video->window, &width, &height);
+    if (width <= 0 || height <= 0) return -1;
+    if (width == video->canvas_width && height == video->canvas_height) return 0;
+    if (SDL_RenderSetLogicalSize(video->renderer, width, height) != 0) return -1;
+    host_video_set_layout(video, width, height);
+    return 0;
+}
 
 static uint64_t now_us(void)
 {
@@ -128,7 +158,7 @@ static int write_slot_bmp(const char *path, const IntegralGBRuntimeSlot *slot)
     uint8_t row[GB_WIDTH * 4u];
     for (unsigned y = 0u; y < GB_HEIGHT; y++) {
         for (unsigned x = 0u; x < GB_WIDTH; x++) {
-            uint32_t pixel = slot->pixels[y * GB_WIDTH + x];
+            uint32_t pixel = integral_gb_runtime_slot_presented_pixels(slot)[y * GB_WIDTH + x];
             row[x * 4u] = (uint8_t)pixel;
             row[x * 4u + 1u] = (uint8_t)(pixel >> 8u);
             row[x * 4u + 2u] = (uint8_t)(pixel >> 16u);
@@ -147,8 +177,19 @@ static void usage(const char *program)
             "usage: %s --role host|remote --relay-host HOST --session SESSION "
             "[--relay-port 25164] --relay-transport tls|plain "
             "[--ca FILE] [--rom1 FILE --rom2 FILE] "
-            "[--snapshot-stdin]\n",
+            "[--rtc-target-unix SECONDS] [--snapshot-stdin]\n",
             program);
+}
+
+static int parse_positive_u64(const char *value, uint64_t *out)
+{
+    char *end = NULL;
+    unsigned long long parsed;
+    if (!value || !value[0] || !out || value[0] == '-') return -1;
+    parsed = strtoull(value, &end, 10);
+    if (!end || *end || parsed == 0u) return -1;
+    *out = (uint64_t)parsed;
+    return 0;
 }
 
 static int parse_options(int argc, char **argv, Options *options)
@@ -181,6 +222,9 @@ static int parse_options(int argc, char **argv, Options *options)
         else if (strcmp(name, "--rom1") == 0) options->rom1 = value;
         else if (strcmp(name, "--rom2") == 0) options->rom2 = value;
         else if (strcmp(name, "--ca") == 0) options->ca_file = value;
+        else if (strcmp(name, "--rtc-target-unix") == 0) {
+            if (parse_positive_u64(value, &options->rtc_target_unix) != 0) return -1;
+        }
         else return -1;
     }
     {
@@ -202,6 +246,8 @@ static int parse_options(int argc, char **argv, Options *options)
             options->rom2 = value;
         if (!options->ca_file && (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_CA")))
             options->ca_file = value;
+        if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RTC_TARGET_UNIX")) &&
+            parse_positive_u64(value, &options->rtc_target_unix) != 0) return -1;
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_TEST_MACRO_HOST")))
             options->test_macro_host = value;
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_TEST_MACRO_REMOTE")))
@@ -217,9 +263,22 @@ static int parse_options(int argc, char **argv, Options *options)
             options->headless_receipt_file = value;
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SAVE_POLICY")))
             options->commit_pair = strcmp(value, "commit_pair") == 0;
+        if ((value = getenv("INTEGRAL_EMULATOR_GB_WINDOW_WIDTH"))) {
+            char *end = NULL;
+            unsigned long parsed = strtoul(value, &end, 10);
+            if (!end || *end || parsed < GB_WIDTH || parsed > 16384u) return -1;
+            options->window_width = (unsigned)parsed;
+        }
+        if ((value = getenv("INTEGRAL_EMULATOR_GB_WINDOW_HEIGHT"))) {
+            char *end = NULL;
+            unsigned long parsed = strtoul(value, &end, 10);
+            if (!end || *end || parsed < GB_HEIGHT || parsed > 16384u) return -1;
+            options->window_height = (unsigned)parsed;
+        }
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_KEYS")) &&
             integral_gb_runtime_key_config_parse(&options->keys, value) != 0) return -1;
     }
+    if ((options->window_width == 0u) != (options->window_height == 0u)) return -1;
     if (!options->role || !options->relay_host || !options->session_id ||
         !options->relay_transport ||
         (strcmp(options->relay_transport, "tls") != 0 &&
@@ -228,6 +287,7 @@ static int parse_options(int argc, char **argv, Options *options)
     if (!host && strcmp(options->role, "remote") != 0) return -1;
     if (host && (!options->rom1 || !options->rom2)) return -1;
     if (host && !options->snapshot_stdin) return -1;
+    if (host && options->rtc_target_unix == 0u) return -1;
     return 0;
 }
 
@@ -358,7 +418,7 @@ static IntegralGBRuntimeFixedHostExitSelection poll_input(
             else if (enter_pressed || (pressed && (menu_button & INTEGRAL_GB_RUNTIME_BTN_A))) {
                 IntegralGBRuntimeFixedHostExitSelection selection =
                     integral_gb_runtime_fixed_host_product_runtime_select_exit(product);
-                if (selection == INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONFIRMED)
+                if (selection != INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONTINUE)
                     return selection;
             }
             integral_n64_runtime_media_stream_set_exit_confirmation(
@@ -382,20 +442,48 @@ static IntegralGBRuntimeFixedHostExitSelection poll_input(
     return INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONTINUE;
 }
 
-static int host_video_open(HostVideo *video)
+static int host_video_open(HostVideo *video, const Options *options)
 {
+    int window_width = (int)options->window_width;
+    int window_height = (int)options->window_height;
+    if (options->window_width == 0u) {
+        SDL_Rect usable = {0, 0, GB_WIDTH, GB_HEIGHT};
+        if (SDL_GetDisplayUsableBounds(0, &usable) != 0) {
+            usable.w = GB_WIDTH;
+            usable.h = GB_HEIGHT;
+        }
+        video->scale = integral_display_scale_resolve(
+            integral_display_scale_from_environment("INTEGRAL_EMULATOR_DISPLAY_SCALE"),
+            usable.w, usable.h, GB_WIDTH, GB_HEIGHT);
+        window_width = (int)(GB_WIDTH * video->scale);
+        window_height = (int)(GB_HEIGHT * video->scale);
+    }
+    host_video_set_layout(video, window_width, window_height);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     video->window = SDL_CreateWindow("INTEGRAL EMULATOR - GB FIXED HOST SLOT1",
                                      SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                     (int)(GB_WIDTH * GB_DISPLAY_SCALE),
-                                     (int)(GB_HEIGHT * GB_DISPLAY_SCALE), SDL_WINDOW_SHOWN);
+                                     window_width,
+                                     window_height,
+                                     SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI |
+                                         SDL_WINDOW_RESIZABLE);
     if (!video->window) return -1;
+    SDL_SetWindowMinimumSize(video->window, GB_WIDTH, GB_HEIGHT);
     video->renderer = SDL_CreateRenderer(video->window, -1,
                                           SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!video->renderer) video->renderer = SDL_CreateRenderer(video->window, -1, 0);
     if (!video->renderer) return -1;
+    if (SDL_RenderSetLogicalSize(video->renderer,
+                                 window_width,
+                                 window_height) != 0) {
+        return -1;
+    }
+    (void)SDL_RenderSetIntegerScale(video->renderer, SDL_TRUE);
     video->texture = SDL_CreateTexture(video->renderer, SDL_PIXELFORMAT_ARGB8888,
                                        SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
     if (!video->texture) return -1;
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+    SDL_SetTextureScaleMode(video->texture, SDL_ScaleModeNearest);
+#endif
     return 0;
 }
 
@@ -403,16 +491,29 @@ static void host_video_render(HostVideo *video,
                               const IntegralGBRuntimeLinkEngine *engine,
                               const IntegralGBRuntimeFixedHostProductRuntime *product)
 {
+    if (host_video_update_layout(video) != 0) return;
     SDL_SetRenderDrawColor(video->renderer, 0, 0, 0, 255);
     SDL_RenderClear(video->renderer);
-    SDL_UpdateTexture(video->texture, NULL, engine->a.pixels,
+    SDL_UpdateTexture(video->texture, NULL,
+                      integral_gb_runtime_slot_presented_pixels(&engine->a),
                       (int)(GB_WIDTH * 4u));
-    SDL_RenderCopy(video->renderer, video->texture, NULL, NULL);
+    SDL_Rect content = {
+        .x = video->content_x,
+        .y = video->content_y,
+        .w = (int)(GB_WIDTH * video->scale),
+        .h = (int)(GB_HEIGHT * video->scale),
+    };
+    SDL_RenderCopy(video->renderer, video->texture, NULL, &content);
     if (product->exit_confirming) {
-        SDL_Rect panel = {.x = (int)(GB_WIDTH * GB_DISPLAY_SCALE) / 2 - 210,
-                          .y = (int)(GB_HEIGHT * GB_DISPLAY_SCALE) / 2 - 70,
-                          .w = 420,
-                          .h = 140};
+        int width = (int)(GB_WIDTH * video->scale);
+        int height = (int)(GB_HEIGHT * video->scale);
+        int text_scale = width >= 440 && height >= 160 ? 3 : (width >= 280 ? 2 : 1);
+        int panel_width = width > 428 ? 420 : width - 8;
+        int panel_height = height > 148 ? 140 : height - 8;
+        SDL_Rect panel = {.x = video->content_x + (width - panel_width) / 2,
+                          .y = video->content_y + (height - panel_height) / 2,
+                          .w = panel_width,
+                          .h = panel_height};
         SDL_Color title = {238, 238, 220, 255};
         SDL_Color text = {185, 205, 216, 255};
         SDL_Color selected = {86, 220, 150, 255};
@@ -420,13 +521,13 @@ static void host_video_render(HostVideo *video,
         SDL_RenderFillRect(video->renderer, &panel);
         SDL_SetRenderDrawColor(video->renderer, 86, 162, 126, 255);
         SDL_RenderDrawRect(video->renderer, &panel);
-        integral_sdl_draw_text(video->renderer, panel.x + 36, panel.y + 28,
-                               "EXIT GAME?", 3, title);
-        integral_sdl_draw_text(video->renderer, panel.x + 86, panel.y + 84,
-                               product->exit_confirm_yes ? "> YES" : "  YES", 3,
+        integral_sdl_draw_text(video->renderer, panel.x + 12, panel.y + 18,
+                               "EXIT GAME?", text_scale, title);
+        integral_sdl_draw_text(video->renderer, panel.x + 12, panel.y + panel.h - 32,
+                               product->exit_confirm_yes ? "> YES" : "  YES", text_scale,
                                product->exit_confirm_yes ? selected : text);
-        integral_sdl_draw_text(video->renderer, panel.x + 244, panel.y + 84,
-                               product->exit_confirm_yes ? "  NO" : "> NO", 3,
+        integral_sdl_draw_text(video->renderer, panel.x + panel.w / 2, panel.y + panel.h - 32,
+                               product->exit_confirm_yes ? "  NO" : "> NO", text_scale,
                                product->exit_confirm_yes ? text : selected);
     }
     SDL_RenderPresent(video->renderer);
@@ -468,18 +569,18 @@ static void log_media_metrics(const char *role, IntegralN64RuntimeMediaStream *s
     fflush(stdout);
 }
 
-static bool finish_host_trade(const Options *options,
-                              IntegralMediaRelayConnection *connection,
-                              IntegralGBRuntimeLinkEngine *engine,
-                              uint32_t *sequence,
-                              char *error, size_t error_size)
+static bool finish_host_session(const Options *options,
+                                IntegralMediaRelayConnection *connection,
+                                IntegralGBRuntimeLinkEngine *engine,
+                                uint32_t *sequence,
+                                char *error, size_t error_size)
 {
-    IntegralGBRuntimeLinkSnapshot snapshot;
+    IntegralGBRuntimeLinkSnapshot snapshot = {0};
     IntegralGBRuntimeFixedHostResult result = {0};
     uint8_t terminal[INTEGRAL_MEDIA_GB_TERMINAL_BYTES];
     bool acknowledged = false;
-    if (!options->commit_pair ||
-        (options->result_handle <= 0 && !options->headless_receipt_file) ||
+    if ((options->commit_pair && options->result_handle <= 0 &&
+         !options->headless_receipt_file) ||
         integral_gb_runtime_link_engine_snapshot(engine, &snapshot) != 0) return false;
     put_be64(terminal, snapshot.logical_frame);
     gb_runtime_fixed_host_terminal_digest(&snapshot, terminal + 8u);
@@ -502,17 +603,19 @@ static bool finish_host_trade(const Options *options,
         SDL_Delay(5u);
     }
     if (!acknowledged) goto done;
-    result.host = true;
-    result.final_frame = snapshot.logical_frame;
-    memcpy(result.terminal_digest, terminal + 8u, 32u);
-    result.candidates.host_data = snapshot.battery_a;
-    result.candidates.host_size = snapshot.battery_a_size;
-    result.candidates.remote_data = snapshot.battery_b;
-    result.candidates.remote_size = snapshot.battery_b_size;
-    snapshot.battery_a = snapshot.battery_b = NULL;
-    snapshot.battery_a_size = snapshot.battery_b_size = 0u;
-    if (!send_result(options, &result)) {
-        acknowledged = false;
+    if (options->commit_pair) {
+        result.host = true;
+        result.final_frame = snapshot.logical_frame;
+        memcpy(result.terminal_digest, terminal + 8u, 32u);
+        result.candidates.host_data = snapshot.battery_a;
+        result.candidates.host_size = snapshot.battery_a_size;
+        result.candidates.remote_data = snapshot.battery_b;
+        result.candidates.remote_size = snapshot.battery_b_size;
+        snapshot.battery_a = snapshot.battery_b = NULL;
+        snapshot.battery_a_size = snapshot.battery_b_size = 0u;
+        if (!send_result(options, &result)) {
+            acknowledged = false;
+        }
     }
 done:
     integral_gb_runtime_link_snapshot_free(&snapshot);
@@ -553,6 +656,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
         .host_save_size = save1_size,
         .remote_save = save2,
         .remote_save_size = save2_size,
+        .rtc_target_unix = options->rtc_target_unix,
         .preserve_both_audio = true,
     };
     if (integral_gb_runtime_fixed_host_runtime_init(&runtime, &config) != 0) {
@@ -563,11 +667,11 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
     if (options->snapshot_stdin) integral_gb_runtime_fixed_host_snapshot_pair_release(&snapshots);
 
     HostVideo video = {0};
-    if (host_video_open(&video) != 0) {
+    if (host_video_open(&video, options) != 0) {
         fprintf(stderr, "GB fixed host video failed: %s\n", SDL_GetError());
         integral_gb_runtime_fixed_host_runtime_free(&runtime); return 1;
     }
-    IntegralN64RuntimeMediaStream *media = integral_n64_runtime_media_stream_create(NULL);
+    IntegralN64RuntimeMediaStream *media = integral_n64_runtime_media_stream_create(NULL, NULL);
     if (!media) {
         host_video_close(&video);
         integral_gb_runtime_fixed_host_runtime_free(&runtime);
@@ -617,8 +721,9 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
             getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_HEADLESS_FINISH_FRAME"), NULL, 10);
     while (true) {
         if (poll_input(&product, NULL, options) ==
-            INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONFIRMED) {
+            INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_HOST_FINISH) {
             fprintf(stderr, "GB fixed host local UI requested exit\n");
+            normal_exit = true;
             break;
         }
         for (unsigned count = 0; count < 16u; count++) {
@@ -708,7 +813,8 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
         }
         host_video_render(&video, &runtime.engine, &product);
         if ((runtime.engine.logical_frame & 1u) == 0u) {
-            pixels_to_rgb24(runtime.engine.b.pixels, rgb);
+            pixels_to_rgb24(
+                integral_gb_runtime_slot_presented_pixels(&runtime.engine.b), rgb);
             if (integral_n64_runtime_media_stream_submit_host_rgb24(media, rgb,
                                                              GB_WIDTH, GB_HEIGHT, false,
                                                              current, error, sizeof(error)) < 0) {
@@ -749,10 +855,10 @@ done:
            (unsigned long long)runtime.engine.logical_frame,
            (unsigned long long)runtime.engine.serial_events,
            (unsigned long long)runtime.engine.ir_events);
-    if (normal_exit && options->commit_pair &&
-        !finish_host_trade(options, connection, &runtime.engine,
-                           &output_sequence, error, sizeof(error))) {
-        fprintf(stderr, "GB fixed host Trade terminal agreement failed: %s\n", error);
+    if (normal_exit &&
+        !finish_host_session(options, connection, &runtime.engine,
+                             &output_sequence, error, sizeof(error))) {
+        fprintf(stderr, "GB fixed host terminal agreement failed: %s\n", error);
         normal_exit = false;
     }
     integral_gb_runtime_fixed_host_scheduler_stop(&scheduler);
@@ -761,16 +867,26 @@ done:
     integral_n64_runtime_media_stream_destroy(media);
     host_video_close(&video);
     integral_gb_runtime_fixed_host_runtime_free(&runtime);
-    return normal_exit || !options->commit_pair ? 0 : 1;
+    return normal_exit ? 0 : 1;
 }
 
 static int run_remote(const Options *options, IntegralMediaRelayConnection *connection)
 {
-    IntegralN64RuntimeMediaStream *media = integral_n64_runtime_media_stream_create(NULL);
+    IntegralN64RuntimeMediaStream *media = integral_n64_runtime_media_stream_create(NULL, NULL);
     if (!media) return 1;
+    integral_n64_runtime_media_stream_set_exit_discard_warning(
+        media, options->commit_pair);
     integral_n64_runtime_media_stream_set_window_title(media,
                                                 "INTEGRAL EMULATOR - GB FIXED HOST REMOTE SLOT2");
-    integral_n64_runtime_media_stream_set_window_scale(media, GB_DISPLAY_SCALE);
+    if (options->window_width != 0u) {
+        integral_n64_runtime_media_stream_set_window_target_size(
+            media, options->window_width, options->window_height);
+    }
+    else {
+        integral_n64_runtime_media_stream_set_window_scale(
+            media,
+            integral_display_scale_from_environment("INTEGRAL_EMULATOR_DISPLAY_SCALE"));
+    }
     uint8_t buttons = 0, last_sent_buttons = 0xffu;
     IntegralGBRuntimeFixedHostProductRuntime product;
     if (!integral_gb_runtime_fixed_host_product_runtime_init(
@@ -785,9 +901,14 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
     char error[192] = {0};
     printf("GB_FIXED_REMOTE paired session=%s core=disabled rom_transfer=disabled\n", options->session_id);
     bool terminal_received = false;
+    bool local_leave = false;
     while (true) {
         if (poll_input(&product, media, options) ==
-            INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONFIRMED) break;
+            INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_REMOTE_LEAVE) {
+            fprintf(stderr, "GB fixed host Remote UI requested leave\n");
+            local_leave = true;
+            break;
+        }
         buttons = product.buttons;
         if (integral_gb_runtime_fixed_host_product_runtime_take_neutral(&product))
             last_sent_buttons = 0xffu;
@@ -849,21 +970,23 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
                        get_be32(payload), get_be32(payload + 4u));
             }
             else if (type == INTEGRAL_MEDIA_MESSAGE_GB_TERMINAL &&
-                     size == INTEGRAL_MEDIA_GB_TERMINAL_BYTES &&
-                     options->commit_pair &&
-                     (options->result_handle > 0 || options->headless_receipt_file)) {
+                     size == INTEGRAL_MEDIA_GB_TERMINAL_BYTES) {
                 IntegralGBRuntimeFixedHostResult result = {0};
                 if (integral_media_relay_send_control(
                         connection, INTEGRAL_MEDIA_MESSAGE_GB_TERMINAL_ACK,
                         sequence++, payload, size, error, sizeof(error)) < 0) break;
-                result.host = false;
-                result.final_frame = get_be64(payload);
-                memcpy(result.terminal_digest, payload + 8u, 32u);
-                if (!send_result(options, &result)) {
-                    break;
+                if (options->commit_pair) {
+                    if (options->result_handle <= 0 && !options->headless_receipt_file) break;
+                    result.host = false;
+                    result.final_frame = get_be64(payload);
+                    memcpy(result.terminal_digest, payload + 8u, 32u);
+                    if (!send_result(options, &result)) {
+                        break;
+                    }
                 }
                 terminal_received = true;
-                printf("GB_FIXED_TRADE_TERMINAL_RECEIVED frame=%llu\n",
+                printf("GB_FIXED_%s_TERMINAL_RECEIVED frame=%llu\n",
+                       options->commit_pair ? "TRADE" : "BATTLE",
                        (unsigned long long)get_be64(payload));
                 break;
             }
@@ -895,7 +1018,9 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
     }
     integral_gb_runtime_fixed_host_product_runtime_stop(&product);
     integral_n64_runtime_media_stream_destroy(media);
-    return terminal_received || !options->commit_pair ? 0 : 1;
+    if (terminal_received) return 0;
+    if (local_leave) return INTEGRAL_GB_RUNTIME_FIXED_HOST_REMOTE_LEAVE_EXIT_CODE;
+    return 1;
 }
 
 int main(int argc, char **argv)

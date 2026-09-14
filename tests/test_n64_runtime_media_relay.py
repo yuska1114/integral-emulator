@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import socket
+import ssl
 import struct
+import subprocess
 import tempfile
 import threading
 import time
 import unittest
+import shutil
 from pathlib import Path
 
 from integral_emulator.database import AuthorityDatabase
@@ -36,6 +39,7 @@ from integral_emulator.n64_runtime_media_relay import (
     AuthenticatedN64RuntimeMediaRelay,
     MediaFrameFilter,
     MediaRelayClient,
+    ReloadingTLSContext,
 )
 
 
@@ -73,6 +77,150 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def _create_certificate_pair(self, name: str) -> tuple[Path, Path]:
+        if shutil.which("openssl") is None:
+            self.skipTest("openssl is required for TLS reload tests")
+        cert = self.root / f"{name}.crt"
+        key = self.root / f"{name}.key"
+        completed = subprocess.run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-sha256",
+                "-days",
+                "1",
+                "-nodes",
+                "-subj",
+                f"/CN={name}.example",
+                "-keyout",
+                str(key),
+                "-out",
+                str(cert),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        return cert, key
+
+    def _tls_socket_pair(
+        self, server_context: ssl.SSLContext
+    ) -> tuple[ssl.SSLSocket, ssl.SSLSocket]:
+        server_raw, client_raw = socket.socketpair()
+        result: dict[str, object] = {}
+
+        def wrap_server() -> None:
+            try:
+                result["socket"] = server_context.wrap_socket(
+                    server_raw, server_side=True
+                )
+            except BaseException as error:
+                result["error"] = error
+
+        thread = threading.Thread(target=wrap_server, daemon=True)
+        thread.start()
+        client_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client_context.minimum_version = ssl.TLSVersion.TLSv1_3
+        client_context.check_hostname = False
+        client_context.verify_mode = ssl.CERT_NONE
+        try:
+            client = client_context.wrap_socket(
+                client_raw, server_hostname="localhost"
+            )
+        except BaseException:
+            server_raw.close()
+            client_raw.close()
+            thread.join(timeout=2)
+            raise
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+        if "error" in result:
+            client.close()
+            raise result["error"]  # type: ignore[misc]
+        server = result["socket"]
+        self.assertIsInstance(server, ssl.SSLSocket)
+        return server, client  # type: ignore[return-value]
+
+    def test_tls_context_reloader_automatically_accepts_a_valid_pair(self) -> None:
+        first_cert, first_key = self._create_certificate_pair("first")
+        second_cert, second_key = self._create_certificate_pair("second")
+        active_cert = self.root / "active.crt"
+        active_key = self.root / "active.key"
+        shutil.copyfile(first_cert, active_cert)
+        shutil.copyfile(first_key, active_key)
+        reloader = ReloadingTLSContext(active_cert, active_key, 0.02)
+        original = reloader.current_context()
+        reloader.start()
+        try:
+            shutil.copyfile(second_cert, active_cert)
+            shutil.copyfile(second_key, active_key)
+            deadline = time.monotonic() + 2
+            while (
+                reloader.current_context() is original
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.02)
+            self.assertIsNot(reloader.current_context(), original)
+        finally:
+            reloader.stop()
+
+    def test_tls_context_reloader_rejects_a_mismatched_pair(self) -> None:
+        first_cert, first_key = self._create_certificate_pair("first")
+        second_cert, second_key = self._create_certificate_pair("second")
+        active_cert = self.root / "active.crt"
+        active_key = self.root / "active.key"
+        shutil.copyfile(first_cert, active_cert)
+        shutil.copyfile(first_key, active_key)
+        reloader = ReloadingTLSContext(active_cert, active_key)
+        original = reloader.current_context()
+
+        shutil.copyfile(second_cert, active_cert)
+        self.assertFalse(reloader.reload_if_changed())
+        self.assertIs(reloader.current_context(), original)
+
+        shutil.copyfile(second_key, active_key)
+        self.assertTrue(reloader.reload_if_changed())
+        self.assertIsNot(reloader.current_context(), original)
+
+    def test_tls_context_reloader_keeps_existing_connections(self) -> None:
+        first_cert, first_key = self._create_certificate_pair("first")
+        second_cert, second_key = self._create_certificate_pair("second")
+        active_cert = self.root / "active.crt"
+        active_key = self.root / "active.key"
+        shutil.copyfile(first_cert, active_cert)
+        shutil.copyfile(first_key, active_key)
+        reloader = ReloadingTLSContext(active_cert, active_key)
+        old_server, old_client = self._tls_socket_pair(reloader.current_context())
+        self.addCleanup(old_server.close)
+        self.addCleanup(old_client.close)
+        old_peer_certificate = old_client.getpeercert(binary_form=True)
+
+        shutil.copyfile(second_cert, active_cert)
+        shutil.copyfile(second_key, active_key)
+        self.assertTrue(reloader.reload_if_changed())
+
+        old_client.sendall(b"existing")
+        self.assertEqual(old_server.recv(8), b"existing")
+        new_server, new_client = self._tls_socket_pair(reloader.current_context())
+        self.addCleanup(new_server.close)
+        self.addCleanup(new_client.close)
+        self.assertNotEqual(
+            new_client.getpeercert(binary_form=True), old_peer_certificate
+        )
+
+    def test_tls_context_reloader_keeps_context_on_read_failure(self) -> None:
+        cert, key = self._create_certificate_pair("first")
+        reloader = ReloadingTLSContext(cert, key)
+        original = reloader.current_context()
+        key.unlink()
+        self.assertFalse(reloader.reload_if_changed())
+        self.assertIs(reloader.current_context(), original)
 
     def test_handshake_requires_magic_role_scope_and_ticket(self) -> None:
         relay = AuthenticatedN64RuntimeMediaRelay([self.root])
@@ -371,12 +519,79 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
         host_peer.close()
         bridge2.join(timeout=2)
 
+    def test_product_terminal_ack_closes_transport_without_aborting_control(self) -> None:
+        manager = GBRuntimeFixedHostSessionManager(self.storage)
+        manifest = GBRuntimeFixedHostManifest(
+            session_id="link-fixed-terminal", session_epoch=1,
+            host_user_id="terminal-host", remote_user_id="terminal-remote",
+            host_save_id="terminal-save-a", remote_save_id="terminal-save-b",
+            host_game_type="sample_alpha", remote_game_type="sample_beta",
+            host_platform="gb", remote_platform="gb",
+            host_rom_header_title="ALPHA CORE", remote_rom_header_title="BETA CORE",
+            host_base_revision=1, remote_base_revision=1,
+            requested_mode="trade", save_policy="commit_pair",
+            runtime_build_id="integral-gb-runtime-fixed-host-dev",
+        )
+        manager.create(16, manifest)
+        records = self.storage.load_gb_runtime_fixed_host_sessions()
+        records[manifest.session_id]["state"] = "RUNNING"
+        record = records[manifest.session_id]
+        self.storage.update_gb_runtime_fixed_host_session(
+            record, int(record["__row_version"])
+        )
+        relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+        host_server, host_peer = socket.socketpair()
+        remote_server, remote_peer = socket.socketpair()
+        self.addCleanup(remote_peer.close)
+        now = time.monotonic()
+        host = MediaRelayClient(
+            host_server, ("127.0.0.1", 1), manifest.session_id, "host", now,
+            GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE,
+        )
+        remote = MediaRelayClient(
+            remote_server, ("127.0.0.1", 2), manifest.session_id, "remote", now,
+            GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE,
+        )
+        bridge = threading.Thread(target=relay.bridge, args=(host, remote), daemon=True)
+        bridge.start()
+        self.assertIn(b"PAIRED", self._recv_line(host_peer))
+        self.assertIn(b"PAIRED", self._recv_line(remote_peer))
+
+        terminal_payload = struct.pack("!Q", 4321) + b"t" * 32
+        terminal = struct.pack(
+            "!4sBBHII", b"N64R", 2, GB_FIXED_TERMINAL, 0, 4,
+            len(terminal_payload),
+        ) + terminal_payload
+        terminal_ack = struct.pack(
+            "!4sBBHII", b"N64R", 2, GB_FIXED_TERMINAL_ACK, 0, 4,
+            len(terminal_payload),
+        ) + terminal_payload
+        host_peer.sendall(terminal)
+        self.assertEqual(self._recv_exact(remote_peer, len(terminal)), terminal)
+        remote_peer.sendall(terminal_ack)
+        self.assertEqual(self._recv_exact(host_peer, len(terminal_ack)), terminal_ack)
+        host_peer.close()
+        bridge.join(timeout=2)
+        self.assertFalse(bridge.is_alive())
+        self.assertEqual(manager.get(manifest.session_id).state, "RUNNING")
+
     @staticmethod
     def _recv_line(sock: socket.socket) -> bytes:
         data = bytearray()
         sock.settimeout(2)
         while not data.endswith(b"\n"):
             chunk = sock.recv(1)
+            if not chunk:
+                break
+            data.extend(chunk)
+        return bytes(data)
+
+    @staticmethod
+    def _recv_exact(sock: socket.socket, size: int) -> bytes:
+        data = bytearray()
+        sock.settimeout(2)
+        while len(data) < size:
+            chunk = sock.recv(size - len(data))
             if not chunk:
                 break
             data.extend(chunk)

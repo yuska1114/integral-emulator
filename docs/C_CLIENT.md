@@ -26,7 +26,7 @@ sudo apt update
 sudo apt install -y build-essential cmake pkg-config nasm \
   libsdl2-dev libsdl2-ttf-dev libssl-dev \
   libfreetype6-dev libgl1-mesa-dev libglu1-mesa-dev libpng-dev zlib1g-dev \
-  libsamplerate0-dev libspeexdsp-dev libvulkan-dev
+  libsamplerate0-dev libspeexdsp-dev libvulkan-dev libopenh264-dev
 ```
 
 ソースツリーのルートで、GB RuntimeとC Clientをビルドします。
@@ -62,7 +62,7 @@ cp integral_client.conf.example config/integral_client.conf
 ```
 
 公開サーバーへ接続する場合は、パス接頭辞を含むHTTPS URLを指定してください。
-同じPCまたは信頼できる家庭LANで、サーバー側が`plain`を明示的に選択している場合は、
+同じPCまたは信頼できるLANで、サーバー側が`plain`を明示的に選択している場合は、
 例えば`http://127.0.0.1:8080`や`http://192.168.1.20:8080`を使用できます。
 HTTP接続ではログイン情報、token、ROMメタデータ、SAVが暗号化されません。
 
@@ -111,11 +111,12 @@ macOS 26.0以降／Apple Silicon向けです。
 ## 接続設定
 
 手動設定のひな形は`c_client/integral_client.conf.example`です。
-利用者が事前に設定する接続項目は次の3つです。
+利用者が事前に設定する主な項目は次のとおりです。
 
 - `login.server`: パス接頭辞を含むAPIベースURL
 - `login.server_id`: `primary`または`secondary`
 - `login.remember`: ログイン情報を記憶する場合は`1`
+- `window.width`／`window.height`: Clientのウィンドウサイズ
 
 `login.remember`によるパスワード保存には、Windows Credential Managerまたは
 macOS Keychainを使用します。Ubuntuでは現在利用できないため、自動的に無効になります。
@@ -143,9 +144,17 @@ macOS Keychainを使用します。Ubuntuでは現在利用できないため、
 
 ゲーム実行中と`KEY CONFIG`画面では、SDLが認識するコントローラーを使用できます。
 GBとN64の割当は`KEY CONFIG`画面で設定し、Client設定ファイルへ保存します。
+Link Cable ROOMでは、Host／Remoteとも各Clientの`SLOT 1 KEYS`を使用します。
+OSで選択中のキーボード入力方式は変更しません。
+
+Clientはウィンドウの端をドラッグして自由に大きさを変更でき、終了時のサイズを次回起動時に
+復元します。Clientから起動するGBのLOCAL、Mobile Mode、Link Cable ROOMのHost／Remote
+画面は、起動時のClientと同じウィンドウサイズになり、その後は独立して変更できます。
+GB映像は整数倍率・最近傍補間で中央表示し、余った領域は黒い余白になります。
 
 ROOMはサーバーが発行するルームコードで作成・参加します。番号一覧から直接参加する
 旧方式はありません。
+`CREATE ROOM`では`LINK CABLE ROOM`、`N64 ROOM`、`BACK`から選択します。
 
 ## ROMとSAV
 
@@ -167,6 +176,9 @@ LOCALプレイとMobile Modeでは、サーバーから取得したSAVをセッ�
 一時的に書き出します。Runtime終了後、変更されたSAVをサーバーへ反映してから
 一時ファイルを削除します。
 
+SERVER2では、同じROMをSLOT1とSLOT2に指定できます。登録枠ごとに異なるSAVを使用し、
+同じSAVを両方へ指定することはできません。
+
 通信障害などでSAVを反映できなかった場合は、利用者自身の候補SAVを
 `runtime/save-outbox/`へ保護して、次回の再送に使用します。
 
@@ -178,11 +190,26 @@ EXPORT、回復用outboxには保存しません。
 
 BattleではSAVを更新しません。Tradeでは、両者の終了結果が一致した場合だけ、
 両者のSAVを一組としてサーバーへ反映します。
+Link Cable ROOMを正常終了できるのはHostだけです。HostがEscまたはウィンドウの
+閉じるボタンから確認して終了すると、Battleは保存せず終了し、TradeはRemoteとの
+終了確認が一致した場合だけ両者のSAVを反映します。Remoteが同じ操作を行った場合は
+Tradeの終了確認に両者のSAVが更新されない旨を表示し、ROOMからの明示離脱となります。
+再接続やSAV反映は行いません。一時的なRemote切断だけは、
+従来どおり最大20秒間Hostを停止して再接続を待ちます。
+
+RTC搭載ROMのSAVにRTC情報がない場合や形式が対応外の場合は、通信開始前に拒否します。
+User1側で両者のSAVを確認し、確認が終わるまで通信接続は開始しません。その場合は
+LOCALで一度ゲームを起動し、正常に終了してから再度お試しください。
+対応するRTC情報がある場合は、通信開始時に各SAVの時計をサーバー時刻まで
+個別に進め、その後は通常のエミュレーション進行に合わせて更新します。
 
 ## Mobile Mode
 
 Mobile Modeでは、サーバーが配信したパッケージをGB Runtimeへ渡します。
 SAVの取得、更新、回復方法はLOCALプレイと同じで、サーバー上のSAVが正本です。
+起動時のRTC補正もLOCALプレイと同じです。終了確認から正常終了すると、RTCを含むSAVを
+書き出します。Clientは正常終了、battery flush、SAVのサイズとhashを確認してから
+サーバーへ反映し、その後にMobileセッションを完了します。
 
 ゲーム固有の配信内容はサーバー側の追加パッケージで管理し、C Clientには組み込みません。
 
@@ -190,6 +217,7 @@ SAVの取得、更新、回復方法はLOCALプレイと同じで、サーバー
 
 User1のPCがN64 Runtimeを実行します。User2のClientは映像と音声を受信し、
 コントローラー入力をUser1へ送信します。
+User2の映像はウィンドウに収まる最大サイズで、アスペクト比を保って表示します。
 
 N64 ROMとTransfer Pak用SAVは、User1のセッション用ディレクトリへ一時的に配置されます。
 N64 ROOMの実行結果は、どちらの利用者のサーバーSAVにも反映しません。
@@ -211,6 +239,7 @@ make -C c_client smoke
 make -C c_client room-poll-worker-test
 make -C c_client media-codec-test
 make -C runtimes/gb/src key-config-controller-test
+make -C runtimes/gb/src display-scale-test menu-config-display-scale-test
 ```
 
 `smoke`には、Client設定、現行API、ROOM matching、Mobile契約、ROM解決、
@@ -222,6 +251,13 @@ Windowsでは、次のOS固有検証も実行します。
 make -C c_client media-foundation-probe
 make -C c_client media-h264-test
 make -C c_client n64-runtime-stop-process-test
+```
+
+Linuxでは、Link Cable ROOMとN64 ROOMで使用するH.264処理を次のコマンドで
+確認します。
+
+```bash
+make -C c_client media-h264-test
 ```
 
 ## Linux／Windows配布アーカイブの作成

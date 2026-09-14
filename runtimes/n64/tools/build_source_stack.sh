@@ -178,9 +178,6 @@ echo "[2/6] Building SDL input plugin"
 export_source_tree mupen64plus-input-sdl "$input_build"
 apply_patch_once "$input_build" "$project_root/patches/mupen64plus-input-sdl-physical-scancode.patch"
 apply_patch_once "$input_build" "$project_root/patches/mupen64plus-input-sdl-remote-controller2.patch"
-if [ "$(uname -s)" = "Darwin" ]; then
-    input_sdl_ldlibs="$input_sdl_ldlibs -framework Carbon"
-fi
 make -C "$input_build/projects/unix" -j"$jobs" \
     $make_uname \
     CC="$mupen_cc" \

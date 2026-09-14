@@ -38,9 +38,8 @@ sudo integral-server start
 curl http://127.0.0.1:8080/health
 ```
 
+同じPCまたは信頼できるLANで、TLS証明書を用意せずに利用する場合は、初回起動前にネットワークモードをplainへ変更してください（[サーバー運用](docs/INTEGRAL_SERVER_APPLICATION.md)）。
 正常に起動していれば、`/health`から`{"ok": true}`が返ります。
-初回起動前に、公開サーバー向けの`tls`または信頼できる家庭LAN向けの`plain`を
-設定してください。
 
 設定、ユーザー発行、バックアップ等は[サーバー運用](docs/INTEGRAL_SERVER_APPLICATION.md)を参照してください。C ClientとRuntimeのビルドは[C Client](docs/C_CLIENT.md)、[GB Runtime](runtimes/gb/README.md)、[N64 Runtime](runtimes/n64/README.md)を参照してください。
 

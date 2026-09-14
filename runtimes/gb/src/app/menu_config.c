@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "file_util.h"
+#include "display_scale.h"
 #include "key_config.h"
 #include "menu_paths.h"
 #include "string_util.h"
@@ -110,6 +111,12 @@ void integral_gb_runtime_menu_load_config_file(IntegralGBRuntimeMenu *menu)
                 (void)integral_gb_runtime_copy_text(menu->slot1_rom, sizeof(menu->slot1_rom), value);
             }
         }
+        else if (strcmp(name, "display_scale") == 0) {
+            unsigned scale = INTEGRAL_DISPLAY_SCALE_AUTO;
+            if (integral_display_scale_parse(value, &scale) == 0) {
+                menu->display_scale = scale;
+            }
+        }
     }
     fclose(in);
 }
@@ -142,7 +149,7 @@ int integral_gb_runtime_menu_save_config_file(const IntegralGBRuntimeMenu *menu)
     if (!out) {
         return -1;
     }
-    fprintf(out, "# INTEGRAL EMULATOR GB Runtime key settings\n");
+    fprintf(out, "# INTEGRAL EMULATOR GB Runtime settings\n");
     fprintf(out, "slot1_keys=%s\n", menu->slot1_keys);
     fprintf(out, "slot2_keys=%s\n", menu->slot2_keys);
     fprintf(out, "fast_key=%s\n", menu->fast_key);
@@ -151,6 +158,10 @@ int integral_gb_runtime_menu_save_config_file(const IntegralGBRuntimeMenu *menu)
     fprintf(out, "turbo_hold_key=%s\n", menu->turbo_hold_key);
     fprintf(out, "reset_key=%s\n", menu->reset_key);
     fprintf(out, "recent_slot1_rom=%s\n", menu->slot1_rom);
+    char display_scale[16];
+    integral_display_scale_format(menu->display_scale,
+                                  display_scale, sizeof(display_scale));
+    fprintf(out, "display_scale=%s\n", display_scale);
     int result = ferror(out) ? -1 : 0;
     if (fclose(out) != 0) {
         result = -1;

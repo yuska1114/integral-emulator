@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from integral_emulator.database import AuthorityDatabase
 from integral_emulator.errors import (
@@ -209,12 +211,31 @@ class SQLiteRoomManagerTests(unittest.TestCase):
         self.assertEqual(actions[0]["room_number"], room.room_number)
         self.assertEqual(self.room_manager.room(room.room_number).users, [])
 
-    def test_product_session_durations_are_fixed(self) -> None:
+    def test_product_session_duration_defaults(self) -> None:
         policy = RoomSessionPolicy.from_environment()
         self.assertEqual(policy.waiting_room_idle_seconds, 600)
         self.assertEqual(policy.link_seconds, 3600)
         self.assertEqual(policy.n64_runtime_seconds, 7200)
+        self.assertEqual(policy.gb_local_seconds, 172800)
+        self.assertEqual(policy.gb_mobile_seconds, 172800)
+        self.assertEqual(policy.n64_local_seconds, 172800)
         self.assertEqual(policy.finalize_seconds, 300)
+
+    def test_product_session_durations_are_configurable(self) -> None:
+        values = {
+            "INTEGRAL_EMULATOR_GB_LOCAL_GAME_SECONDS": "101",
+            "INTEGRAL_EMULATOR_GB_MOBILE_GAME_SECONDS": "102",
+            "INTEGRAL_EMULATOR_N64_LOCAL_GAME_SECONDS": "103",
+            "INTEGRAL_EMULATOR_LINK_CABLE_ROOM_GAME_SECONDS": "104",
+            "INTEGRAL_EMULATOR_N64_ROOM_GAME_SECONDS": "105",
+        }
+        with patch.dict(os.environ, values, clear=False):
+            policy = RoomSessionPolicy.from_environment()
+        self.assertEqual(policy.gb_local_seconds, 101)
+        self.assertEqual(policy.gb_mobile_seconds, 102)
+        self.assertEqual(policy.n64_local_seconds, 103)
+        self.assertEqual(policy.link_seconds, 104)
+        self.assertEqual(policy.n64_runtime_seconds, 105)
 
     def test_two_user_ready_and_post_game_deadlines_close_rooms(self) -> None:
         policy = RoomSessionPolicy(waiting_room_idle_seconds=1)

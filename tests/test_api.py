@@ -43,6 +43,7 @@ from integral_emulator.errors import (
 )
 from integral_emulator.gb_runtime_fixed_host_protocol import GBRuntimeFixedHostManifest
 from integral_emulator.sessions import LinkSessionStatus
+from integral_emulator.room_session_policy import RoomSessionPolicy
 from integral_emulator.storage import LeagueStorage
 from integral_emulator.gb_runtime_link_modes import link_mode_profile
 from integral_emulator.ui import DASHBOARD_HTML, render_admin_html, render_admin_login_html
@@ -851,6 +852,92 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(stopped["link_session"])
         self.assertFalse(inactive["active"])
         self.assertTrue(next_session["id"].startswith("link_"))
+
+    def test_local_game_deadlines_use_mode_policy_and_do_not_slide(self) -> None:
+        self.post(
+            "/auth/register",
+            {"username": "Deadline_User", "password": "correct horse battery staple"},
+        )
+        token = self.post(
+            "/auth/login",
+            {"username": "deadline_user", "password": "correct horse battery staple"},
+        )["token"]["token"]
+        slots = self.post(
+            "/rom-slots/apply",
+            {"slots": [
+                {
+                    "slot": 1,
+                    "filename": "deadline.gb",
+                    "sha256": "e" * 64,
+                    "game_type": "deadline_gb",
+                    "region": "JP",
+                },
+                {
+                    "slot": 2,
+                    "filename": "deadline.z64",
+                    "sha256": "f" * 64,
+                    "game_type": "deadline_n64",
+                    "region": "JP",
+                },
+            ]},
+            token=token,
+        )["slots"]
+        gb_save, n64_save = slots[0], slots[1]
+        self.app.sessions.policy = RoomSessionPolicy(
+            gb_local_seconds=101,
+            gb_mobile_seconds=102,
+            n64_local_seconds=103,
+        )
+
+        def duration_seconds(lock: dict) -> int:
+            return int(
+                (
+                    datetime.fromisoformat(lock["expires_at"])
+                    - datetime.fromisoformat(lock["started_at"])
+                ).total_seconds()
+            )
+
+        local = self.post(
+            "/game/start",
+            {"execution_mode": "LOCAL_CLIENT", "save_ids": [gb_save["save_id"]]},
+            token=token,
+        )["game_session"]
+        self.assertEqual(duration_seconds(local), 101)
+        heartbeat = self.post(
+            "/game/heartbeat", self.game_fence({"game_session": local}), token=token
+        )["game_session"]
+        self.assertEqual(heartbeat["expires_at"], local["expires_at"])
+        self.post(
+            "/game/stop", self.game_fence({"game_session": local}), token=token
+        )
+
+        n64 = self.post(
+            "/game/start",
+            {
+                "execution_mode": "N64_RUNTIME_CLIENT",
+                "save_ids": [n64_save["save_id"], gb_save["save_id"]],
+            },
+            token=token,
+        )["game_session"]
+        self.assertEqual(duration_seconds(n64), 103)
+        self.post(
+            "/game/stop", self.game_fence({"game_session": n64}), token=token
+        )
+
+        mobile = self.app.sessions.acquire_local_game_session_lock(
+            gb_save["user_id"],
+            self.app.game_session_lease_expires_at(),
+            hashlib.sha256(token.encode()).hexdigest(),
+            execution_mode="MOBILE_CLIENT",
+            saves=[self.app.saves.get_save(gb_save["save_id"], gb_save["user_id"])],
+        )
+        self.assertEqual(duration_seconds(mobile.to_dict()), 102)
+        self.app.sessions.release_user_game_session_lock(
+            gb_save["user_id"],
+            hashlib.sha256(token.encode()).hexdigest(),
+            mobile.game_session_id,
+            mobile.fencing_token,
+        )
 
     def test_local_game_start_rejects_duplicate_and_n64_saves(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
@@ -2419,14 +2506,17 @@ class ApiTests(unittest.TestCase):
             stale = dict(host_body)
             stale["fencing_token"] += 1
             self.post(f"/gb-runtime-fixed-host-sessions/{link['id']}/host-finish", stale, token=token_a)
-        remote_waiting = self.post(
+        host_waiting = self.post(
+            f"/gb-runtime-fixed-host-sessions/{link['id']}/host-finish", host_body,
+            token=token_a,
+        )["gb_runtime_fixed_host_session"]
+        self.assertEqual(host_waiting["state"], "FINALIZING")
+        self.assertIsNone(self.app.sync_link_session_saves(link["id"]))
+        self.assertEqual(self.app.saves.get_save(link["save_a_id"]).revision, 1)
+        self.assertEqual(self.app.saves.get_save(link["save_b_id"]).revision, 1)
+        finished = self.post(
             f"/gb-runtime-fixed-host-sessions/{link['id']}/terminal-receipt",
             {"terminal_digest": digest, "final_frame": 9001}, token=token_b,
-        )["gb_runtime_fixed_host_session"]
-        self.assertEqual(remote_waiting["state"], "FINALIZING")
-        self.assertEqual(self.app.saves.get_save(link["save_a_id"]).revision, 1)
-        finished = self.post(
-            f"/gb-runtime-fixed-host-sessions/{link['id']}/host-finish", host_body, token=token_a
         )["gb_runtime_fixed_host_session"]
         self.assertEqual(finished["state"], "FINISHED")
         self.assertEqual(finished["finish_roles"], ["host", "remote"])
@@ -2825,6 +2915,63 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(second["rom_id"], first["rom_id"])
         self.assertEqual(second["save_id"], first["save_id"])
         self.assertEqual(len(self.get("/saves", token=token)["saves"]), 1)
+
+    def test_same_rom_in_two_slots_uses_independent_saves(self) -> None:
+        self.post(
+            "/auth/register",
+            {"username": "Same_Rom", "password": "correct horse battery staple"},
+        )
+        token = self.post(
+            "/auth/login",
+            {"username": "same_rom", "password": "correct horse battery staple"},
+        )["token"]["token"]
+        alpha = next(
+            rom
+            for rom in allowed_roms()
+            if rom.game_type == "sample_alpha" and rom.display_name == "SAMPLE ALPHA"
+        )
+        same_rom = {
+            "filename": "roms/a.gbc",
+            "sha256": alpha.sha256,
+            "sha1": alpha.sha1,
+            "game_type": "sample_alpha",
+            "region": "JP",
+        }
+        slots = self.post(
+            "/rom-slots/apply",
+            {"slots": [{"slot": 1, **same_rom}, {"slot": 2, **same_rom}]},
+            token=token,
+        )["slots"]
+
+        self.assertEqual(slots[0]["rom_id"], slots[1]["rom_id"])
+        self.assertNotEqual(slots[0]["save_id"], slots[1]["save_id"])
+        started = self.post(
+            "/game/start",
+            {
+                "execution_mode": "LOCAL_CLIENT",
+                "save_ids": [slots[0]["save_id"], slots[1]["save_id"]],
+            },
+            token=token,
+        )
+        first_data = b"1" + bytes(32 * 1024 - 1)
+        second_data = b"2" + bytes(32 * 1024 - 1)
+        fence = self.game_fence(started)
+        self.put(
+            f"/saves/{slots[0]['save_id']}",
+            {"expected_revision": 1, "save_data": encode(first_data), **fence},
+            token=token,
+        )
+        self.put(
+            f"/saves/{slots[1]['save_id']}",
+            {"expected_revision": 1, "save_data": encode(second_data), **fence},
+            token=token,
+        )
+        self.post("/game/stop", fence, token=token)
+
+        first = self.get(f"/saves/{slots[0]['save_id']}", token=token)
+        second = self.get(f"/saves/{slots[1]['save_id']}", token=token)
+        self.assertEqual(decode(first["save_data"]), first_data)
+        self.assertEqual(decode(second["save_data"]), second_data)
 
     def test_rom_slot_apply_rejects_initial_save_for_unchanged_rom(self) -> None:
         self.app.allow_user_initial_save_import = True

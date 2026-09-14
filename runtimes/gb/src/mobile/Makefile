@@ -37,6 +37,7 @@ MOBILE_RUNTIME_HOST_TEST_BIN := $(BUILD_DIR)/mobile_runtime_host_test
 MOBILE_ROUTE_ENGINE_TEST_BIN := $(BUILD_DIR)/mobile_route_engine_test
 
 COMMON_SOURCES := \
+	$(GB_SRC)/common/display_scale.c \
 	$(GB_SRC)/common/file_util.c \
 	$(GB_SRC)/common/key_config.c \
 	$(GB_SRC)/common/net_compat.c \

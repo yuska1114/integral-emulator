@@ -7,12 +7,13 @@
 #include <string.h>
 
 #include "file_util.h"
+#include "display_scale.h"
 #include "parse_util.h"
 #include "protocol.h"
 
 void integral_gb_runtime_server_print_usage(const char *program)
 {
-    printf("Usage: %s --rom1 PATH [--rom2 PATH] --save1 PATH [--save2 PATH] [--self] [--display-slots 1|2] [--slot1-keys SPEC] [--slot2-keys SPEC] [--fast-key KEY] [--screenshot-key KEY] [--escape-key KEY] [--turbo-hold-key KEY] [--reset-key KEY] [--speed 1|2|3|4] [--auto-a-frames N] [--auto-a-pulse N] [--slot1-macro TEXT] [--slot2-macro TEXT] [--macro-step-frames N] [--macro-press-frames N] [--macro-screenshots] [--dump-screenshot] [--lan-remote] [--lan-remote-port PORT] [--rtc-offset-minutes N] [--rtc-offset-seconds N] [--smoke-screenshot] [--bind ADDR] [--port PORT] [--frames N] [--display] [--scale N] [--audio] [--no-audio] [--audio-max-ms N] [--no-skip-boot-rom] [--no-link] [--remote-input] [--remote-input-dual] [--auth-token TOKEN] [--slot1-auth-token TOKEN] [--slot2-auth-token TOKEN] [--slot1-auth-token-file PATH] [--slot2-auth-token-file PATH]\n", program);
+    printf("Usage: %s --rom1 PATH [--rom2 PATH] --save1 PATH [--save2 PATH] [--self] [--display-slots 1|2] [--slot1-keys SPEC] [--slot2-keys SPEC] [--fast-key KEY] [--screenshot-key KEY] [--escape-key KEY] [--turbo-hold-key KEY] [--reset-key KEY] [--speed 1|2|3|4] [--auto-a-frames N] [--auto-a-pulse N] [--slot1-macro TEXT] [--slot2-macro TEXT] [--macro-step-frames N] [--macro-press-frames N] [--macro-screenshots] [--dump-screenshot] [--lan-remote] [--lan-remote-port PORT] [--rtc-offset-minutes N] [--rtc-offset-seconds N] [--smoke-screenshot] [--bind ADDR] [--port PORT] [--frames N] [--display] [--scale auto|1|2|3|4|5|6] [--window-width N --window-height N] [--audio] [--no-audio] [--audio-max-ms N] [--no-skip-boot-rom] [--no-link] [--remote-input] [--remote-input-dual] [--auth-token TOKEN] [--slot1-auth-token TOKEN] [--slot2-auth-token TOKEN] [--slot1-auth-token-file PATH] [--slot2-auth-token-file PATH]\n", program);
 }
 
 static bool read_auth_token_file(const char *path, char *dest, size_t dest_size)
@@ -41,7 +42,8 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
 {
     options->bind = "127.0.0.1";
     options->port = INTEGRAL_GB_RUNTIME_DEFAULT_PORT;
-    options->scale = 3;
+    options->scale = integral_display_scale_from_environment(
+        "INTEGRAL_EMULATOR_DISPLAY_SCALE");
     options->skip_boot_rom = true;
     options->link_enabled = true;
     options->audio_max_ms = 120;
@@ -274,10 +276,22 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
             }
         }
         else if (strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
-            if (integral_gb_runtime_parse_uint_range(argv[++i], 0, 65535, &options->scale) != 0 ||
-                options->scale == 0 ||
-                options->scale > 8) {
+            if (integral_display_scale_parse(argv[++i], &options->scale) != 0) {
                 fprintf(stderr, "Invalid --scale value\n");
+                return -1;
+            }
+        }
+        else if (strcmp(argv[i], "--window-width") == 0 && i + 1 < argc) {
+            if (integral_gb_runtime_parse_uint_range(argv[++i], 160, 16384,
+                                                     &options->window_width) != 0) {
+                fprintf(stderr, "Invalid --window-width value\n");
+                return -1;
+            }
+        }
+        else if (strcmp(argv[i], "--window-height") == 0 && i + 1 < argc) {
+            if (integral_gb_runtime_parse_uint_range(argv[++i], 144, 16384,
+                                                     &options->window_height) != 0) {
+                fprintf(stderr, "Invalid --window-height value\n");
                 return -1;
             }
         }
@@ -299,10 +313,11 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
         fprintf(stderr, "Missing required Slot 2 save path\n");
         return -1;
     }
-    if (!options->self_mode &&
-        options->rom2 &&
-        integral_gb_runtime_paths_refer_to_same_regular_file(options->rom1, options->rom2)) {
-        fprintf(stderr, "Slot 1 and Slot 2 ROM must be different files\n");
+    if (!options->self_mode && options->save2 &&
+        (strcmp(options->save1, options->save2) == 0 ||
+         integral_gb_runtime_paths_refer_to_same_regular_file(options->save1,
+                                                               options->save2))) {
+        fprintf(stderr, "Slot 1 and Slot 2 saves must be different files\n");
         return -1;
     }
     if (options->self_mode) {
@@ -310,6 +325,12 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
         options->remote_input_enabled = false;
         options->remote_input_dual_enabled = false;
         options->display_slots = 1;
+    }
+    if ((options->window_width == 0u) != (options->window_height == 0u) ||
+        (options->window_width != 0u &&
+         options->window_width < INTEGRAL_GB_RUNTIME_GB_WIDTH * options->display_slots)) {
+        fprintf(stderr, "GB target window size must contain the selected display slots\n");
+        return -1;
     }
     if (options->remote_input_dual_enabled && (!options->remote_input_enabled || !options->rom2)) {
         fprintf(stderr, "--remote-input-dual requires --remote-input and --rom2\n");

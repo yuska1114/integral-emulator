@@ -58,7 +58,8 @@ int integral_gb_runtime_screenshot_save_slot(const IntegralGBRuntimeSlot *slot, 
         return -1;
     }
 
-    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom((void *)slot->pixels,
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(
+                                                              (void *)integral_gb_runtime_slot_presented_pixels(slot),
                                                               INTEGRAL_GB_RUNTIME_GB_WIDTH,
                                                               INTEGRAL_GB_RUNTIME_GB_HEIGHT,
                                                               32,

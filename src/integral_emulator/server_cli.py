@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import math
 import os
 import pwd
 import re
@@ -38,6 +39,7 @@ DEFAULT_MOBILE_PACKAGE_ROOT = DEFAULT_STORAGE / "mobile-packages"
 UNINSTALL_HELPER = "/usr/local/libexec/integral-server-uninstall"
 ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 DEFAULT_EDITOR = "vi"
+DEFAULT_CERT_RELOAD_INTERVAL_SECONDS = 60.0
 
 
 class ConfigurationError(ValueError):
@@ -211,6 +213,7 @@ def write_initial_configuration(path: Path, storage: Path) -> bool:
             "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PORT=25164",
             "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_FILE=/etc/integral-server/media-relay.crt",
             "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_KEY_FILE=/etc/integral-server/media-relay.key",
+            "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_RELOAD_INTERVAL_SECONDS=60",
             f"INTEGRAL_EMULATOR_STORAGE_ROOT={storage}",
             f"INTEGRAL_EMULATOR_GB_RUNTIME_MOBILE_PACKAGE_ROOT={storage / 'mobile-packages'}",
             "INTEGRAL_EMULATOR_PUBLIC_BASE_PATH=",
@@ -221,6 +224,12 @@ def write_initial_configuration(path: Path, storage: Path) -> bool:
             "INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION=0",
             "# Set to 1 to allow an explicit user-selected initial SAV during ROM registration.",
             "INTEGRAL_EMULATOR_ALLOW_USER_INITIAL_SAVE_IMPORT=0",
+            "# Total game durations in seconds. Heartbeats do not extend them.",
+            "INTEGRAL_EMULATOR_GB_LOCAL_GAME_SECONDS=172800",
+            "INTEGRAL_EMULATOR_GB_MOBILE_GAME_SECONDS=172800",
+            "INTEGRAL_EMULATOR_N64_LOCAL_GAME_SECONDS=172800",
+            "INTEGRAL_EMULATOR_LINK_CABLE_ROOM_GAME_SECONDS=3600",
+            "INTEGRAL_EMULATOR_N64_ROOM_GAME_SECONDS=7200",
             "# Enabled ROOM numbers accept comma-separated values and inclusive ranges.",
             "INTEGRAL_EMULATOR_LINK_CABLE_ROOMS=1-16",
             "INTEGRAL_EMULATOR_N64_ROOMS=65-80",
@@ -307,14 +316,14 @@ def command_run(args: argparse.Namespace) -> int:
     if network_mode == NETWORK_MODE_PLAIN:
         print(
             "WARNING: API credentials and data are not encrypted; "
-            "use only on the same machine or a trusted local network",
+            "use only on the same machine or a trusted LAN",
             flush=True,
         )
     run_server(host, port, storage)
     return 0
 
 
-def resolved_media_relay() -> tuple[str, int, str, Path | None, Path | None]:
+def resolved_media_relay() -> tuple[str, int, str, Path | None, Path | None, float]:
     transport = configured_network_mode()
     host = os.environ.get(
         "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_HOST", "127.0.0.1"
@@ -339,15 +348,32 @@ def resolved_media_relay() -> tuple[str, int, str, Path | None, Path | None]:
     ).strip()
     cert_file = Path(cert_value).expanduser().absolute() if cert_value else None
     key_file = Path(key_value).expanduser().absolute() if key_value else None
-    return host, port, transport, cert_file, key_file
+    raw_reload_interval = os.environ.get(
+        "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_RELOAD_INTERVAL_SECONDS",
+        str(DEFAULT_CERT_RELOAD_INTERVAL_SECONDS),
+    )
+    try:
+        reload_interval = float(raw_reload_interval)
+    except ValueError as error:
+        raise ConfigurationError(
+            "media relay certificate reload interval must be a number"
+        ) from error
+    if not math.isfinite(reload_interval) or reload_interval <= 0:
+        raise ConfigurationError(
+            "media relay certificate reload interval must be positive"
+        )
+    return host, port, transport, cert_file, key_file, reload_interval
 
 
 def command_media_relay(args: argparse.Namespace) -> int:
     config = Path(args.config).expanduser().resolve()
     apply_environment(config, required=True)
-    host, port, transport, cert_file, key_file = resolved_media_relay()
+    host, port, transport, cert_file, key_file, reload_interval = resolved_media_relay()
     _api_host, _api_port, storage = resolved_runtime(args)
-    from .n64_runtime_media_relay import AuthenticatedN64RuntimeMediaRelay
+    from .n64_runtime_media_relay import (
+        AuthenticatedN64RuntimeMediaRelay,
+        ReloadingTLSContext,
+    )
 
     relay = AuthenticatedN64RuntimeMediaRelay(
         [storage, storage / "servers" / "secondary"]
@@ -357,10 +383,18 @@ def command_media_relay(args: argparse.Namespace) -> int:
             raise ConfigurationError(
                 "TLS media relay requires certificate and private-key paths"
             )
-        tls_context = relay.create_tls_context(cert_file, key_file)
+        reloader = ReloadingTLSContext(cert_file, key_file, reload_interval)
+        tls_context = reloader.current_context()
     else:
         tls_context = None
-    relay.serve(host, port, tls_context, transport)
+        reloader = None
+    relay.serve(
+        host,
+        port,
+        tls_context,
+        transport,
+        tls_context_reloader=reloader,
+    )
     return 0
 
 
@@ -396,7 +430,7 @@ def command_doctor(args: argparse.Namespace) -> int:
     )
     checks.append((bool(admin_password), "administrator password configured"))
     try:
-        relay_host, relay_port, transport, cert_file, key_file = resolved_media_relay()
+        relay_host, relay_port, transport, cert_file, key_file, reload_interval = resolved_media_relay()
         socket.getaddrinfo(relay_host, relay_port, type=socket.SOCK_STREAM)
         public_host = os.environ.get(
             "INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PUBLIC_HOST", ""
@@ -406,6 +440,12 @@ def command_doctor(args: argparse.Namespace) -> int:
             (True, f"media relay setting valid: {relay_host}:{relay_port} ({transport})")
         )
         if transport == NETWORK_MODE_TLS:
+            checks.append(
+                (
+                    True,
+                    f"media relay certificate reload interval: {reload_interval:g} seconds",
+                )
+            )
             try:
                 certificate_ok = bool(
                     cert_file and cert_file.is_file() and os.access(cert_file, os.R_OK)
@@ -424,7 +464,7 @@ def command_doctor(args: argparse.Namespace) -> int:
             checks.append(
                 (
                     True,
-                    "WARNING: API and media relay transport is not encrypted; trusted local network only",
+                    "WARNING: API and media relay transport is not encrypted; trusted LAN only",
                 )
             )
     except Exception as error:

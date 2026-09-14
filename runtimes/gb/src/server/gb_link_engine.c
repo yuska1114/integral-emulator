@@ -86,8 +86,7 @@ static void link_engine_vblank(GB_gameboy_t *gb, GB_vblank_type_t type)
     IntegralGBRuntimeSlot *slot;
     (void)engine_for_gb(gb, &slot);
     if (!slot) return;
-    slot->vblank_occurred = true;
-    slot->vblank_count++;
+    integral_gb_runtime_slot_note_vblank(slot);
 }
 
 static void ir_a(GB_gameboy_t *gb, bool output)
@@ -154,7 +153,8 @@ static int load_battery_deterministically(IntegralGBRuntimeSlot *slot,
     }
     GB_load_battery_from_buffer(gb, save, save_size);
     /* SameBoy serializes last_rtc_second even for cartridges without RTC.
-       Keep that otherwise-unused field deterministic across process starts. */
+       Use a fixed value only when that field has no cartridge meaning; the
+       supported RTC layouts below restore their persisted time origin. */
     gb->last_rtc_second = LINK_RTC_EPOCH;
     if (!gb->cartridge_type->has_rtc && gb->cartridge_type->mbc_type != GB_HUC3) {
         return 0;
@@ -165,6 +165,7 @@ static int load_battery_deterministically(IntegralGBRuntimeSlot *slot,
     const uint8_t *rtc = save + (save_size < ram_size ? save_size : ram_size);
     if (gb->cartridge_type->mbc_type == GB_HUC3) {
         if (rtc_size != sizeof(GB_huc3_rtc_time_t)) return -1;
+        gb->last_rtc_second = decode_u64_le(rtc);
         gb->huc3.minutes = decode_u16_le(rtc + 8);
         gb->huc3.days = decode_u16_le(rtc + 10);
         gb->huc3.alarm_minutes = decode_u16_le(rtc + 12);
@@ -174,6 +175,7 @@ static int load_battery_deterministically(IntegralGBRuntimeSlot *slot,
     else if (gb->cartridge_type->mbc_type == GB_TPP1) {
         if (rtc_size != 20) return -1;
         gb->tpp1_mr4 = rtc[6];
+        gb->last_rtc_second = decode_u64_le(rtc + 8);
         for (unsigned i = 0; i < 4; i++) gb->rtc_real.data[i ^ 3] = rtc[16 + i];
     }
     else {
@@ -182,28 +184,111 @@ static int load_battery_deterministically(IntegralGBRuntimeSlot *slot,
         if (rtc_size != 48) return -1;
         decode_vba_rtc_time(&gb->rtc_real, rtc);
         decode_vba_rtc_time(&gb->rtc_latched, rtc + 20);
-        (void)decode_u64_le(rtc + 40); /* validated layout; host time is ignored */
+        gb->last_rtc_second = decode_u64_le(rtc + 40);
     }
     return 0;
+}
+
+static IntegralGBRuntimeLinkSavePreflightStatus save_preflight_for_loaded_rom(
+    const GB_gameboy_t *gb, size_t save_size)
+{
+    if (!gb || !gb->cartridge_type) {
+        return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_ROM_ERROR;
+    }
+    if (!gb->cartridge_type->has_rtc &&
+        gb->cartridge_type->mbc_type != GB_HUC3) {
+        return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_OK;
+    }
+    size_t rtc_size = 48u;
+    if (gb->cartridge_type->mbc_type == GB_HUC3) {
+        rtc_size = sizeof(GB_huc3_rtc_time_t);
+    }
+    else if (gb->cartridge_type->mbc_type == GB_TPP1) {
+        rtc_size = 20u;
+    }
+    if (save_size == gb->mbc_ram_size) {
+        return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_RTC_MISSING;
+    }
+    if (save_size != gb->mbc_ram_size + rtc_size) {
+        return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_RTC_UNSUPPORTED;
+    }
+    return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_OK;
+}
+
+IntegralGBRuntimeLinkSavePreflightStatus
+integral_gb_runtime_link_save_preflight(const char *rom_path, size_t save_size)
+{
+    GB_model_t model;
+    IntegralGBRuntimeRomProfile profile;
+    IntegralGBRuntimeRomModelReason reason;
+    IntegralGBRuntimeSlot slot;
+    if (!rom_path ||
+        integral_gb_runtime_slot_model_for_rom(
+            rom_path, &model, &profile, &reason) != 0) {
+        return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_ROM_ERROR;
+    }
+    /* This check only loads the cartridge to inspect its RAM/RTC layout.  An
+       SGB-capable cartridge does not need the SGB2 bootstrap resource until
+       the real Runtime starts.  Use the equivalent DMG core here so the
+       Client-side preflight is independent of the Runtime resource path. */
+    GB_model_t inspection_model =
+        model == GB_MODEL_SGB2 ? GB_MODEL_DMG_B : model;
+    IntegralGBRuntimeSlotConfig config = {
+        .name = "link-save-preflight",
+        .rom_path = rom_path,
+        .save_path = NULL,
+        .model = inspection_model,
+        .skip_boot_rom = true,
+        .battery_mode = INTEGRAL_GB_RUNTIME_BATTERY_MEMORY_ONLY,
+        .battery_buffer = NULL,
+        .battery_buffer_size = 0u,
+    };
+    if (integral_gb_runtime_slot_init(&slot, &config) != 0) {
+        return INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_ROM_ERROR;
+    }
+    IntegralGBRuntimeLinkSavePreflightStatus status =
+        save_preflight_for_loaded_rom(slot.gb, save_size);
+    integral_gb_runtime_slot_free_without_save(&slot);
+    return status;
 }
 
 static void advance_rtc_deterministically(GB_gameboy_t *gb, uint64_t seconds)
 {
     if (gb->cartridge_type->mbc_type == GB_HUC3) {
-        while (seconds--) {
-            gb->last_rtc_second++;
-            if (gb->last_rtc_second % 60 != 0) continue;
-            if (++gb->huc3.minutes == 60 * 24) {
-                gb->huc3.minutes = 0;
-                gb->huc3.days++;
-            }
+        uint64_t to_minute = 60u - gb->last_rtc_second % 60u;
+        if (seconds < to_minute) {
+            gb->last_rtc_second += seconds;
+            return;
         }
+        gb->last_rtc_second += to_minute;
+        seconds -= to_minute;
+        uint64_t minutes = 1u + seconds / 60u;
+        seconds %= 60u;
+        uint64_t total_minutes = (uint64_t)gb->huc3.minutes + minutes;
+        gb->huc3.days += (uint16_t)(total_minutes / (60u * 24u));
+        gb->huc3.minutes = (uint16_t)(total_minutes % (60u * 24u));
+        gb->last_rtc_second += (minutes - 1u) * 60u + seconds;
         return;
     }
     bool running = gb->cartridge_type->mbc_type == GB_TPP1
         ? (gb->tpp1_mr4 & 0x4) != 0
         : (gb->rtc_real.high & 0x40) == 0;
     if (!running) return;
+    uint64_t days = seconds / (60u * 60u * 24u);
+    seconds %= 60u * 60u * 24u;
+    gb->last_rtc_second += days * (60u * 60u * 24u);
+    while (days--) {
+        if (gb->cartridge_type->mbc_type == GB_TPP1) {
+            if (++gb->rtc_real.tpp1.weekday == 7) {
+                gb->rtc_real.tpp1.weekday = 0;
+                if (++gb->rtc_real.tpp1.weeks == 0) gb->tpp1_mr4 |= 8;
+            }
+        }
+        else if (++gb->rtc_real.days == 0) {
+            if (gb->rtc_real.high & 1) gb->rtc_real.high |= 0x80;
+            gb->rtc_real.high ^= 1;
+        }
+    }
     while (seconds--) {
         gb->last_rtc_second++;
         if (++gb->rtc_real.seconds != 60) continue;
@@ -225,6 +310,13 @@ static void advance_rtc_deterministically(GB_gameboy_t *gb, uint64_t seconds)
             gb->rtc_real.high ^= 1;
         }
     }
+}
+
+static void catch_up_rtc_deterministically(GB_gameboy_t *gb,
+                                            uint64_t target_unix)
+{
+    if (target_unix <= gb->last_rtc_second) return;
+    advance_rtc_deterministically(gb, target_unix - gb->last_rtc_second);
 }
 
 static int init_slot(IntegralGBRuntimeSlot *slot,
@@ -262,6 +354,7 @@ int integral_gb_runtime_link_engine_init(IntegralGBRuntimeLinkEngine *engine,
                                  const IntegralGBRuntimeLinkEngineConfig *config)
 {
     if (!engine || !config || !config->rom_a || !config->rom_b ||
+        (config->rtc_offset_seconds != 0u && config->rtc_target_unix != 0u) ||
         (config->display_role != LINK_ROLE_A &&
          config->display_role != LINK_ROLE_B)) return -1;
     memset(engine, 0, sizeof(*engine));
@@ -276,7 +369,11 @@ int integral_gb_runtime_link_engine_init(IntegralGBRuntimeLinkEngine *engine,
         integral_gb_runtime_slot_free_without_save(&engine->a);
         return -1;
     }
-    if (config->rtc_offset_seconds > 0) {
+    if (config->rtc_target_unix > 0u) {
+        catch_up_rtc_deterministically(engine->a.gb, config->rtc_target_unix);
+        catch_up_rtc_deterministically(engine->b.gb, config->rtc_target_unix);
+    }
+    else if (config->rtc_offset_seconds > 0) {
         advance_rtc_deterministically(engine->a.gb, config->rtc_offset_seconds);
         advance_rtc_deterministically(engine->b.gb, config->rtc_offset_seconds);
     }
@@ -489,8 +586,8 @@ const uint32_t *integral_gb_runtime_link_engine_presented_pixels(
     const IntegralGBRuntimeLinkEngine *engine)
 {
     if (!engine || !engine->initialized) return NULL;
-    return engine->display_role == LINK_ROLE_A
-        ? engine->a.pixels : engine->b.pixels;
+    return integral_gb_runtime_slot_presented_pixels(
+        engine->display_role == LINK_ROLE_A ? &engine->a : &engine->b);
 }
 
 unsigned integral_gb_runtime_link_engine_drain_presented_audio(

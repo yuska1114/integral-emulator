@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "protocol.h"
+#include "display_scale.h"
 #include "sdl_text.h"
 #include "string_util.h"
 
@@ -268,6 +269,7 @@ void integral_gb_runtime_menu_draw(SDL_Renderer *renderer, const IntegralGBRunti
         "PORT",
         "CLIENT CART",
         "RTC OFFSET",
+        "DISPLAY SCALE",
     };
     const char *slot2_cart = menu->slot2_rom[0] == '\0' ? "<CLIENT UPLOAD>" : menu->slot2_rom;
     const char *auto_discover = menu->client_auto_discover ? "AUTOMATIC" : "MANUAL";
@@ -276,7 +278,9 @@ void integral_gb_runtime_menu_draw(SDL_Renderer *renderer, const IntegralGBRunti
                                    : "RECEIVE ONLY";
     char rtc_offset[32];
     char speed_value[16];
+    char display_scale[16];
     snprintf(speed_value, sizeof(speed_value), "x%u", menu->speed_multiplier);
+    integral_display_scale_format(menu->display_scale, display_scale, sizeof(display_scale));
     integral_gb_runtime_menu_format_rtc_offset(menu->rtc_offset_minutes, rtc_offset, sizeof(rtc_offset));
     bool self_features = menu->mode == INTEGRAL_GB_RUNTIME_MODE_SELF;
     const char *speed_display = self_features ? speed_value : "SELF ONLY";
@@ -292,6 +296,7 @@ void integral_gb_runtime_menu_draw(SDL_Renderer *renderer, const IntegralGBRunti
         menu->port,
         slot2_source,
         rtc_offset_value,
+        display_scale,
     };
 
     for (unsigned i = 0; i < INTEGRAL_GB_RUNTIME_MENU_ROWS; i++) {

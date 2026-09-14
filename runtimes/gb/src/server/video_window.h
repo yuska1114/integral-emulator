@@ -22,11 +22,25 @@ int integral_gb_runtime_video_window_open_titled(IntegralGBRuntimeVideoWindow **
                                         unsigned scale,
                                         unsigned slot_count,
                                         const char *title);
+int integral_gb_runtime_video_window_open_titled_sized(
+    IntegralGBRuntimeVideoWindow **window_out,
+    unsigned scale,
+    unsigned slot_count,
+    const char *title,
+    unsigned window_width,
+    unsigned window_height);
 int integral_gb_runtime_video_window_open_titled_unthrottled(
     IntegralGBRuntimeVideoWindow **window_out,
     unsigned scale,
     unsigned slot_count,
     const char *title);
+int integral_gb_runtime_video_window_open_titled_unthrottled_sized(
+    IntegralGBRuntimeVideoWindow **window_out,
+    unsigned scale,
+    unsigned slot_count,
+    const char *title,
+    unsigned window_width,
+    unsigned window_height);
 IntegralGBRuntimeVideoWindowPollResult integral_gb_runtime_video_window_poll(IntegralGBRuntimeVideoWindow *window,
                                                            IntegralGBRuntimeInputRouter *input_router,
                                                            const IntegralGBRuntimeSlot *slot1,

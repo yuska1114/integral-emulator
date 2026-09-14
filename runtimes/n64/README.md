@@ -23,6 +23,8 @@ make frontend
 
 通常のゲームプレイでは、INTEGRAL EMULATOR Clientが登録済みROMとセッション専用の作業パスをRuntimeへ渡します。Runtime自身はIntegral Serverへの認証や、サーバー上のSAVを確定する権限を持ちません。
 
+キーボード操作にはSDLの物理キー位置を使用し、OSで選択中の入力方式や入力ソースは変更しません。
+
 ## macOS
 
 Apple Silicon Macでは、Xcode Command Line ToolsとHomebrewの依存パッケージが必要です。

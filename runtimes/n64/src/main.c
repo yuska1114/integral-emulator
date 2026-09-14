@@ -30,7 +30,6 @@
 #include "gui/keymap.h"
 #include "gui/menu.h"
 #include "platform/dynlib.h"
-#include "platform/ime.h"
 #include "platform/thread.h"
 #include "remote_input.h"
 #include "remote_media_ipc.h"
@@ -914,10 +913,9 @@ static int run_frontend(Frontend *frontend)
     IntegralN64RuntimeThread stop_request_monitor_thread;
     bool stop_request_monitor_started = false;
 
-    SDL_SetHint(SDL_HINT_IME_SHOW_UI, "0");
     if (SDL_WasInit(SDL_INIT_VIDEO) == 0u &&
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
-        fprintf(stderr, "N64 Runtime: SDL direct-input initialization failed: %s\n",
+        fprintf(stderr, "N64 Runtime: SDL input initialization failed: %s\n",
                 SDL_GetError());
         return 14;
     }
@@ -1007,12 +1005,6 @@ static int run_frontend(Frontend *frontend)
     }
 
     g_frontend = frontend;
-    if (!integral_n64_runtime_ime_force_direct_input()) {
-        fprintf(stderr, "N64 Runtime: could not switch to direct keyboard input\n");
-        g_frontend = NULL;
-        return 14;
-    }
-    printf("N64 Runtime: direct keyboard input active before Core execution\n");
     printf("N64 Runtime: executing ROM %s\n", frontend->options.rom_path);
     if (frontend->remote_media_open) {
         memset(&remote_media_guard, 0, sizeof(remote_media_guard));

@@ -81,7 +81,9 @@ integral_gb_runtime_fixed_host_product_runtime_select_exit(
     if (runtime->exit_confirm_yes) {
         runtime->buttons = 0u;
         runtime->neutral_pending = true;
-        return INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONFIRMED;
+        return runtime->role == INTEGRAL_GB_RUNTIME_FIXED_HOST_PRODUCT_HOST
+                   ? INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_HOST_FINISH
+                   : INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_REMOTE_LEAVE;
     }
     integral_gb_runtime_fixed_host_product_runtime_cancel_exit(runtime);
     return INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONTINUE;

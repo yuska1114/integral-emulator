@@ -3,12 +3,14 @@
 """Authenticated, session-isolated TCP relay for N64 Runtime media traffic.
 
 TLS is the public-server default. Explicit plain transport supports trusted
-same-machine and household-LAN installations. UDP remains disabled.
+same-machine and trusted LAN installations. UDP remains disabled.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import math
 import selectors
 import socket
 import ssl
@@ -69,6 +71,107 @@ DEFAULT_FORWARD_QUEUE_BYTES = 8 * 1024 * 1024
 # and audio before its client drains the first forwarded packets. Keep the
 # bounded queue as the hard memory limit, but allow that normal startup gap.
 DEFAULT_WRITE_IDLE_SECONDS = 15.0
+DEFAULT_CERT_RELOAD_INTERVAL_SECONDS = 60.0
+
+
+def create_server_tls_context(cert_file: Path, key_file: Path) -> ssl.SSLContext:
+    if not cert_file.is_file():
+        raise ValueError(f"TLS certificate not found: {cert_file}")
+    if not key_file.is_file():
+        raise ValueError(f"TLS private key not found: {key_file}")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.load_cert_chain(certfile=cert_file, keyfile=key_file)
+    return context
+
+
+class ReloadingTLSContext:
+    """Atomically replaces the TLS context after a stable certificate reload."""
+
+    def __init__(
+        self,
+        cert_file: Path,
+        key_file: Path,
+        interval_seconds: float = DEFAULT_CERT_RELOAD_INTERVAL_SECONDS,
+    ):
+        if not math.isfinite(interval_seconds) or interval_seconds <= 0:
+            raise ValueError("TLS certificate reload interval must be positive")
+        self.cert_file = cert_file
+        self.key_file = key_file
+        self.interval_seconds = interval_seconds
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._context, self._accepted_fingerprint = self._load_stable_candidate()
+
+    @staticmethod
+    def _file_fingerprint(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(64 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _pair_fingerprint(self) -> tuple[str, str]:
+        return (
+            self._file_fingerprint(self.cert_file),
+            self._file_fingerprint(self.key_file),
+        )
+
+    def _load_stable_candidate(self) -> tuple[ssl.SSLContext, tuple[str, str]]:
+        before = self._pair_fingerprint()
+        candidate = create_server_tls_context(self.cert_file, self.key_file)
+        after = self._pair_fingerprint()
+        if before != after:
+            raise ValueError("TLS certificate files changed while loading")
+        return candidate, after
+
+    def current_context(self) -> ssl.SSLContext:
+        with self._lock:
+            return self._context
+
+    def reload_if_changed(self) -> bool:
+        try:
+            observed = self._pair_fingerprint()
+            with self._lock:
+                if observed == self._accepted_fingerprint:
+                    return False
+            candidate, fingerprint = self._load_stable_candidate()
+        except (OSError, ValueError, ssl.SSLError) as error:
+            print(
+                f"WARNING: TLS certificate reload rejected; keeping previous context: {error}",
+                flush=True,
+            )
+            return False
+        with self._lock:
+            self._context = candidate
+            self._accepted_fingerprint = fingerprint
+        print("TLS certificate context reloaded", flush=True)
+        return True
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._watch,
+                name="media-relay-certificate-reloader",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def _watch(self) -> None:
+        while not self._stop_event.wait(self.interval_seconds):
+            self.reload_if_changed()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        with self._lock:
+            thread = self._thread
+            self._thread = None
+        if thread is not None:
+            thread.join(timeout=5.0)
 
 
 @dataclass
@@ -260,14 +363,7 @@ class AuthenticatedN64RuntimeMediaRelay:
 
     @staticmethod
     def create_tls_context(cert_file: Path, key_file: Path) -> ssl.SSLContext:
-        if not cert_file.is_file():
-            raise ValueError(f"TLS certificate not found: {cert_file}")
-        if not key_file.is_file():
-            raise ValueError(f"TLS private key not found: {key_file}")
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.minimum_version = ssl.TLSVersion.TLSv1_3
-        context.load_cert_chain(certfile=cert_file, keyfile=key_file)
-        return context
+        return create_server_tls_context(cert_file, key_file)
 
     def serve(
         self,
@@ -275,6 +371,8 @@ class AuthenticatedN64RuntimeMediaRelay:
         port: int,
         tls_context: ssl.SSLContext | None,
         transport: str = NETWORK_MODE_TLS,
+        *,
+        tls_context_reloader: ReloadingTLSContext | None = None,
     ) -> None:
         if transport not in NETWORK_MODES:
             raise ValueError("media relay transport must be tls or plain")
@@ -282,6 +380,8 @@ class AuthenticatedN64RuntimeMediaRelay:
             raise ValueError("TLS media relay requires a TLS context")
         if transport == NETWORK_MODE_PLAIN and tls_context is not None:
             raise ValueError("plain media relay must not receive a TLS context")
+        if transport == NETWORK_MODE_PLAIN and tls_context_reloader is not None:
+            raise ValueError("plain media relay must not receive a TLS context reloader")
         for manager in self.gb_runtime_fixed_host_session_managers:
             for session_id in manager.abort_relay_orphans():
                 print(
@@ -289,25 +389,36 @@ class AuthenticatedN64RuntimeMediaRelay:
                     f"session={session_id}",
                     flush=True,
                 )
-        with socket.create_server((host, port), reuse_port=False) as server:
-            server.listen(64)
-            print(
-                f"N64 Runtime {transport} media relay listening on {host}:{port}; UDP disabled",
-                flush=True,
-            )
-            if transport == NETWORK_MODE_PLAIN:
+        if tls_context_reloader is not None:
+            tls_context_reloader.start()
+        try:
+            with socket.create_server((host, port), reuse_port=False) as server:
+                server.listen(64)
                 print(
-                    "WARNING: media relay traffic is not encrypted; use only on a trusted local network",
+                    f"N64 Runtime {transport} media relay listening on {host}:{port}; UDP disabled",
                     flush=True,
                 )
-            while True:
-                raw_sock, addr = server.accept()
-                thread = threading.Thread(
-                    target=self.handle_client,
-                    args=(raw_sock, addr, tls_context, transport),
-                    daemon=True,
-                )
-                thread.start()
+                if transport == NETWORK_MODE_PLAIN:
+                    print(
+                        "WARNING: media relay traffic is not encrypted; use only on a trusted LAN",
+                        flush=True,
+                    )
+                while True:
+                    raw_sock, addr = server.accept()
+                    connection_context = (
+                        tls_context_reloader.current_context()
+                        if tls_context_reloader is not None
+                        else tls_context
+                    )
+                    thread = threading.Thread(
+                        target=self.handle_client,
+                        args=(raw_sock, addr, connection_context, transport),
+                        daemon=True,
+                    )
+                    thread.start()
+        finally:
+            if tls_context_reloader is not None:
+                tls_context_reloader.stop()
 
     def handle_client(
         self,
@@ -474,6 +585,8 @@ class AuthenticatedN64RuntimeMediaRelay:
                 self._gb_runtime_fixed_host_state_frame(GB_FIXED_STATE_RESUMED, 0)
             )
         disconnected_role: str | None = None
+        fixed_terminal_payload: bytes | None = None
+        fixed_terminal_acknowledged = False
         try:
             while True:
                 if not self.session_is_active(left.session_id):
@@ -505,6 +618,21 @@ class AuthenticatedN64RuntimeMediaRelay:
                             target = peers[source]
                             queue_was_empty = not queues[target]
                             for frame in filters[clients[source].role].feed(data):
+                                if fixed_product:
+                                    message_type = frame[5]
+                                    payload = frame[CONTROL_HEADER_SIZE:]
+                                    if (
+                                        clients[source].role == "host"
+                                        and message_type == GB_FIXED_TERMINAL
+                                    ):
+                                        fixed_terminal_payload = payload
+                                    elif (
+                                        clients[source].role == "remote"
+                                        and message_type == GB_FIXED_TERMINAL_ACK
+                                        and fixed_terminal_payload is not None
+                                        and payload == fixed_terminal_payload
+                                    ):
+                                        fixed_terminal_acknowledged = True
                                 if queued_bytes[target] + len(frame) > self.forward_queue_bytes:
                                     raise BufferError("media relay forward queue limit exceeded")
                                 queues[target].append(memoryview(frame))
@@ -535,13 +663,21 @@ class AuthenticatedN64RuntimeMediaRelay:
             selector.close()
             host_client = left if left.role == "host" else right
             remote_client = right if left.role == "host" else left
-            if fixed_product and disconnected_role == "remote":
+            if (
+                fixed_product
+                and disconnected_role == "remote"
+                and not fixed_terminal_acknowledged
+            ):
                 self._close_socket(remote_client.sock)
                 self._retain_gb_runtime_fixed_host_for_resume(host_client)
             else:
                 self._close_socket(left.sock)
                 self._close_socket(right.sock)
-                if fixed_product and disconnected_role in {"host", "remote"}:
+                if (
+                    fixed_product
+                    and not fixed_terminal_acknowledged
+                    and disconnected_role in {"host", "remote"}
+                ):
                     self._gb_runtime_fixed_host_peer_disconnected(left.session_id, disconnected_role)
             print(f"N64 Runtime media relay closed session={left.session_id}", flush=True)
 
@@ -628,6 +764,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cert-file", type=Path)
     parser.add_argument("--key-file", type=Path)
     parser.add_argument(
+        "--cert-reload-interval-seconds",
+        type=float,
+        default=DEFAULT_CERT_RELOAD_INTERVAL_SECONDS,
+    )
+    parser.add_argument(
         "--storage-root",
         action="append",
         type=Path,
@@ -643,12 +784,27 @@ def main() -> None:
     if args.transport == NETWORK_MODE_TLS:
         if args.cert_file is None or args.key_file is None:
             raise SystemExit("TLS transport requires --cert-file and --key-file")
-        tls_context = relay.create_tls_context(args.cert_file, args.key_file)
+        try:
+            reloader = ReloadingTLSContext(
+                args.cert_file,
+                args.key_file,
+                args.cert_reload_interval_seconds,
+            )
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
+        tls_context = reloader.current_context()
     else:
         if args.cert_file is not None or args.key_file is not None:
             raise SystemExit("plain transport does not accept --cert-file or --key-file")
         tls_context = None
-    relay.serve(args.host, args.port, tls_context, args.transport)
+        reloader = None
+    relay.serve(
+        args.host,
+        args.port,
+        tls_context,
+        args.transport,
+        tls_context_reloader=reloader,
+    )
 
 
 if __name__ == "__main__":

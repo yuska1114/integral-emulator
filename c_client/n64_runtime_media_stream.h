@@ -61,13 +61,22 @@ typedef struct IntegralN64RuntimeMediaMetrics {
     uint32_t audio_queue_clears;
 } IntegralN64RuntimeMediaMetrics;
 
-IntegralN64RuntimeMediaStream *integral_n64_runtime_media_stream_create(SDL_Renderer *renderer);
+IntegralN64RuntimeMediaStream *integral_n64_runtime_media_stream_create(
+    SDL_Window *parent_window,
+    SDL_Renderer *renderer);
 void integral_n64_runtime_media_stream_set_window_title(IntegralN64RuntimeMediaStream *stream,
                                                  const char *title);
-/* Sets the initial decoded-video window scale. The default is 1; callers may
- * override it before the first decoded frame creates the dedicated window. */
+/* Sets the decoded-video window's initial scale before the first frame. Zero
+ * selects the largest fitting integer scale; manual values are 1 through 6.
+ * The N64 Remote window can then be freely resized with aspect ratio kept. */
 void integral_n64_runtime_media_stream_set_window_scale(IntegralN64RuntimeMediaStream *stream,
                                                  unsigned scale);
+/* GB Remote only: keeps the outer decoded-video window at the Client's
+ * logical size and integer-scales the decoded frame inside black margins. */
+void integral_n64_runtime_media_stream_set_window_target_size(
+    IntegralN64RuntimeMediaStream *stream,
+    unsigned width,
+    unsigned height);
 /* Test/diagnostic override applied before the first remote video frame.
  * Product behavior defaults to enabled. */
 void integral_n64_runtime_media_stream_set_video_vsync_enabled(IntegralN64RuntimeMediaStream *stream,
@@ -160,6 +169,8 @@ bool integral_n64_runtime_media_stream_render(IntegralN64RuntimeMediaStream *str
                                        const SDL_Rect *bounds);
 void integral_n64_runtime_media_stream_set_exit_confirmation(
     IntegralN64RuntimeMediaStream *stream, bool active, bool yes_selected);
+void integral_n64_runtime_media_stream_set_exit_discard_warning(
+    IntegralN64RuntimeMediaStream *stream, bool active);
 
 /* True when the dedicated remote-video renderer is actually VSync-paced. */
 bool integral_n64_runtime_media_stream_is_video_vsync_paced(const IntegralN64RuntimeMediaStream *stream);

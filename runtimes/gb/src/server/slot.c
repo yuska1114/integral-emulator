@@ -14,6 +14,8 @@
 #include "memory.h"
 
 #define INTEGRAL_GB_RUNTIME_PATH_MAX INTEGRAL_GB_RUNTIME_FILE_PATH_MAX
+/* The pinned SameBoy SGB2 boot presentation runs from frame -10 through 199. */
+#define INTEGRAL_GB_RUNTIME_SAMEBOOT_PRESENTATION_FRAMES 210u
 
 static void slot_log_callback(GB_gameboy_t *gb, const char *message, GB_log_attributes_t attributes)
 {
@@ -32,20 +34,26 @@ static uint32_t slot_rgb_encode_callback(GB_gameboy_t *gb, uint8_t r, uint8_t g,
     return 0xFF000000u | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 }
 
+static bool slot_presentation_suppressed(const IntegralGBRuntimeSlot *slot)
+{
+    return slot &&
+           slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT &&
+           slot->sameboot_presentation_frames_remaining > 0u;
+}
+
 static void slot_vblank_callback(GB_gameboy_t *gb, GB_vblank_type_t type)
 {
     (void)type;
     IntegralGBRuntimeSlot *slot = GB_get_user_data(gb);
     if (slot) {
-        slot->vblank_occurred = true;
-        slot->vblank_count++;
+        integral_gb_runtime_slot_note_vblank(slot);
     }
 }
 
 static void slot_audio_callback(GB_gameboy_t *gb, GB_sample_t *sample)
 {
     IntegralGBRuntimeSlot *slot = GB_get_user_data(gb);
-    if (!slot) {
+    if (!slot || slot_presentation_suppressed(slot)) {
         return;
     }
     if (slot->audio_frames >= INTEGRAL_GB_RUNTIME_AUDIO_MAX_FRAMES) {
@@ -141,6 +149,13 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
         ? INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT
         : (config->skip_boot_rom ? INTEGRAL_GB_RUNTIME_BOOTSTRAP_MANUAL_POST_BOOT
                                  : INTEGRAL_GB_RUNTIME_BOOTSTRAP_CORE_DEFAULT);
+    if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
+        /* SameBoy starts the SGB presentation counter at -10 and completes
+           the upstream intro at GB_SGB_INTRO_ANIMATION_LENGTH. Tracking that
+           interval here changes only Integral's output gate. */
+        slot->sameboot_presentation_frames_remaining =
+            INTEGRAL_GB_RUNTIME_SAMEBOOT_PRESENTATION_FRAMES;
+    }
 
     if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
         char error[192];
@@ -253,6 +268,16 @@ unsigned integral_gb_runtime_slot_run_until_sync(IntegralGBRuntimeSlot *slot)
     return GB_run(slot->gb);
 }
 
+void integral_gb_runtime_slot_note_vblank(IntegralGBRuntimeSlot *slot)
+{
+    if (!slot) return;
+    slot->vblank_occurred = true;
+    slot->vblank_count++;
+    if (slot->sameboot_presentation_frames_remaining > 0u) {
+        slot->sameboot_presentation_frames_remaining--;
+    }
+}
+
 bool integral_gb_runtime_slot_serial_active(const IntegralGBRuntimeSlot *slot)
 {
     return slot && slot->initialized && (GB_read_memory(slot->gb, 0xFF00 + GB_IO_SC) & 0x80) != 0;
@@ -284,6 +309,10 @@ void integral_gb_runtime_slot_reset(IntegralGBRuntimeSlot *slot)
     if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_MANUAL_POST_BOOT) {
         slot_skip_boot_rom(slot->gb);
     }
+    else if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
+        slot->sameboot_presentation_frames_remaining =
+            INTEGRAL_GB_RUNTIME_SAMEBOOT_PRESENTATION_FRAMES;
+    }
     slot->vblank_occurred = false;
     slot->audio_frames = 0;
     slot->audio_frames_dropped = 0;
@@ -314,8 +343,31 @@ uint32_t integral_gb_runtime_slot_pixel_checksum(const IntegralGBRuntimeSlot *sl
     return hash;
 }
 
+bool integral_gb_runtime_slot_presentation_suppressed(const IntegralGBRuntimeSlot *slot)
+{
+    return slot_presentation_suppressed(slot);
+}
+
+const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntimeSlot *slot)
+{
+    static const uint32_t black_pixels[
+        INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT] = {0};
+    if (!slot || !slot->initialized || slot_presentation_suppressed(slot)) {
+        return black_pixels;
+    }
+    return slot->pixels;
+}
+
 unsigned integral_gb_runtime_slot_drain_audio(IntegralGBRuntimeSlot *slot, int16_t *dest, unsigned max_frames)
 {
+    if (!slot || slot_presentation_suppressed(slot)) {
+        if (slot) {
+            memset(slot->audio_buffer, 0, sizeof(slot->audio_buffer));
+            slot->audio_frames = 0;
+            slot->audio_frames_dropped = 0;
+        }
+        return 0;
+    }
     unsigned frames = slot->audio_frames;
     if (frames > max_frames) {
         frames = max_frames;

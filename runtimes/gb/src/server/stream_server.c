@@ -701,8 +701,9 @@ void integral_gb_runtime_stream_server_queue_frame(IntegralGBRuntimeStreamServer
     put_u64(server->downlink_buffer + 22, server->last_applied_client_timestamp_us);
 
     uint8_t *payload = server->downlink_buffer + 1 + INTEGRAL_GB_RUNTIME_VIDEO_HEADER_SIZE;
+    const uint32_t *pixels = integral_gb_runtime_slot_presented_pixels(slot);
     for (unsigned i = 0; i < INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT; i++) {
-        uint16_t pixel = integral_gb_runtime_rgb888_to_rgb565(slot->pixels[i]);
+        uint16_t pixel = integral_gb_runtime_rgb888_to_rgb565(pixels[i]);
         payload[i * 2] = (uint8_t)(pixel >> 8);
         payload[i * 2 + 1] = (uint8_t)pixel;
     }

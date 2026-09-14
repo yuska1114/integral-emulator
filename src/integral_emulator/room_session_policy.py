@@ -17,6 +17,9 @@ class RoomSessionPolicy:
     waiting_room_idle_seconds: int = 10 * 60
     link_seconds: int = 60 * 60
     n64_runtime_seconds: int = 120 * 60
+    gb_local_seconds: int = 48 * 60 * 60
+    gb_mobile_seconds: int = 48 * 60 * 60
+    n64_local_seconds: int = 48 * 60 * 60
 
     @classmethod
     def from_environment(cls) -> "RoomSessionPolicy":
@@ -32,6 +35,21 @@ class RoomSessionPolicy:
         policy = cls(
             lease_seconds=integer("INTEGRAL_EMULATOR_ROOM_LEASE_SECONDS", 45),
             sweeper_interval_seconds=integer("INTEGRAL_EMULATOR_ROOM_SWEEPER_SECONDS", 5),
+            link_seconds=integer(
+                "INTEGRAL_EMULATOR_LINK_CABLE_ROOM_GAME_SECONDS", 60 * 60
+            ),
+            n64_runtime_seconds=integer(
+                "INTEGRAL_EMULATOR_N64_ROOM_GAME_SECONDS", 120 * 60
+            ),
+            gb_local_seconds=integer(
+                "INTEGRAL_EMULATOR_GB_LOCAL_GAME_SECONDS", 48 * 60 * 60
+            ),
+            gb_mobile_seconds=integer(
+                "INTEGRAL_EMULATOR_GB_MOBILE_GAME_SECONDS", 48 * 60 * 60
+            ),
+            n64_local_seconds=integer(
+                "INTEGRAL_EMULATOR_N64_LOCAL_GAME_SECONDS", 48 * 60 * 60
+            ),
         )
         return policy
 

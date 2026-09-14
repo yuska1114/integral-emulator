@@ -2,6 +2,9 @@
 
 `sgb2_boot.bin`は、SameBoy 1.0.3の`runtimes/gb/third_party/SameBoy/BootROMs/sgb2_boot.asm`と、その参照ソースから生成したSGB2用SameBootです。
 
+Runtimeはこのリソースを通常どおり実行します。Integral側では起動中の映像と音声だけを
+出力しないため、起動処理やupstream素材を不要物として削除しないでください。
+
 これらのソースと生成されたバイナリには、`runtimes/gb/third_party/SameBoy/LICENSE`に記載されたExpat Licenseが適用されます。
 
 preferred sourceを構成するファイル一式は、`sgb2_boot.asm`、`sgb_boot.asm`、`sameboot.inc`、`hardware.inc`、およびSameBoyルートの`LICENSE`と`version.mk`です。

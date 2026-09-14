@@ -5,6 +5,7 @@
 #include "media_codec.h"
 #include "media_h264.h"
 #include "sdl_text.h"
+#include "../runtimes/gb/src/common/display_scale.h"
 #include "../runtimes/n64/src/remote_media_ipc.h"
 
 #include <stdio.h>
@@ -86,9 +87,13 @@ typedef struct MetricsAccumulator {
 } MetricsAccumulator;
 
 struct IntegralN64RuntimeMediaStream {
+    SDL_Window *parent_window;
     SDL_Renderer *renderer;
     char window_title[128];
     unsigned video_window_scale;
+    unsigned video_window_scale_resolved;
+    unsigned video_window_target_width;
+    unsigned video_window_target_height;
     bool video_vsync_enabled;
     char video_renderer_driver_requested[32];
     bool video_renderer_driver_required;
@@ -151,6 +156,7 @@ struct IntegralN64RuntimeMediaStream {
     uint32_t video_window_id;
     bool exit_confirming;
     bool exit_confirm_yes;
+    bool exit_discard_warning;
     SDL_Texture *texture;
     uint16_t texture_width;
     uint16_t texture_height;
@@ -604,10 +610,13 @@ static void stop_decode_worker(IntegralN64RuntimeMediaStream *stream)
     SDL_UnlockMutex(stream->decode_mutex);
 }
 
-IntegralN64RuntimeMediaStream *integral_n64_runtime_media_stream_create(SDL_Renderer *renderer)
+IntegralN64RuntimeMediaStream *integral_n64_runtime_media_stream_create(
+    SDL_Window *parent_window,
+    SDL_Renderer *renderer)
 {
     IntegralN64RuntimeMediaStream *stream = calloc(1, sizeof(*stream));
     if (!stream) return NULL;
+    stream->parent_window = parent_window;
     stream->renderer = renderer;
     stream->rgb = malloc(RGB_CAPACITY);
     stream->decode_rgb = malloc(RGB_CAPACITY);
@@ -627,7 +636,7 @@ IntegralN64RuntimeMediaStream *integral_n64_runtime_media_stream_create(SDL_Rend
         return NULL;
     }
     integral_audio_jitter_init(&stream->jitter, 3, 60000);
-    stream->video_window_scale = 1u;
+    stream->video_window_scale = INTEGRAL_DISPLAY_SCALE_AUTO;
     stream->video_vsync_enabled = true;
 #ifdef _WIN32
     /* SDL's legacy `direct3d` backend blocks dirty-only VSync Present for
@@ -652,8 +661,18 @@ void integral_n64_runtime_media_stream_set_window_title(IntegralN64RuntimeMediaS
 void integral_n64_runtime_media_stream_set_window_scale(IntegralN64RuntimeMediaStream *stream,
                                                  unsigned scale)
 {
-    if (!stream || stream->video_window || scale == 0u || scale > 8u) return;
+    if (!stream || stream->video_window || scale > INTEGRAL_DISPLAY_SCALE_MAX) return;
     stream->video_window_scale = scale;
+}
+
+void integral_n64_runtime_media_stream_set_window_target_size(
+    IntegralN64RuntimeMediaStream *stream,
+    unsigned width,
+    unsigned height)
+{
+    if (!stream || stream->video_window || width < 160u || height < 144u) return;
+    stream->video_window_target_width = width;
+    stream->video_window_target_height = height;
 }
 
 void integral_n64_runtime_media_stream_set_video_vsync_enabled(IntegralN64RuntimeMediaStream *stream,
@@ -711,6 +730,7 @@ void integral_n64_runtime_media_stream_reset(IntegralN64RuntimeMediaStream *stre
     if (stream->video_window) SDL_DestroyWindow(stream->video_window);
     stream->video_window = NULL;
     stream->video_window_id = 0;
+    stream->video_window_scale_resolved = 0u;
     if (stream->audio_device) SDL_CloseAudioDevice(stream->audio_device);
     stream->audio_device = 0;
     stream->audio_rate = 0;
@@ -1149,17 +1169,45 @@ static int sync_remote_video_frame(IntegralN64RuntimeMediaStream *stream,
     }
     uint16_t width = stream->decoded_width;
     uint16_t height = stream->decoded_height;
+    bool fixed_target = stream->video_window_target_width != 0u &&
+                        stream->video_window_target_height != 0u;
     if (!stream->video_window) {
+        int display_index = 0;
+        if (stream->parent_window) {
+            int parent_display = SDL_GetWindowDisplayIndex(stream->parent_window);
+            if (parent_display >= 0) display_index = parent_display;
+        }
+        SDL_Rect usable = {0, 0, width, height};
+        if (SDL_GetDisplayUsableBounds(display_index, &usable) != 0) {
+            usable.w = width;
+            usable.h = height;
+        }
+        stream->video_window_scale_resolved = fixed_target
+            ? 1u
+            : integral_display_scale_resolve(
+                  stream->video_window_scale, usable.w, usable.h, width, height);
+        int outer_width = fixed_target
+            ? (int)stream->video_window_target_width
+            : (int)width * (int)stream->video_window_scale_resolved;
+        int outer_height = fixed_target
+            ? (int)stream->video_window_target_height
+            : (int)height * (int)stream->video_window_scale_resolved;
+        if (fixed_target) SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+        Uint32 window_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI |
+                              SDL_WINDOW_RESIZABLE;
         stream->video_window = SDL_CreateWindow(stream->window_title,
                                                 SDL_WINDOWPOS_CENTERED,
                                                 SDL_WINDOWPOS_CENTERED,
-                                                (int)width * (int)stream->video_window_scale,
-                                                (int)height * (int)stream->video_window_scale,
-                                                SDL_WINDOW_SHOWN);
+                                                outer_width,
+                                                outer_height,
+                                                window_flags);
         if (!stream->video_window) {
             set_error(error_out, error_out_size, SDL_GetError());
             SDL_UnlockMutex(stream->decode_mutex);
             return -1;
+        }
+        if (fixed_target) {
+            SDL_SetWindowMinimumSize(stream->video_window, (int)width, (int)height);
         }
         stream->video_window_id = SDL_GetWindowID(stream->video_window);
         Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
@@ -1208,6 +1256,22 @@ static int sync_remote_video_frame(IntegralN64RuntimeMediaStream *stream,
             SDL_UnlockMutex(stream->decode_mutex);
             return -1;
         }
+        if (fixed_target &&
+            SDL_RenderSetLogicalSize(stream->video_renderer,
+                                     (int)width,
+                                     (int)height) != 0) {
+            set_error(error_out, error_out_size, SDL_GetError());
+            SDL_DestroyRenderer(stream->video_renderer);
+            stream->video_renderer = NULL;
+            SDL_DestroyWindow(stream->video_window);
+            stream->video_window = NULL;
+            stream->video_window_id = 0;
+            SDL_UnlockMutex(stream->decode_mutex);
+            return -1;
+        }
+        if (fixed_target) {
+            (void)SDL_RenderSetIntegerScale(stream->video_renderer, SDL_TRUE);
+        }
         SDL_RendererInfo renderer_info;
         memset(&renderer_info, 0, sizeof(renderer_info));
         stream->video_present_vsync =
@@ -1215,10 +1279,11 @@ static int sync_remote_video_frame(IntegralN64RuntimeMediaStream *stream,
             (renderer_info.flags & SDL_RENDERER_PRESENTVSYNC) != 0;
         snprintf(stream->video_renderer_driver, sizeof(stream->video_renderer_driver), "%s",
                  renderer_info.name ? renderer_info.name : "unknown");
-        int display_index = SDL_GetWindowDisplayIndex(stream->video_window);
+        int actual_display_index = SDL_GetWindowDisplayIndex(stream->video_window);
         SDL_DisplayMode display_mode;
         memset(&display_mode, 0, sizeof(display_mode));
-        if (display_index >= 0 && SDL_GetCurrentDisplayMode(display_index, &display_mode) == 0 &&
+        if (actual_display_index >= 0 &&
+            SDL_GetCurrentDisplayMode(actual_display_index, &display_mode) == 0 &&
             display_mode.refresh_rate > 0) {
             stream->video_refresh_hz = (uint32_t)display_mode.refresh_rate;
         }
@@ -1232,10 +1297,25 @@ static int sync_remote_video_frame(IntegralN64RuntimeMediaStream *stream,
             SDL_UnlockMutex(stream->decode_mutex);
             return -1;
         }
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+        if (fixed_target) {
+            SDL_SetTextureScaleMode(stream->texture, SDL_ScaleModeNearest);
+        }
+#endif
         stream->texture_width = width; stream->texture_height = height;
-        SDL_SetWindowSize(stream->video_window,
-                          (int)width * (int)stream->video_window_scale,
-                          (int)height * (int)stream->video_window_scale);
+        if (!fixed_target) {
+            SDL_SetWindowSize(stream->video_window,
+                              (int)width * (int)stream->video_window_scale_resolved,
+                              (int)height * (int)stream->video_window_scale_resolved);
+        }
+        if (fixed_target &&
+            SDL_RenderSetLogicalSize(stream->video_renderer,
+                                     (int)width,
+                                     (int)height) != 0) {
+            set_error(error_out, error_out_size, SDL_GetError());
+            SDL_UnlockMutex(stream->decode_mutex);
+            return -1;
+        }
     }
     if (SDL_UpdateTexture(stream->texture, NULL, stream->rgb, width * 3u) != 0) {
         set_error(error_out, error_out_size, SDL_GetError());
@@ -1351,27 +1431,41 @@ bool integral_n64_runtime_media_stream_render(IntegralN64RuntimeMediaStream *str
      * and wait through an unnecessary refresh before it is synchronized on
      * the next iteration, turning WAN arrival jitter into visible frame loss. */
     if (!stream->texture_dirty && !stream->exit_confirming) return true;
-    int window_width = 0, window_height = 0;
-    SDL_GetWindowSize(stream->video_window, &window_width, &window_height);
+    bool fixed_target = stream->video_window_target_width != 0u &&
+                        stream->video_window_target_height != 0u;
+    int window_width = fixed_target ? (int)stream->texture_width : 0;
+    int window_height = fixed_target ? (int)stream->texture_height : 0;
+    if (!fixed_target) {
+        SDL_GetRendererOutputSize(stream->video_renderer,
+                                  &window_width,
+                                  &window_height);
+    }
     if (window_width <= 0 || window_height <= 0) return false;
     SDL_Rect destination = {.x = 0, .y = 0, .w = window_width, .h = window_height};
-    double source_aspect = (double)stream->texture_width / stream->texture_height;
-    double target_aspect = (double)window_width / window_height;
-    if (source_aspect > target_aspect) {
-        destination.h = (int)(window_width / source_aspect);
-        destination.y += (window_height - destination.h) / 2;
-    } else {
-        destination.w = (int)(window_height * source_aspect);
-        destination.x += (window_width - destination.w) / 2;
+    if (!fixed_target) {
+        double source_aspect = (double)stream->texture_width / stream->texture_height;
+        double target_aspect = (double)window_width / window_height;
+        if (source_aspect > target_aspect) {
+            destination.h = (int)(window_width / source_aspect);
+            destination.y += (window_height - destination.h) / 2;
+        } else {
+            destination.w = (int)(window_height * source_aspect);
+            destination.x += (window_width - destination.w) / 2;
+        }
     }
     SDL_SetRenderDrawColor(stream->video_renderer, 0, 0, 0, 255);
     SDL_RenderClear(stream->video_renderer);
     SDL_RenderCopy(stream->video_renderer, stream->texture, NULL, &destination);
     if (stream->exit_confirming) {
-        SDL_Rect panel = {.x = window_width / 2 - 210,
-                          .y = window_height / 2 - 70,
-                          .w = 420,
-                          .h = 140};
+        int text_scale = window_width >= 440 && window_height >= 160
+                             ? 3
+                             : (window_width >= 280 ? 2 : 1);
+        int panel_width = window_width > 428 ? 420 : window_width - 8;
+        int panel_height = window_height > 148 ? 140 : window_height - 8;
+        SDL_Rect panel = {.x = (window_width - panel_width) / 2,
+                          .y = (window_height - panel_height) / 2,
+                          .w = panel_width,
+                          .h = panel_height};
         SDL_Color title = {238, 238, 220, 255};
         SDL_Color text = {185, 205, 216, 255};
         SDL_Color selected = {86, 220, 150, 255};
@@ -1379,13 +1473,19 @@ bool integral_n64_runtime_media_stream_render(IntegralN64RuntimeMediaStream *str
         SDL_RenderFillRect(stream->video_renderer, &panel);
         SDL_SetRenderDrawColor(stream->video_renderer, 86, 162, 126, 255);
         SDL_RenderDrawRect(stream->video_renderer, &panel);
-        integral_sdl_draw_text(stream->video_renderer, panel.x + 36, panel.y + 28,
-                               "EXIT GAME?", 3, title);
-        integral_sdl_draw_text(stream->video_renderer, panel.x + 86, panel.y + 84,
-                               stream->exit_confirm_yes ? "> YES" : "  YES", 3,
+        integral_sdl_draw_text(stream->video_renderer, panel.x + 12, panel.y + 18,
+                               "EXIT GAME?", text_scale, title);
+        if (stream->exit_discard_warning) {
+            integral_sdl_draw_text(stream->video_renderer, panel.x + 12, panel.y + 58,
+                                   "SAVES FOR BOTH PLAYERS", 1, text);
+            integral_sdl_draw_text(stream->video_renderer, panel.x + 12, panel.y + 72,
+                                   "WILL NOT BE UPDATED.", 1, text);
+        }
+        integral_sdl_draw_text(stream->video_renderer, panel.x + 12, panel.y + panel.h - 32,
+                               stream->exit_confirm_yes ? "> YES" : "  YES", text_scale,
                                stream->exit_confirm_yes ? selected : text);
-        integral_sdl_draw_text(stream->video_renderer, panel.x + 244, panel.y + 84,
-                               stream->exit_confirm_yes ? "  NO" : "> NO", 3,
+        integral_sdl_draw_text(stream->video_renderer, panel.x + panel.w / 2, panel.y + panel.h - 32,
+                               stream->exit_confirm_yes ? "  NO" : "> NO", text_scale,
                                stream->exit_confirm_yes ? text : selected);
     }
     uint64_t present_started_us = performance_us();
@@ -1420,6 +1520,14 @@ void integral_n64_runtime_media_stream_set_exit_confirmation(
     if (!stream) return;
     stream->exit_confirming = active;
     stream->exit_confirm_yes = active && yes_selected;
+    stream->texture_dirty = true;
+}
+
+void integral_n64_runtime_media_stream_set_exit_discard_warning(
+    IntegralN64RuntimeMediaStream *stream, bool active)
+{
+    if (!stream) return;
+    stream->exit_discard_warning = active;
     stream->texture_dirty = true;
 }
 

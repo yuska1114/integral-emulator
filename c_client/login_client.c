@@ -48,11 +48,13 @@
 #include "sdl_text.h"
 #include "sdl_unicode_text.h"
 #include "gb_runtime_fixed_host_rom_resolver.h"
+#include "gb_runtime_fixed_host_product_runtime.h"
 #include "gb_runtime_fixed_host_snapshot_ipc.h"
 #include "gb_runtime_fixed_host_result_ipc.h"
 #include "../runtimes/gb/src/common/key_config.h"
+#include "../runtimes/gb/src/server/gb_link_engine.h"
 
-#define INTEGRAL_CLIENT_VERSION "0.1BETA"
+#define INTEGRAL_CLIENT_VERSION "0.2BETA"
 #define INTEGRAL_WINDOW_WIDTH 480
 #define INTEGRAL_WINDOW_HEIGHT 480
 #define INTEGRAL_FIELD_COUNT 6
@@ -61,7 +63,7 @@
 #define INTEGRAL_LOCAL_MODE_ROWS 3
 #define INTEGRAL_GB_RUNTIME_MODE_ROWS 3
 #define INTEGRAL_GB_RUNTIME_MOBILE_MODE_ROWS 3
-#define INTEGRAL_ROOM_MODE_ROWS 2
+#define INTEGRAL_ROOM_MODE_ROWS 3
 #define INTEGRAL_CHAT_LOG_LINES 32
 #define INTEGRAL_CHAT_VISIBLE_LINES 5
 #define INTEGRAL_CHAT_MESSAGE_MAX 160
@@ -247,9 +249,16 @@ static int integral_runtime_frontend_access(const char *path)
 #endif
 }
 
-static void integral_n64_runtime_path(char *out, size_t out_size, const char *suffix)
+static bool integral_n64_runtime_path(char *out, size_t out_size, const char *suffix)
 {
-    snprintf(out, out_size, "%s/%s", integral_n64_runtime_home_path(), suffix);
+    int written = snprintf(out, out_size, "%s/%s", integral_n64_runtime_home_path(), suffix);
+    if (written < 0 || (size_t)written >= out_size) {
+        if (out_size > 0) {
+            out[0] = '\0';
+        }
+        return false;
+    }
+    return true;
 }
 
 typedef enum AppScreen {
@@ -318,6 +327,7 @@ typedef struct PasswordChangeState {
 
 typedef struct AppState {
     AppScreen screen;
+    SDL_Window *client_window;
     LoginState login;
     PasswordChangeState password_change;
     IntegralConfigRomSlot rom_slots[INTEGRAL_ROM_SLOTS];
@@ -325,6 +335,9 @@ typedef struct AppState {
     IntegralConfigKeys keys;
     char base_config_path[160];
     char config_path[160];
+    unsigned window_width;
+    unsigned window_height;
+    bool window_size_dirty;
     unsigned main_selected;
     unsigned local_mode_selected;
     unsigned local_selected;
@@ -406,6 +419,7 @@ typedef struct AppState {
     bool room_start_requested;
     bool room_client_started;
     bool room_game_ended;
+    bool room_gb_runtime_save_preflight_blocked;
     IntegralChildProcess room_client_pid;
     bool room_gb_runtime_fixed_host_active;
     char room_gb_runtime_fixed_host_role[16];
@@ -450,6 +464,7 @@ typedef struct LocalSyncSlot {
     bool preserve_save_path;
     size_t authoritative_size;
     char mobile_runtime_dir[INTEGRAL_CONFIG_PATH_MAX];
+    char mobile_result_path[INTEGRAL_CONFIG_PATH_MAX];
 } LocalSyncSlot;
 
 #ifdef _WIN32
@@ -1413,6 +1428,7 @@ static void init_n64_runtime_selection(AppState *state)
 static void load_active_user_config(AppState *state)
 {
     memset(state->rom_slots, 0, sizeof(state->rom_slots));
+    memset(state->server_rom_slots, 0, sizeof(state->server_rom_slots));
     state->local_slot_indices[0] = -1;
     state->local_slot_indices[1] = -1;
     state->room_slot_index = -1;
@@ -1463,6 +1479,11 @@ static void app_state_init(AppState *state, const char *config_path)
     state->n64_room_n64_slot_index = -1;
     state->n64_room_user1_gb_slot_index = -1;
     state->n64_room_user2_gb_slot_index = -1;
+    IntegralConfigWindow window_config;
+    if (integral_config_load_window(state->base_config_path, &window_config) == 0) {
+        state->window_width = window_config.width;
+        state->window_height = window_config.height;
+    }
     init_n64_runtime_selection(state);
     integral_keys_defaults(&state->keys);
     if (integral_config_load_keys(state->base_config_path, &state->keys) == 0) {
@@ -1722,10 +1743,10 @@ static void draw_main_menu(SDL_Renderer *renderer, const AppState *state)
     };
 
     for (unsigned i = 0; i < INTEGRAL_MAIN_ROWS; i++) {
-        int y = 88 + (int)i * 51;
+        int y = 78 + (int)i * 46;
         if (state->main_selected == i) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-            SDL_Rect rect = {.x = 14, .y = y - 8, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 46};
+            SDL_Rect rect = {.x = 14, .y = y - 6, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 42};
             SDL_RenderFillRect(renderer, &rect);
             integral_sdl_draw_text(renderer, 24, y + 6, ">", 2, selected);
         }
@@ -1745,24 +1766,26 @@ static void draw_room_mode(SDL_Renderer *renderer, const AppState *state)
     SDL_RenderClear(renderer);
 
     SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
-    const char *mode = state->room_mode_selected == 0 ? "LINK CABLE" : "N64";
+    const char *buttons[] = {"LINK CABLE ROOM", "N64 ROOM", "BACK"};
 
     draw_header(renderer, "CREATE ROOM", state->login.username, state->login.server);
-    integral_sdl_draw_text(renderer, 48, 150, "MODE", 2, label);
-    integral_sdl_draw_text(renderer, 144, 150, ":", 2, label);
-    integral_sdl_draw_text(renderer, 176, 150, mode, 2, value);
-
-    SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-    SDL_Rect create = {.x = 14, .y = 222, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 58};
-    SDL_RenderFillRect(renderer, &create);
-    integral_sdl_draw_text(renderer, 24, 239, ">", 2, selected);
-    integral_sdl_draw_text(renderer, 48, 234, "CREATE", 3, selected);
+    for (unsigned i = 0; i < INTEGRAL_ROOM_MODE_ROWS; i++) {
+        int y = 126 + (int)i * 86;
+        if (state->room_mode_selected == i) {
+            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+            SDL_Rect button = {.x = 14, .y = y - 10, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 58};
+            SDL_RenderFillRect(renderer, &button);
+            integral_sdl_draw_text(renderer, 24, y + 7, ">", 2, selected);
+        }
+        integral_sdl_draw_text(renderer, 48, y,
+                               buttons[i], 3,
+                               state->room_mode_selected == i ? selected : label);
+    }
 
     integral_sdl_draw_text_fit(renderer, 22, 410, state->login.status, 1, muted, INTEGRAL_WINDOW_WIDTH - 44);
-    integral_sdl_draw_text(renderer, 22, 438, "LEFT/RIGHT MODE  ENTER CREATE", 1, muted);
+    integral_sdl_draw_text(renderer, 22, 438, "ARROWS MOVE  ENTER SELECT", 1, muted);
     integral_sdl_draw_text(renderer, 22, 456, "ESC MAIN MENU", 1, muted);
     SDL_RenderPresent(renderer);
 }
@@ -1999,6 +2022,7 @@ static void set_room_link_session_id(AppState *state, const char *session_id)
     state->room_game_session_id[0] = '\0';
     state->room_fencing_token = 0;
     state->room_client_started = false;
+    state->room_gb_runtime_save_preflight_blocked = false;
     state->room_gb_runtime_fixed_host_active = false;
     state->room_gb_runtime_fixed_host_role[0] = '\0';
     state->room_gb_runtime_fixed_host_result_read = -1;
@@ -2025,6 +2049,7 @@ static void clear_room_link_session_id(AppState *state)
     state->room_fencing_token = 0;
     state->room_start_requested = false;
     state->room_client_started = false;
+    state->room_gb_runtime_save_preflight_blocked = false;
     state->room_gb_runtime_fixed_host_active = false;
     state->room_gb_runtime_fixed_host_role[0] = '\0';
     state->room_gb_runtime_fixed_host_result_read = -1;
@@ -2373,6 +2398,12 @@ static bool room_status_is_actionable_error(const char *status)
             strncmp(status, "LINK START FAILED", 17) == 0 ||
             strncmp(status, "LINK NODE", 9) == 0 ||
             strncmp(status, "PROTOCOL CHECK FAILED", 21) == 0 ||
+            strncmp(status, "FIXED HOST ROM CHECK", 20) == 0 ||
+            strncmp(status, "FIXED HOST MANIFEST FAILED", 26) == 0 ||
+            strncmp(status, "FIXED HOST PREFLIGHT FAILED", 27) == 0 ||
+            strncmp(status, "FIXED HOST SERVER TIME FAILED", 29) == 0 ||
+            strcmp(status, "FIXED HOST CLIENT UPDATE REQUIRED") == 0 ||
+            strcmp(status, "FIXED HOST ROLE INVALID") == 0 ||
             strcmp(status, "CLIENT CAPABILITY MISMATCH") == 0 ||
             strcmp(status, "WAITING PEER ROM") == 0);
 }
@@ -5102,6 +5133,10 @@ static void submit_login(AppState *app)
     }
     activate_user_config(app);
     app->screen = SCREEN_MAIN_MENU;
+    if (!refresh_rom_slots_from_server(app)) {
+        client_log(app, "screen_change", "to=main config=%s rom_slot_sync=failed", app->config_path);
+        return;
+    }
     IntegralApiRoom current_room;
     int has_current_room = 0;
     if (integral_api_get_current_room(app->login.server,
@@ -5189,6 +5224,7 @@ static void submit_password_change(AppState *app)
     }
     password_change_state_init(state);
     activate_user_config(app);
+    (void)refresh_rom_slots_from_server(app);
     app->screen = SCREEN_MAIN_MENU;
     SDL_StopTextInput();
 }
@@ -5451,6 +5487,44 @@ static void move_room_mode_selection(AppState *state, int delta)
     state->room_mode_selected = (unsigned)selected;
 }
 
+static const char *create_room_mode_api_name(unsigned selection)
+{
+    if (selection == 0u) return "link_cable";
+    if (selection == 1u) return "n64";
+    return NULL;
+}
+
+static bool gb_runtime_fixed_host_may_start_for_control_state(
+    const char *role, const char *control_state)
+{
+    if (!role || !control_state) return false;
+    if (strcmp(role, "host") == 0) {
+        return strcmp(control_state, "READY") == 0;
+    }
+    if (strcmp(role, "remote") == 0) {
+        return strcmp(control_state, "WAITING_PEER") == 0 ||
+               strcmp(control_state, "PAUSED_REMOTE") == 0;
+    }
+    return false;
+}
+
+static void gb_launch_window_size(const AppState *state,
+                                  unsigned *width_out,
+                                  unsigned *height_out)
+{
+    int width = INTEGRAL_WINDOW_WIDTH;
+    int height = INTEGRAL_WINDOW_HEIGHT;
+    if (state && state->client_window) {
+        SDL_GetWindowSize(state->client_window, &width, &height);
+    }
+    if (width <= 0 || height <= 0) {
+        width = INTEGRAL_WINDOW_WIDTH;
+        height = INTEGRAL_WINDOW_HEIGHT;
+    }
+    *width_out = (unsigned)width;
+    *height_out = (unsigned)height;
+}
+
 static void handle_room_mode_key(AppState *state, const SDL_KeyboardEvent *key)
 {
     if (key->repeat) {
@@ -5473,9 +5547,14 @@ static void handle_room_mode_key(AppState *state, const SDL_KeyboardEvent *key)
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
         {
+            if (state->room_mode_selected == 2u) {
+                state->screen = SCREEN_MAIN_MENU;
+                copy_text(state->login.status, sizeof(state->login.status), "MAIN MENU");
+                break;
+            }
             IntegralApiRoom room;
             char error[160];
-            const char *mode = state->room_mode_selected == 0 ? "link_cable" : "n64";
+            const char *mode = create_room_mode_api_name(state->room_mode_selected);
             copy_text(state->login.status, sizeof(state->login.status), "CREATING ROOM");
             if (integral_api_create_room(state->login.server, state->login.token, mode,
                                          &room, error, sizeof(error)) != 0) {
@@ -5869,6 +5948,7 @@ static void monitor_room_gb_runtime_client_exit(AppState *state)
         return;
     }
     bool remote = strcmp(state->room_gb_runtime_fixed_host_role, "remote") == 0;
+    int exit_code = child_process_exit_code(status);
     client_log(state, "gb_runtime_fixed_host_runtime_exited",
                "role=%s wait_status=%d session=%s",
                state->room_gb_runtime_fixed_host_role, status,
@@ -5877,13 +5957,31 @@ static void monitor_room_gb_runtime_client_exit(AppState *state)
     state->room_client_pid = 0;
     if (state->room_gb_runtime_fixed_host_active &&
         strcmp(state->room_gb_runtime_fixed_host_save_policy, "commit_pair") == 0 &&
-        child_process_exit_code(status) == 0 &&
+        exit_code == 0 &&
         handle_gb_runtime_fixed_host_trade_result(state)) {
         state->room_gb_runtime_fixed_host_active = false;
         state->room_game_ended = true;
         return;
     }
     discard_gb_runtime_fixed_host_result(state);
+    if (remote &&
+        exit_code == INTEGRAL_GB_RUNTIME_FIXED_HOST_REMOTE_LEAVE_EXIT_CODE) {
+        state->room_gb_runtime_fixed_host_active = false;
+        state->room_game_ended = true;
+        (void)stop_current_game_session(state);
+        copy_text(state->login.status, sizeof(state->login.status),
+                  "SESSION ENDED - SAVE NOT UPDATED");
+        return;
+    }
+    if (exit_code == 0 &&
+        strcmp(state->room_gb_runtime_fixed_host_save_policy, "discard") == 0) {
+        state->room_gb_runtime_fixed_host_active = false;
+        state->room_game_ended = true;
+        (void)stop_current_game_session(state);
+        copy_text(state->login.status, sizeof(state->login.status),
+                  "SESSION ENDED - SAVE NOT UPDATED");
+        return;
+    }
     if (remote && state->room_gb_runtime_fixed_host_active && !state->room_game_ended) {
         copy_text(state->login.status, sizeof(state->login.status),
                   "REMOTE RECONNECTING - 20 SEC");
@@ -6041,11 +6139,10 @@ static bool handle_gb_runtime_fixed_host_trade_result(AppState *state)
     return true;
 }
 
-static const char *gb_runtime_fixed_host_key_spec_for_role(
-    const char *role, const IntegralConfigKeys *keys)
+static const char *gb_runtime_fixed_host_key_spec(
+    const IntegralConfigKeys *keys)
 {
-    if (!role || !keys) return "";
-    return strcmp(role, "host") == 0 ? keys->slot1 : keys->slot2;
+    return keys ? keys->slot1 : "";
 }
 
 static void gb_runtime_fixed_host_set_child_environment(
@@ -6054,14 +6151,20 @@ static void gb_runtime_fixed_host_set_child_environment(
     const char *session_id, const char *ticket,
     const IntegralGBRuntimeFixedHostRomResolution *resolution,
     const IntegralConfigKeys *keys,
-    intptr_t result_handle, const char *save_policy)
+    unsigned window_width, unsigned window_height,
+    intptr_t result_handle, const char *save_policy,
+    const char *rtc_target_unix)
 {
     char port[16];
     char result_handle_text[32];
-    const char *game_keys = gb_runtime_fixed_host_key_spec_for_role(role, keys);
+    char window_width_text[16];
+    char window_height_text[16];
+    const char *game_keys = gb_runtime_fixed_host_key_spec(keys);
     snprintf(port, sizeof(port), "%u", relay_port);
     snprintf(result_handle_text, sizeof(result_handle_text), "%lld",
              (long long)result_handle);
+    snprintf(window_width_text, sizeof(window_width_text), "%u", window_width);
+    snprintf(window_height_text, sizeof(window_height_text), "%u", window_height);
 #ifdef _WIN32
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE", role);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST", relay_host);
@@ -6077,6 +6180,10 @@ static void gb_runtime_fixed_host_set_child_environment(
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_KEYS", game_keys);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RESULT_HANDLE", result_handle_text);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SAVE_POLICY", save_policy);
+    SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RTC_TARGET_UNIX",
+                            rtc_target_unix);
+    SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_WINDOW_WIDTH", window_width_text);
+    SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_WINDOW_HEIGHT", window_height_text);
 #else
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE", role, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST", relay_host, 1);
@@ -6092,6 +6199,15 @@ static void gb_runtime_fixed_host_set_child_environment(
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_KEYS", game_keys, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RESULT_HANDLE", result_handle_text, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SAVE_POLICY", save_policy, 1);
+    if (rtc_target_unix) {
+        setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RTC_TARGET_UNIX",
+               rtc_target_unix, 1);
+    }
+    else {
+        unsetenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RTC_TARGET_UNIX");
+    }
+    setenv("INTEGRAL_EMULATOR_GB_WINDOW_WIDTH", window_width_text, 1);
+    setenv("INTEGRAL_EMULATOR_GB_WINDOW_HEIGHT", window_height_text, 1);
 #endif
 }
 
@@ -6111,6 +6227,9 @@ static void gb_runtime_fixed_host_clear_parent_environment(void)
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_KEYS",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RESULT_HANDLE",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SAVE_POLICY",
+        "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RTC_TARGET_UNIX",
+        "INTEGRAL_EMULATOR_GB_WINDOW_WIDTH",
+        "INTEGRAL_EMULATOR_GB_WINDOW_HEIGHT",
     };
     for (size_t index = 0u; index < sizeof(names) / sizeof(names[0]); index++)
         SetEnvironmentVariableA(names[index], NULL);
@@ -6126,8 +6245,12 @@ static bool start_room_gb_runtime_fixed_host_runtime(
     char save_policy[32] = {0};
     unsigned relay_port = 0u;
     IntegralGBRuntimeFixedHostSnapshotPair snapshots = {0};
+    unsigned window_width = 0u, window_height = 0u;
+    long long rtc_target_unix = 0;
+    char rtc_target_text[32] = {0};
     bool host = strcmp(role, "host") == 0;
     if (state->room_client_started) return true;
+    gb_launch_window_size(state, &window_width, &window_height);
     if (access(integral_gb_runtime_fixed_host_runtime_path(), X_OK) != 0) {
         copy_text(state->login.status, sizeof(state->login.status),
                   "FIXED HOST RUNTIME NOT FOUND");
@@ -6149,6 +6272,41 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                      "FIXED HOST SNAPSHOT FAILED %.96s", error);
             return false;
         }
+        IntegralGBRuntimeLinkSavePreflightStatus host_save_status =
+            integral_gb_runtime_link_save_preflight(
+                resolution->path_a, snapshots.host_size);
+        IntegralGBRuntimeLinkSavePreflightStatus remote_save_status =
+            integral_gb_runtime_link_save_preflight(
+                resolution->path_b, snapshots.remote_size);
+        if (host_save_status != INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_OK ||
+            remote_save_status != INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_OK) {
+            integral_gb_runtime_fixed_host_snapshot_pair_release(&snapshots);
+            state->room_gb_runtime_save_preflight_blocked = true;
+            if (host_save_status == INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_ROM_ERROR ||
+                remote_save_status == INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_ROM_ERROR) {
+                copy_text(state->login.status, sizeof(state->login.status),
+                          "ROM CHECK FAILED - LEAVE ROOM AND RETRY");
+            }
+            else {
+                copy_text(state->login.status, sizeof(state->login.status),
+                          "RTC SAV NOT READY - RUN LOCAL ONCE, EXIT NORMALLY, THEN RETRY");
+            }
+            client_log(state, "gb_runtime_fixed_host_save_preflight_failed",
+                       "host_status=%d remote_status=%d",
+                       (int)host_save_status, (int)remote_save_status);
+            return false;
+        }
+        if (integral_api_get_server_time(
+                state->login.server, &rtc_target_unix,
+                error, sizeof(error)) != 0 || rtc_target_unix <= 0) {
+            integral_gb_runtime_fixed_host_snapshot_pair_release(&snapshots);
+            snprintf(state->login.status, sizeof(state->login.status),
+                     "FIXED HOST SERVER TIME FAILED %.88s", error);
+            client_log(state, "gb_runtime_fixed_host_server_time_failed",
+                       "error=%s", error);
+            return false;
+        }
+        snprintf(rtc_target_text, sizeof(rtc_target_text), "%lld", rtc_target_unix);
     }
     if (integral_api_gb_runtime_fixed_host_issue_relay_ticket(
             state->login.server, state->login.token,
@@ -6198,7 +6356,9 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                                          relay_transport,
                                          state->room_link_session_id, ticket,
                                          resolution, &state->keys,
-                                         (intptr_t)child_result_write, save_policy);
+                                         window_width, window_height,
+                                         (intptr_t)child_result_write, save_policy,
+                                         host ? rtc_target_text : NULL);
         snprintf(command, sizeof(command), "\"%s\"%s",
                  integral_gb_runtime_fixed_host_runtime_path(),
                  host ? " --snapshot-stdin" : "");
@@ -6247,7 +6407,9 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                                              relay_transport,
                                              state->room_link_session_id, ticket,
                                              resolution, &state->keys,
-                                             (intptr_t)result_descriptors[1], save_policy);
+                                             window_width, window_height,
+                                             (intptr_t)result_descriptors[1], save_policy,
+                                             host ? rtc_target_text : NULL);
             redirect_child_output_to_client_log();
             if (host)
                 execl(integral_gb_runtime_fixed_host_runtime_path(),
@@ -6311,8 +6473,9 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                   ? "WARNING PLAIN LOCAL NETWORK  FIXED HOST RUNNING"
                   : (host ? "FIXED HOST BATTLE RUNNING" : "FIXED HOST REMOTE RUNNING"));
     client_log(state, "gb_runtime_fixed_host_runtime_started",
-               "role=%s session=%s transport=%s",
-               role, state->room_link_session_id, relay_transport);
+               "role=%s session=%s transport=%s rtc_target_unix=%lld",
+               role, state->room_link_session_id, relay_transport,
+               rtc_target_unix);
     return true;
 }
 
@@ -6397,10 +6560,10 @@ static void maybe_advance_room_gb_runtime_fixed_host_preflight(AppState *state)
             return;
         }
     }
-    if (strcmp(control_state, "READY") == 0 ||
-        strcmp(control_state, "WAITING_PEER") == 0 ||
-        (strcmp(control_state, "PAUSED_REMOTE") == 0 &&
-         strcmp(role, "remote") == 0)) {
+    /* The Host downloads and validates both SAVs before issuing the first
+       relay ticket.  Remote therefore waits for WAITING_PEER rather than
+       acquiring a ticket while the Host is still validating READY. */
+    if (gb_runtime_fixed_host_may_start_for_control_state(role, control_state)) {
         if (integral_api_get_link_game_fence(
                 state->login.server, state->login.token,
                 state->room_link_session_id,
@@ -6439,6 +6602,9 @@ static void maybe_launch_room_host(AppState *state)
                    "reason=missing_session_or_token session=%s token=%s",
                    state->room_link_session_id[0] ? state->room_link_session_id : "-",
                    state->login.token[0] ? "present" : "missing");
+        return;
+    }
+    if (state->room_gb_runtime_save_preflight_blocked) {
         return;
     }
     {
@@ -6586,6 +6752,7 @@ static void activate_link_room(AppState *state, const IntegralApiRoom *matched_r
     state->room_fencing_token = 0;
     state->room_start_requested = false;
     state->room_client_started = false;
+    state->room_gb_runtime_save_preflight_blocked = false;
     state->room_game_ended = false;
     state->room_link_mode_local_override = false;
     state->room_client_pid = 0;
@@ -6785,6 +6952,7 @@ static void leave_current_room(AppState *state, bool update_status)
     state->room_fencing_token = 0;
     state->room_start_requested = false;
     state->room_client_started = false;
+    state->room_gb_runtime_save_preflight_blocked = false;
     state->room_game_ended = false;
     state->room_client_pid = 0;
     state->room_session_missing_since_ticks = 0;
@@ -8541,6 +8709,66 @@ static int read_binary_file_alloc(const char *path, unsigned char **out, size_t 
     return 0;
 }
 
+static bool mobile_runtime_result_allows_commit(const LocalSyncSlot *sync_slot,
+                                                char *reason_out,
+                                                size_t reason_out_size)
+{
+    char result[4096];
+    size_t result_size = 0;
+    if (!sync_slot || !sync_slot->mobile_result_path[0] ||
+        read_binary_file(sync_slot->mobile_result_path,
+                         (unsigned char *)result,
+                         sizeof(result) - 1u,
+                         &result_size) != 0) {
+        copy_text(reason_out, reason_out_size, "runtime result missing");
+        return false;
+    }
+    result[result_size] = '\0';
+
+    char schema[8], clean[8], flushed[8], size_text[32], reported_hash[65];
+    if (!execution_result_field(result, "schema_version", schema, sizeof(schema)) ||
+        strcmp(schema, "1") != 0 ||
+        !execution_result_field(result, "clean_exit", clean, sizeof(clean)) ||
+        strcmp(clean, "1") != 0 ||
+        !execution_result_field(result, "battery_flush", flushed, sizeof(flushed)) ||
+        strcmp(flushed, "1") != 0) {
+        copy_text(reason_out, reason_out_size, "runtime did not exit cleanly");
+        return false;
+    }
+    if (!execution_result_field(result, "sav_size", size_text, sizeof(size_text)) ||
+        !execution_result_field(result, "sav_sha256", reported_hash,
+                                sizeof(reported_hash))) {
+        copy_text(reason_out, reason_out_size, "runtime save receipt missing");
+        return false;
+    }
+
+    errno = 0;
+    char *size_end = NULL;
+    unsigned long long reported_size = strtoull(size_text, &size_end, 10);
+    if (errno != 0 || !size_end || *size_end != '\0' || reported_size == 0u ||
+        reported_size > INTEGRAL_MAX_SAVE_BYTES) {
+        copy_text(reason_out, reason_out_size, "runtime save size invalid");
+        return false;
+    }
+
+    unsigned char *save_data = NULL;
+    size_t actual_size = 0;
+    char actual_hash[65];
+    if (read_binary_file_alloc(sync_slot->save_path, &save_data, &actual_size,
+                               INTEGRAL_MAX_SAVE_BYTES) != 0 ||
+        actual_size != (size_t)reported_size ||
+        sha256_file_hex(sync_slot->save_path, actual_hash,
+                        sizeof(actual_hash)) != 0 ||
+        strlen(reported_hash) != 64u || strcmp(reported_hash, actual_hash) != 0) {
+        free(save_data);
+        copy_text(reason_out, reason_out_size, "runtime save receipt mismatch");
+        return false;
+    }
+    free(save_data);
+    reason_out[0] = '\0';
+    return true;
+}
+
 static int sync_slot_from_server(AppState *state,
                                  const IntegralConfigRomSlot *slot,
                                  const char *session_save_path,
@@ -9193,6 +9421,35 @@ static bool preserve_heartbeat_lost_recovery_set(const char *server,
     return preserved;
 }
 
+static void reject_mobile_runtime_result(const char *server,
+                                         const char *token,
+                                         const char *game_session_id,
+                                         long long fencing_token,
+                                         LocalSyncSlot *sync_slot,
+                                         const char *reason)
+{
+    sync_slot->preserve_save_path =
+        write_save_recovery_pointer(server,
+                                    sync_slot,
+                                    sync_slot->save_path,
+                                    "mobile_runtime_not_clean",
+                                    game_session_id,
+                                    fencing_token);
+    char error[160];
+    if (integral_api_cancel_mobile_session(server, token,
+                                           sync_slot->mobile_session_id,
+                                           game_session_id, fencing_token,
+                                           reason, error, sizeof(error)) != 0) {
+        client_log(NULL, "mobile_cancel_failed",
+                   "mobile_session_id=%s error=%s",
+                   sync_slot->mobile_session_id, error);
+    }
+    client_log(NULL, "mobile_result_rejected",
+               "mobile_session_id=%s reason=%s recovery=%d",
+               sync_slot->mobile_session_id, reason,
+               sync_slot->preserve_save_path ? 1 : 0);
+}
+
 static void remove_reflected_session_saves(LocalSyncSlot *sync_slots, unsigned sync_count)
 {
     static const char prefix[] = "runtime/";
@@ -9255,7 +9512,10 @@ static void monitor_save_sync_process(IntegralChildProcess integral_gb_runtime_p
         bool alive = child_process_alive(integral_gb_runtime_pid);
         if (!heartbeat_lost) {
             for (unsigned i = 0; i < sync_count; i++) {
-                upload_changed_save(server, token, game_session_id, fencing_token, &sync_slots[i], false);
+                if (!sync_slots[i].mobile_guard) {
+                    upload_changed_save(server, token, game_session_id,
+                                        fencing_token, &sync_slots[i], false);
+                }
             }
         }
         if (game_session_active && alive && !heartbeat_lost) {
@@ -9318,6 +9578,16 @@ static void monitor_save_sync_process(IntegralChildProcess integral_gb_runtime_p
             }
             bool safe_to_release = true;
             bool mobile_session = sync_count == 1 && sync_slots[0].mobile_guard;
+            char mobile_result_reason[160];
+            if (mobile_session &&
+                !mobile_runtime_result_allows_commit(&sync_slots[0],
+                                                     mobile_result_reason,
+                                                     sizeof(mobile_result_reason))) {
+                reject_mobile_runtime_result(server, token, game_session_id,
+                                             fencing_token, &sync_slots[0],
+                                             mobile_result_reason);
+                break;
+            }
             for (unsigned i = 0; i < sync_count; i++) {
                 if (!upload_changed_save(server, token, game_session_id, fencing_token, &sync_slots[i], true)) {
                     safe_to_release = false;
@@ -9392,6 +9662,18 @@ static DWORD WINAPI monitor_save_sync_thread(LPVOID param)
             }
             bool safe_to_release = true;
             bool mobile_session = args->sync_count == 1 && args->sync_slots[0].mobile_guard;
+            char mobile_result_reason[160];
+            if (mobile_session &&
+                !mobile_runtime_result_allows_commit(&args->sync_slots[0],
+                                                     mobile_result_reason,
+                                                     sizeof(mobile_result_reason))) {
+                reject_mobile_runtime_result(args->server, args->token,
+                                             args->game_session_id,
+                                             args->fencing_token,
+                                             &args->sync_slots[0],
+                                             mobile_result_reason);
+                break;
+            }
             for (unsigned i = 0; i < args->sync_count; i++) {
                 if (!upload_changed_save(args->server, args->token, args->game_session_id, args->fencing_token, &args->sync_slots[i], true)) {
                     safe_to_release = false;
@@ -9434,7 +9716,12 @@ static DWORD WINAPI monitor_save_sync_thread(LPVOID param)
         }
         if (!heartbeat_lost) {
             for (unsigned i = 0; i < args->sync_count; i++) {
-                upload_changed_save(args->server, args->token, args->game_session_id, args->fencing_token, &args->sync_slots[i], false);
+                if (!args->sync_slots[i].mobile_guard) {
+                    upload_changed_save(args->server, args->token,
+                                        args->game_session_id,
+                                        args->fencing_token,
+                                        &args->sync_slots[i], false);
+                }
             }
         }
         if (args->game_session_active && !heartbeat_lost) {
@@ -10568,11 +10855,19 @@ static void start_local_gb_mobile(AppState *state)
     sync_slot.mobile_guard = true;
     sync_slot.authoritative_size = authoritative_size;
     copy_text(sync_slot.mobile_runtime_dir, sizeof(sync_slot.mobile_runtime_dir), runtime_dir);
+    copy_text(sync_slot.mobile_result_path, sizeof(sync_slot.mobile_result_path), result_path);
     free(authoritative);
     integral_mobile_runtime_contract_free(&runtime_contract);
     (void)remove(result_path);
 
     const char *runtime = integral_gb_runtime_mobile_runtime_path();
+    unsigned gb_window_width = 0u, gb_window_height = 0u;
+    char gb_window_width_text[16], gb_window_height_text[16];
+    char rtc_offset_text[32];
+    gb_launch_window_size(state, &gb_window_width, &gb_window_height);
+    snprintf(gb_window_width_text, sizeof(gb_window_width_text), "%u", gb_window_width);
+    snprintf(gb_window_height_text, sizeof(gb_window_height_text), "%u", gb_window_height);
+    (void)server_rtc_offset_text(state, rtc_offset_text, sizeof(rtc_offset_text));
 #ifdef _WIN32
     intptr_t spawned = _spawnl(_P_NOWAIT,
                                runtime, runtime,
@@ -10581,6 +10876,9 @@ static void start_local_gb_mobile(AppState *state)
                                "--config", config_path,
                                "--session-manifest", manifest_path,
                                "--runtime-result", result_path,
+                               "--rtc-offset-seconds", rtc_offset_text,
+                               "--window-width", gb_window_width_text,
+                               "--window-height", gb_window_height_text,
                                NULL);
     if (spawned == -1) {
         integral_api_cancel_mobile_session(state->login.server, state->login.token, mobile_session_id, game_session_id, fencing_token, "runtime start failed", error, sizeof(error));
@@ -10611,6 +10909,9 @@ static void start_local_gb_mobile(AppState *state)
                   "--config", config_path,
                   "--session-manifest", manifest_path,
                   "--runtime-result", result_path,
+                  "--rtc-offset-seconds", rtc_offset_text,
+                  "--window-width", gb_window_width_text,
+                  "--window-height", gb_window_height_text,
                   (char *)NULL);
             _exit(127);
         }
@@ -10727,6 +11028,11 @@ static void start_local_gb_runtime(AppState *state)
         integral_api_stop_local_game(state->login.server, state->login.token, game_session_id, fencing_token, error, sizeof(error));
         return;
     }
+    unsigned gb_window_width = 0u, gb_window_height = 0u;
+    char gb_window_width_text[16], gb_window_height_text[16];
+    gb_launch_window_size(state, &gb_window_width, &gb_window_height);
+    snprintf(gb_window_width_text, sizeof(gb_window_width_text), "%u", gb_window_width);
+    snprintf(gb_window_height_text, sizeof(gb_window_height_text), "%u", gb_window_height);
 
 #ifdef _WIN32
     intptr_t spawned;
@@ -10752,6 +11058,10 @@ static void start_local_gb_runtime(AppState *state)
                           "--remote-input",
                           "--display-slots",
                           "2",
+                          "--window-width",
+                          gb_window_width_text,
+                          "--window-height",
+                          gb_window_height_text,
                           "--slot1-keys",
                           state->keys.slot1,
                           "--slot2-keys",
@@ -10783,6 +11093,10 @@ static void start_local_gb_runtime(AppState *state)
                           "--display",
                           "--display-slots",
                           "1",
+                          "--window-width",
+                          gb_window_width_text,
+                          "--window-height",
+                          gb_window_height_text,
                           "--slot1-keys",
                           state->keys.slot1,
                           "--fast-key",
@@ -10850,6 +11164,10 @@ static void start_local_gb_runtime(AppState *state)
                       "--remote-input",
                       "--display-slots",
                       "2",
+                      "--window-width",
+                      gb_window_width_text,
+                      "--window-height",
+                      gb_window_height_text,
                       "--slot1-keys",
                       state->keys.slot1,
                       "--slot2-keys",
@@ -10880,6 +11198,10 @@ static void start_local_gb_runtime(AppState *state)
                       "--display",
                       "--display-slots",
                       "1",
+                      "--window-width",
+                      gb_window_width_text,
+                      "--window-height",
+                      gb_window_height_text,
                       "--slot1-keys",
                       state->keys.slot1,
                       "--fast-key",
@@ -11451,9 +11773,16 @@ static bool start_n64_room_auto(AppState *state,
 
 static int save_screenshot(SDL_Renderer *renderer, const char *path)
 {
+    int width = 0;
+    int height = 0;
+    if (SDL_GetRendererOutputSize(renderer, &width, &height) != 0 ||
+        width <= 0 || height <= 0) {
+        fprintf(stderr, "SDL_GetRendererOutputSize failed: %s\n", SDL_GetError());
+        return 1;
+    }
     SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0,
-                                                          INTEGRAL_WINDOW_WIDTH,
-                                                          INTEGRAL_WINDOW_HEIGHT,
+                                                          width,
+                                                          height,
                                                           32,
                                                           SDL_PIXELFORMAT_ARGB8888);
     if (!surface) {
@@ -11717,6 +12046,11 @@ int main(int argc, char **argv)
             fprintf(stderr, "local config save failed\n");
             return 1;
         }
+        IntegralConfigWindow window_config = {.width = 777u, .height = 611u};
+        if (integral_config_save_window(argv[2], &window_config) != 0) {
+            fprintf(stderr, "window config save failed\n");
+            return 1;
+        }
         IntegralConfigLogin login_config;
         memset(&login_config, 0, sizeof(login_config));
         login_config.remember = 1;
@@ -11738,6 +12072,7 @@ int main(int argc, char **argv)
         memset(&login_config, 0, sizeof(login_config));
         memset(slots, 0, sizeof(slots));
         memset(&local_config, 0, sizeof(local_config));
+        memset(&window_config, 0, sizeof(window_config));
         IntegralConfigKeys key_config;
         memset(&key_config, 0, sizeof(key_config));
         integral_keys_defaults(&key_config);
@@ -11761,24 +12096,27 @@ int main(int argc, char **argv)
         memset(&key_config, 0, sizeof(key_config));
         if (integral_config_load_login(argv[2], &login_config) != 0 ||
             integral_config_load_local(argv[2], &local_config) != 0 ||
+            integral_config_load_window(argv[2], &window_config) != 0 ||
             integral_config_load_rom_slots(argv[2], slots, INTEGRAL_ROM_SLOTS) != 0 ||
             integral_config_load_keys(argv[2], &key_config) != 0) {
             fprintf(stderr, "config reload failed\n");
             return 1;
         }
-        printf("config ok %s %s %s %s local%d\n",
+        printf("config ok %s %s %s %s local%d window%ux%u\n",
                slots[0].rom_path,
                slots[0].save_id,
                login_config.username,
                key_config.screenshot,
-               local_config.slot1_index);
+               local_config.slot1_index, window_config.width, window_config.height);
         return strcmp(slots[0].save_id, "save_test") == 0 &&
                        login_config.remember == 0 &&
                        strcmp(login_config.server, "https://xxxxx.jp/zzz") == 0 &&
                        strcmp(login_config.server_id, "primary") == 0 &&
                        login_config.username[0] == '\0' &&
                        strcmp(key_config.screenshot, "O") == 0 &&
-                       local_config.slot1_index == 0
+                       local_config.slot1_index == 0 &&
+                       window_config.width == 777u &&
+                       window_config.height == 611u
                    ? 0
                    : 1;
     }
@@ -11796,6 +12134,13 @@ int main(int argc, char **argv)
         }
         memset(&key, 0, sizeof(key));
         app_state_init(&navigation, config_path);
+        copy_text(navigation.server_rom_slots[0].rom_id,
+                  sizeof(navigation.server_rom_slots[0].rom_id),
+                  "stale_other_user_rom");
+        load_active_user_config(&navigation);
+        if (navigation.server_rom_slots[0].rom_id[0] != '\0') {
+            return 1;
+        }
         /* Smoke navigation must not launch a real configured ROM or contact a server. */
         memset(navigation.rom_slots, 0, sizeof(navigation.rom_slots));
         navigation.login.token[0] = '\0';
@@ -11807,7 +12152,46 @@ int main(int argc, char **argv)
             return 1;
         }
 
+        navigation.screen = SCREEN_MAIN_MENU;
+        navigation.main_selected = 1;
+        key.keysym.sym = SDLK_RETURN;
+        handle_main_key(&navigation, &key);
+        if (navigation.screen != SCREEN_ROOM_MODE ||
+            strcmp(create_room_mode_api_name(0u), "link_cable") != 0 ||
+            strcmp(create_room_mode_api_name(1u), "n64") != 0 ||
+            create_room_mode_api_name(2u) != NULL ||
+            !gb_runtime_fixed_host_may_start_for_control_state("host", "READY") ||
+            gb_runtime_fixed_host_may_start_for_control_state("remote", "READY") ||
+            !gb_runtime_fixed_host_may_start_for_control_state("remote", "WAITING_PEER")) {
+            return 1;
+        }
+        key.keysym.sym = SDLK_UP;
+        handle_room_mode_key(&navigation, &key);
+        key.keysym.sym = SDLK_RETURN;
+        handle_room_mode_key(&navigation, &key);
+        if (navigation.screen != SCREEN_MAIN_MENU) {
+            return 1;
+        }
+
+        navigation.screen = SCREEN_ROOM;
+        navigation.room_number = 1;
+        navigation.current_room.room_number = 1;
+        copy_text(navigation.current_room.room_type,
+                  sizeof(navigation.current_room.room_type),
+                  "link_cable");
+        copy_text(navigation.login.status,
+                  sizeof(navigation.login.status),
+                  "FIXED HOST ROM CHECK BOTH ROMS MISSING");
+        char room_phase[96];
+        format_room_phase(&navigation, &navigation.current_room, 1, 1,
+                          room_phase, sizeof(room_phase));
+        if (strcmp(room_phase, navigation.login.status) != 0) {
+            return 1;
+        }
+
+        navigation.screen = SCREEN_LOCAL_MODE;
         navigation.local_mode_selected = 0;
+        key.keysym.sym = SDLK_RETURN;
         handle_local_mode_key(&navigation, &key);
         if (navigation.screen != SCREEN_LOCAL) {
             return 1;
@@ -11896,10 +12280,8 @@ int main(int argc, char **argv)
         memset(&fixed_host_keys, 0, sizeof(fixed_host_keys));
         copy_text(fixed_host_keys.slot1, sizeof(fixed_host_keys.slot1), "SLOT1-JOYCON");
         copy_text(fixed_host_keys.slot2, sizeof(fixed_host_keys.slot2), "SLOT2-JOYCON");
-        if (strcmp(gb_runtime_fixed_host_key_spec_for_role("host", &fixed_host_keys),
-                   "SLOT1-JOYCON") != 0 ||
-            strcmp(gb_runtime_fixed_host_key_spec_for_role("remote", &fixed_host_keys),
-                   "SLOT2-JOYCON") != 0) {
+        if (strcmp(gb_runtime_fixed_host_key_spec(&fixed_host_keys),
+                   "SLOT1-JOYCON") != 0) {
             return 1;
         }
         if (strcmp(key_config_step_label(KEY_CAPTURE_N64, 6u), "A BUTTON") != 0 ||
@@ -11916,10 +12298,11 @@ int main(int argc, char **argv)
             screenshot_path = argv[i + 1];
         }
     }
+    AppState state;
+    app_state_init(&state, config_path);
     client_log_open(log_path);
     client_log(NULL, "client_start", "version=%s config=%s log=%s", INTEGRAL_CLIENT_VERSION, config_path, log_path);
-    SDL_SetHint("SDL_IME_SHOW_UI", "0");
-    SDL_SetHint("SDL_IME_INTERNAL_EDITING", "1");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         client_log(NULL, "sdl_init_failed", "error=%s", SDL_GetError());
@@ -11930,9 +12313,9 @@ int main(int argc, char **argv)
     SDL_Window *window = SDL_CreateWindow("INTEGRAL EMULATOR Login",
                                           SDL_WINDOWPOS_CENTERED,
                                           SDL_WINDOWPOS_CENTERED,
-                                          INTEGRAL_WINDOW_WIDTH,
-                                          INTEGRAL_WINDOW_HEIGHT,
-                                          0);
+                                          (int)state.window_width,
+                                          (int)state.window_height,
+                                          SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
     if (!window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         client_log(NULL, "sdl_window_failed", "error=%s", SDL_GetError());
@@ -11940,6 +12323,10 @@ int main(int argc, char **argv)
         client_log_close();
         return 1;
     }
+    state.client_window = window;
+    SDL_SetWindowMinimumSize(window,
+                             (int)INTEGRAL_CONFIG_WINDOW_MIN_WIDTH,
+                             (int)INTEGRAL_CONFIG_WINDOW_MIN_HEIGHT);
     set_application_window_icon(window);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
@@ -11953,10 +12340,18 @@ int main(int argc, char **argv)
         client_log_close();
         return 1;
     }
+    if (SDL_RenderSetLogicalSize(renderer, INTEGRAL_WINDOW_WIDTH, INTEGRAL_WINDOW_HEIGHT) != 0 ||
+        SDL_RenderSetIntegerScale(renderer, SDL_FALSE) != 0) {
+        fprintf(stderr, "SDL renderer scaling failed: %s\n", SDL_GetError());
+        client_log(NULL, "sdl_scale_failed", "error=%s", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        client_log_close();
+        return 1;
+    }
 
-    AppState state;
-    app_state_init(&state, config_path);
-    state.n64_runtime_media_stream = integral_n64_runtime_media_stream_create(renderer);
+    state.n64_runtime_media_stream = integral_n64_runtime_media_stream_create(window, renderer);
     if (!state.n64_runtime_media_stream) {
         fprintf(stderr, "N64 Runtime media stream allocation failed\n");
         SDL_DestroyRenderer(renderer);
@@ -12295,6 +12690,22 @@ int main(int argc, char **argv)
                                                                  event.window.windowID)) {
                 request_runtime_exit_confirmation(&state, false);
             }
+            else if (event.type == SDL_WINDOWEVENT &&
+                     event.window.windowID == SDL_GetWindowID(window) &&
+                     (event.window.event == SDL_WINDOWEVENT_RESIZED ||
+                      event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)) {
+                int width = 0;
+                int height = 0;
+                SDL_GetWindowSize(window, &width, &height);
+                if (width >= (int)INTEGRAL_CONFIG_WINDOW_MIN_WIDTH &&
+                    height >= (int)INTEGRAL_CONFIG_WINDOW_MIN_HEIGHT &&
+                    ((unsigned)width != state.window_width ||
+                     (unsigned)height != state.window_height)) {
+                    state.window_width = (unsigned)width;
+                    state.window_height = (unsigned)height;
+                    state.window_size_dirty = true;
+                }
+            }
             else if (event.type == SDL_TEXTINPUT) {
                 if (state.screen == SCREEN_LOGIN && state.login.editing) {
                     handle_text_input(&state.login, &event.text);
@@ -12424,6 +12835,16 @@ int main(int argc, char **argv)
     (void)set_game_input_active(&state, false);
 
     SDL_StopTextInput();
+    if (state.window_size_dirty) {
+        IntegralConfigWindow window_config = {
+            .width = state.window_width,
+            .height = state.window_height,
+        };
+        if (integral_config_save_window(state.base_config_path, &window_config) != 0) {
+            client_log(&state, "window_size_save_failed", "width=%u height=%u",
+                       state.window_width, state.window_height);
+        }
+    }
     client_log(&state, "client_shutdown", "status=%s", state.login.status);
     leave_current_room(&state, false);
     integral_room_poll_worker_destroy(state.n64_room_poll_worker);

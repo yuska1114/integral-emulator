@@ -1,0 +1,10 @@
+[Unit]
+Description=Restore read ACL for Integral Server TLS certificate files
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/integral-server-certificate-acl-reapply
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true

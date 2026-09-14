@@ -32,6 +32,8 @@ struct IntegralH264Decoder {
     IMFTransform *transform;
     uint16_t width;
     uint16_t height;
+    uint16_t surface_width;
+    uint16_t surface_height;
     bool handling_stream_change;
 };
 
@@ -184,6 +186,35 @@ static int sample_bytes(IMFSample *sample,
     IMFMediaBuffer_Unlock(buffer);
     IMFMediaBuffer_Release(buffer);
     return 0;
+}
+
+static int sample_nv12_bytes(IMFSample *sample,
+                             uint8_t *out,
+                             size_t capacity,
+                             uint32_t *size_out)
+{
+    IMFMediaBuffer *buffer = NULL;
+    IMF2DBuffer *buffer_2d = NULL;
+    DWORD length = 0;
+    if (FAILED(IMFSample_GetBufferByIndex(sample, 0, &buffer))) return -1;
+    HRESULT result = IMFMediaBuffer_QueryInterface(
+        buffer, &IID_IMF2DBuffer, (void **)&buffer_2d);
+    if (SUCCEEDED(result) && buffer_2d) {
+        result = IMF2DBuffer_GetContiguousLength(buffer_2d, &length);
+        if (SUCCEEDED(result) && length <= capacity) {
+            result = IMF2DBuffer_ContiguousCopyTo(buffer_2d, out, length);
+        }
+        else if (SUCCEEDED(result)) {
+            result = MF_E_BUFFERTOOSMALL;
+        }
+        IMF2DBuffer_Release(buffer_2d);
+        IMFMediaBuffer_Release(buffer);
+        if (FAILED(result)) return -1;
+        *size_out = length;
+        return 0;
+    }
+    IMFMediaBuffer_Release(buffer);
+    return sample_bytes(sample, out, capacity, size_out);
 }
 
 static size_t start_code_size(const uint8_t *data, size_t size, size_t offset)
@@ -518,6 +549,7 @@ IntegralH264Decoder *integral_h264_decoder_create(const uint8_t *config,
     IntegralH264Decoder *decoder = calloc(1, sizeof(*decoder));
     if (!decoder) { shutdown(); return NULL; }
     decoder->width = width; decoder->height = height;
+    decoder->surface_width = width; decoder->surface_height = height;
     decoder->transform = activate_transform(&MFT_CATEGORY_VIDEO_DECODER,
                                             &MFVideoFormat_H264,
                                             &MFVideoFormat_NV12,
@@ -559,13 +591,18 @@ void integral_h264_decoder_destroy(IntegralH264Decoder *decoder)
     free(decoder); shutdown();
 }
 
-static void nv12_to_rgb24(const uint8_t *nv12, uint8_t *rgb, uint16_t width, uint16_t height)
+static void nv12_to_rgb24(const uint8_t *nv12,
+                          uint8_t *rgb,
+                          uint16_t surface_width,
+                          uint16_t surface_height,
+                          uint16_t width,
+                          uint16_t height)
 {
-    const uint8_t *uv = nv12 + (size_t)width * height;
+    const uint8_t *uv = nv12 + (size_t)surface_width * surface_height;
     for (unsigned y = 0; y < height; y++) for (unsigned x = 0; x < width; x++) {
-        int yy = (int)nv12[(size_t)y * width + x] - 16;
-        int u = (int)uv[(size_t)(y / 2u) * width + (x & ~1u)] - 128;
-        int v = (int)uv[(size_t)(y / 2u) * width + (x & ~1u) + 1u] - 128;
+        int yy = (int)nv12[(size_t)y * surface_width + x] - 16;
+        int u = (int)uv[(size_t)(y / 2u) * surface_width + (x & ~1u)] - 128;
+        int v = (int)uv[(size_t)(y / 2u) * surface_width + (x & ~1u) + 1u] - 128;
         int c = yy < 0 ? 0 : 298 * yy;
         rgb[((size_t)y * width + x) * 3u] = clamp_byte((c + 409*v + 128) >> 8);
         rgb[((size_t)y * width + x) * 3u + 1u] = clamp_byte((c - 100*u - 208*v + 128) >> 8);
@@ -591,7 +628,8 @@ static int decoder_process_output(IntegralH264Decoder *decoder,
     IMFMediaBuffer *output_buffer = NULL;
     if (!(info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)) {
         DWORD size = info.cbSize ? info.cbSize
-                                 : (DWORD)((size_t)decoder->width * decoder->height * 3u / 2u);
+                                 : (DWORD)((size_t)decoder->surface_width *
+                                           decoder->surface_height * 3u / 2u);
         if (FAILED(MFCreateSample(&output_sample)) ||
             FAILED(MFCreateMemoryBuffer(size, &output_buffer)) ||
             FAILED(IMFSample_AddBuffer(output_sample, output_buffer))) {
@@ -632,13 +670,14 @@ static int decoder_process_output(IntegralH264Decoder *decoder,
             UINT32 height = (UINT32)frame_size;
             usable = usable &&
                 width > 0 && height > 0 && width <= UINT16_MAX &&
-                height <= UINT16_MAX;
+                height <= UINT16_MAX && width >= decoder->width &&
+                height >= decoder->height && !(width & 1u) && !(height & 1u);
             if (usable) {
                 type_result = IMFTransform_SetOutputType(
                     decoder->transform, 0, renegotiated, 0);
                 if (SUCCEEDED(type_result)) {
-                    decoder->width = (uint16_t)width;
-                    decoder->height = (uint16_t)height;
+                    decoder->surface_width = (uint16_t)width;
+                    decoder->surface_height = (uint16_t)height;
                 }
             }
             IMFMediaType_Release(renegotiated);
@@ -670,19 +709,22 @@ static int decoder_process_output(IntegralH264Decoder *decoder,
         return_value = -1;
     }
     else {
-        size_t nv12_size = (size_t)decoder->width * decoder->height * 3u / 2u;
+        size_t nv12_size = (size_t)decoder->surface_width *
+                           decoder->surface_height * 3u / 2u;
         size_t rgb_size = (size_t)decoder->width * decoder->height * 3u;
         uint8_t *nv12 = malloc(nv12_size);
         uint32_t bytes = 0;
         if (!nv12 || rgb_size > rgb_capacity ||
-            sample_bytes(output_data.pSample, nv12, nv12_size, &bytes) ||
+            sample_nv12_bytes(output_data.pSample, nv12, nv12_size, &bytes) ||
             bytes < nv12_size) {
             free(nv12);
             set_error(error_out, error_out_size, "H264 decoded frame invalid");
             return_value = -1;
         }
         else {
-            nv12_to_rgb24(nv12, rgb_out, decoder->width, decoder->height);
+            nv12_to_rgb24(nv12, rgb_out,
+                          decoder->surface_width, decoder->surface_height,
+                          decoder->width, decoder->height);
             free(nv12);
             *width_out = decoder->width;
             *height_out = decoder->height;
@@ -1303,6 +1345,545 @@ int integral_h264_decoder_decode_avcc(IntegralH264Decoder *decoder,
         }
     }
     CVPixelBufferUnlockBaseAddress(decoder->output, kCVPixelBufferLock_ReadOnly);
+    *width_out = decoder->width;
+    *height_out = decoder->height;
+    return 1;
+}
+
+#elif defined(__linux__) && defined(INTEGRAL_USE_OPENH264)
+
+#include <limits.h>
+#include <wels/codec_api.h>
+
+struct IntegralH264Encoder {
+    ISVCEncoder *codec;
+    uint16_t width;
+    uint16_t height;
+    uint8_t *i420;
+    uint8_t *parameter_sets_avcc;
+    size_t parameter_sets_avcc_size;
+    uint8_t *sps;
+    size_t sps_size;
+    uint8_t *pps;
+    size_t pps_size;
+    bool config_sent;
+};
+
+struct IntegralH264Decoder {
+    ISVCDecoder *codec;
+    uint16_t width;
+    uint16_t height;
+    uint8_t *parameter_sets_annexb;
+    size_t parameter_sets_annexb_size;
+};
+
+static void linux_put_be16(uint8_t *data, uint16_t value)
+{
+    data[0] = (uint8_t)(value >> 8);
+    data[1] = (uint8_t)value;
+}
+
+static void linux_put_be32(uint8_t *data, uint32_t value)
+{
+    data[0] = (uint8_t)(value >> 24);
+    data[1] = (uint8_t)(value >> 16);
+    data[2] = (uint8_t)(value >> 8);
+    data[3] = (uint8_t)value;
+}
+
+static uint16_t linux_get_be16(const uint8_t *data)
+{
+    return (uint16_t)((uint16_t)data[0] << 8 | data[1]);
+}
+
+static uint32_t linux_get_be32(const uint8_t *data)
+{
+    return (uint32_t)data[0] << 24 | (uint32_t)data[1] << 16 |
+           (uint32_t)data[2] << 8 | data[3];
+}
+
+static uint8_t linux_clamp_byte(int value)
+{
+    return (uint8_t)(value < 0 ? 0 : value > 255 ? 255 : value);
+}
+
+static size_t linux_start_code_size(const uint8_t *data, size_t size)
+{
+    if (size >= 4u && data[0] == 0u && data[1] == 0u &&
+        data[2] == 0u && data[3] == 1u) return 4u;
+    if (size >= 3u && data[0] == 0u && data[1] == 0u && data[2] == 1u) return 3u;
+    return 0u;
+}
+
+static int linux_append_openh264_layers_avcc(const SFrameBSInfo *info,
+                                              uint8_t *output,
+                                              size_t capacity,
+                                              uint32_t *output_size,
+                                              bool *has_sps,
+                                              bool *has_pps,
+                                              bool *has_idr)
+{
+    size_t written = 0u;
+    if (!info || !output || !output_size) return -1;
+    for (int layer_index = 0; layer_index < info->iLayerNum; layer_index++) {
+        const SLayerBSInfo *layer = &info->sLayerInfo[layer_index];
+        const uint8_t *cursor = layer->pBsBuf;
+        if (!cursor || layer->iNalCount < 0 || !layer->pNalLengthInByte) return -1;
+        for (int nal_index = 0; nal_index < layer->iNalCount; nal_index++) {
+            int encoded_length = layer->pNalLengthInByte[nal_index];
+            if (encoded_length <= 0) return -1;
+            size_t encoded_size = (size_t)encoded_length;
+            size_t start_size = linux_start_code_size(cursor, encoded_size);
+            if (!start_size || encoded_size <= start_size) return -1;
+            const uint8_t *nal = cursor + start_size;
+            size_t nal_size = encoded_size - start_size;
+            if (nal_size > UINT32_MAX || written + 4u + nal_size > capacity) return -1;
+            linux_put_be32(output + written, (uint32_t)nal_size);
+            memcpy(output + written + 4u, nal, nal_size);
+            written += 4u + nal_size;
+            uint8_t nal_type = nal[0] & 0x1fu;
+            if (has_sps && nal_type == 7u) *has_sps = true;
+            if (has_pps && nal_type == 8u) *has_pps = true;
+            if (has_idr && nal_type == 5u) *has_idr = true;
+            cursor += encoded_size;
+        }
+    }
+    if (!written || written > UINT32_MAX) return -1;
+    *output_size = (uint32_t)written;
+    return 0;
+}
+
+static int linux_copy_parameter_sets(IntegralH264Encoder *encoder,
+                                     const SFrameBSInfo *info)
+{
+    size_t capacity = 65536u;
+    uint8_t *avcc = malloc(capacity);
+    uint32_t avcc_size = 0u;
+    bool has_sps = false, has_pps = false;
+    if (!avcc || linux_append_openh264_layers_avcc(info, avcc, capacity,
+                                                   &avcc_size, &has_sps,
+                                                   &has_pps, NULL) != 0 ||
+        !has_sps || !has_pps) {
+        free(avcc);
+        return -1;
+    }
+    size_t offset = 0u;
+    while (offset + 4u <= avcc_size) {
+        uint32_t nal_size = linux_get_be32(avcc + offset);
+        offset += 4u;
+        if (!nal_size || offset + nal_size > avcc_size) {
+            free(avcc);
+            return -1;
+        }
+        uint8_t type = avcc[offset] & 0x1fu;
+        if (type == 7u && !encoder->sps) {
+            encoder->sps = malloc(nal_size);
+            if (!encoder->sps) {
+                free(avcc);
+                return -1;
+            }
+            memcpy(encoder->sps, avcc + offset, nal_size);
+            encoder->sps_size = nal_size;
+        }
+        else if (type == 8u && !encoder->pps) {
+            encoder->pps = malloc(nal_size);
+            if (!encoder->pps) {
+                free(avcc);
+                return -1;
+            }
+            memcpy(encoder->pps, avcc + offset, nal_size);
+            encoder->pps_size = nal_size;
+        }
+        offset += nal_size;
+    }
+    if (offset != avcc_size || !encoder->sps || !encoder->pps ||
+        encoder->sps_size > UINT16_MAX || encoder->pps_size > UINT16_MAX) {
+        free(avcc);
+        return -1;
+    }
+    encoder->parameter_sets_avcc = avcc;
+    encoder->parameter_sets_avcc_size = avcc_size;
+    return 0;
+}
+
+static void linux_rgb24_to_i420(const uint8_t *rgb,
+                                bool bottom_up,
+                                uint8_t *i420,
+                                uint16_t width,
+                                uint16_t height)
+{
+    uint8_t *y_plane = i420;
+    uint8_t *u_plane = y_plane + (size_t)width * height;
+    uint8_t *v_plane = u_plane + (size_t)width * height / 4u;
+    for (unsigned y = 0; y < height; y++) {
+        unsigned source_y = bottom_up ? height - 1u - y : y;
+        const uint8_t *row = rgb + (size_t)source_y * width * 3u;
+        for (unsigned x = 0; x < width; x++) {
+            int r = row[x * 3u];
+            int g = row[x * 3u + 1u];
+            int b = row[x * 3u + 2u];
+            y_plane[(size_t)y * width + x] =
+                linux_clamp_byte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
+        }
+    }
+    for (unsigned y = 0; y < height; y += 2u) {
+        for (unsigned x = 0; x < width; x += 2u) {
+            int r = 0, g = 0, b = 0;
+            for (unsigned dy = 0; dy < 2u; dy++) {
+                unsigned output_y = y + dy;
+                unsigned source_y = bottom_up ? height - 1u - output_y : output_y;
+                const uint8_t *row = rgb + (size_t)source_y * width * 3u;
+                for (unsigned dx = 0; dx < 2u; dx++) {
+                    r += row[(x + dx) * 3u];
+                    g += row[(x + dx) * 3u + 1u];
+                    b += row[(x + dx) * 3u + 2u];
+                }
+            }
+            r /= 4; g /= 4; b /= 4;
+            size_t chroma = (size_t)(y / 2u) * (width / 2u) + x / 2u;
+            u_plane[chroma] =
+                linux_clamp_byte(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+            v_plane[chroma] =
+                linux_clamp_byte(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+        }
+    }
+}
+
+IntegralH264Encoder *integral_h264_encoder_create(uint16_t width,
+                                        uint16_t height,
+                                        char *error_out,
+                                        size_t error_out_size)
+{
+    if (!width || !height || (width & 1u) || (height & 1u)) {
+        set_error(error_out, error_out_size, "OpenH264 encoder dimensions invalid");
+        return NULL;
+    }
+    IntegralH264Encoder *encoder = calloc(1, sizeof(*encoder));
+    if (!encoder) {
+        set_error(error_out, error_out_size, "OpenH264 encoder allocation failed");
+        return NULL;
+    }
+    encoder->width = width;
+    encoder->height = height;
+    encoder->i420 = malloc((size_t)width * height * 3u / 2u);
+    if (!encoder->i420 || WelsCreateSVCEncoder(&encoder->codec) != 0 || !encoder->codec) {
+        set_error(error_out, error_out_size, "OpenH264 encoder creation failed");
+        integral_h264_encoder_destroy(encoder);
+        return NULL;
+    }
+    SEncParamBase parameters;
+    memset(&parameters, 0, sizeof(parameters));
+    parameters.iUsageType = CAMERA_VIDEO_REAL_TIME;
+    parameters.iPicWidth = width;
+    parameters.iPicHeight = height;
+    parameters.iTargetBitrate = 4000000;
+    parameters.iRCMode = RC_BITRATE_MODE;
+    parameters.fMaxFrameRate = 30.0f;
+    int trace_level = WELS_LOG_ERROR;
+    (void)(*encoder->codec)->SetOption(encoder->codec,
+                                      ENCODER_OPTION_TRACE_LEVEL,
+                                      &trace_level);
+    if ((*encoder->codec)->Initialize(encoder->codec, &parameters) != cmResultSuccess) {
+        set_error(error_out, error_out_size, "OpenH264 encoder configuration failed");
+        integral_h264_encoder_destroy(encoder);
+        return NULL;
+    }
+    int format = videoFormatI420;
+    int idr_interval = 60;
+    if ((*encoder->codec)->SetOption(encoder->codec, ENCODER_OPTION_DATAFORMAT, &format) != cmResultSuccess ||
+        (*encoder->codec)->SetOption(encoder->codec, ENCODER_OPTION_IDR_INTERVAL, &idr_interval) != cmResultSuccess ||
+        (*encoder->codec)->SetOption(encoder->codec, ENCODER_OPTION_TRACE_LEVEL, &trace_level) != cmResultSuccess) {
+        set_error(error_out, error_out_size, "OpenH264 encoder option failed");
+        integral_h264_encoder_destroy(encoder);
+        return NULL;
+    }
+    SFrameBSInfo parameter_sets;
+    memset(&parameter_sets, 0, sizeof(parameter_sets));
+    if ((*encoder->codec)->EncodeParameterSets(encoder->codec, &parameter_sets) != cmResultSuccess ||
+        linux_copy_parameter_sets(encoder, &parameter_sets) != 0) {
+        set_error(error_out, error_out_size, "OpenH264 parameter sets unavailable");
+        integral_h264_encoder_destroy(encoder);
+        return NULL;
+    }
+    return encoder;
+}
+
+void integral_h264_encoder_destroy(IntegralH264Encoder *encoder)
+{
+    if (!encoder) return;
+    if (encoder->codec) {
+        (void)(*encoder->codec)->Uninitialize(encoder->codec);
+        WelsDestroySVCEncoder(encoder->codec);
+    }
+    free(encoder->i420);
+    free(encoder->parameter_sets_avcc);
+    free(encoder->sps);
+    free(encoder->pps);
+    free(encoder);
+}
+
+int integral_h264_encoder_encode_rgb24(IntegralH264Encoder *encoder,
+                                  const uint8_t *rgb,
+                                  bool bottom_up,
+                                  uint64_t timestamp_us,
+                                  uint8_t *config_out,
+                                  size_t config_capacity,
+                                  uint32_t *config_size_out,
+                                  uint8_t *frame_out,
+                                  size_t frame_capacity,
+                                  uint32_t *frame_size_out,
+                                  bool *keyframe_out,
+                                  char *error_out,
+                                  size_t error_out_size)
+{
+    if (!encoder || !rgb || !config_size_out || !frame_out ||
+        !frame_size_out || !keyframe_out) return -1;
+    *config_size_out = 0u;
+    *frame_size_out = 0u;
+    *keyframe_out = false;
+    linux_rgb24_to_i420(rgb, bottom_up, encoder->i420,
+                        encoder->width, encoder->height);
+    SSourcePicture picture;
+    memset(&picture, 0, sizeof(picture));
+    picture.iColorFormat = videoFormatI420;
+    picture.iStride[0] = encoder->width;
+    picture.iStride[1] = encoder->width / 2u;
+    picture.iStride[2] = encoder->width / 2u;
+    picture.pData[0] = encoder->i420;
+    picture.pData[1] = encoder->i420 + (size_t)encoder->width * encoder->height;
+    picture.pData[2] = picture.pData[1] + (size_t)encoder->width * encoder->height / 4u;
+    picture.iPicWidth = encoder->width;
+    picture.iPicHeight = encoder->height;
+    picture.uiTimeStamp = (long long)(timestamp_us / 1000u);
+    SFrameBSInfo info;
+    memset(&info, 0, sizeof(info));
+    if ((*encoder->codec)->EncodeFrame(encoder->codec, &picture, &info) != cmResultSuccess) {
+        set_error(error_out, error_out_size, "OpenH264 frame encode failed");
+        return -1;
+    }
+    if (info.eFrameType == videoFrameTypeSkip || info.iFrameSizeInBytes <= 0) return 0;
+    bool has_sps = false, has_pps = false, has_idr = false;
+    uint32_t encoded_size = 0u;
+    if (linux_append_openh264_layers_avcc(&info, frame_out, frame_capacity,
+                                          &encoded_size, &has_sps,
+                                          &has_pps, &has_idr) != 0) {
+        set_error(error_out, error_out_size, "OpenH264 frame output invalid");
+        return -1;
+    }
+    bool keyframe = info.eFrameType == videoFrameTypeIDR || has_idr;
+    if (keyframe && (!has_sps || !has_pps)) {
+        if (encoder->parameter_sets_avcc_size > frame_capacity ||
+            encoded_size > frame_capacity - encoder->parameter_sets_avcc_size) {
+            set_error(error_out, error_out_size, "OpenH264 keyframe output too large");
+            return -1;
+        }
+        memmove(frame_out + encoder->parameter_sets_avcc_size, frame_out, encoded_size);
+        memcpy(frame_out, encoder->parameter_sets_avcc,
+               encoder->parameter_sets_avcc_size);
+        encoded_size += (uint32_t)encoder->parameter_sets_avcc_size;
+    }
+    if (!encoder->config_sent) {
+        size_t config_size = 8u + encoder->sps_size + encoder->pps_size;
+        if (!config_out || config_size > config_capacity) {
+            set_error(error_out, error_out_size, "OpenH264 configuration buffer too small");
+            return -1;
+        }
+        linux_put_be16(config_out, encoder->width);
+        linux_put_be16(config_out + 2u, encoder->height);
+        linux_put_be16(config_out + 4u, (uint16_t)encoder->sps_size);
+        linux_put_be16(config_out + 6u, (uint16_t)encoder->pps_size);
+        memcpy(config_out + 8u, encoder->sps, encoder->sps_size);
+        memcpy(config_out + 8u + encoder->sps_size,
+               encoder->pps, encoder->pps_size);
+        *config_size_out = (uint32_t)config_size;
+        encoder->config_sent = true;
+    }
+    *frame_size_out = encoded_size;
+    *keyframe_out = keyframe;
+    return 1;
+}
+
+IntegralH264Decoder *integral_h264_decoder_create(const uint8_t *config,
+                                        size_t config_size,
+                                        char *error_out,
+                                        size_t error_out_size)
+{
+    if (!config || config_size < 10u) {
+        set_error(error_out, error_out_size, "OpenH264 configuration payload invalid");
+        return NULL;
+    }
+    uint16_t width = linux_get_be16(config);
+    uint16_t height = linux_get_be16(config + 2u);
+    uint16_t sps_size = linux_get_be16(config + 4u);
+    uint16_t pps_size = linux_get_be16(config + 6u);
+    if (!width || !height || (width & 1u) || (height & 1u) ||
+        !sps_size || !pps_size ||
+        8u + (size_t)sps_size + pps_size != config_size) {
+        set_error(error_out, error_out_size, "OpenH264 configuration payload invalid");
+        return NULL;
+    }
+    IntegralH264Decoder *decoder = calloc(1, sizeof(*decoder));
+    if (!decoder) {
+        set_error(error_out, error_out_size, "OpenH264 decoder allocation failed");
+        return NULL;
+    }
+    decoder->width = width;
+    decoder->height = height;
+    decoder->parameter_sets_annexb_size = 8u + sps_size + pps_size;
+    decoder->parameter_sets_annexb = malloc(decoder->parameter_sets_annexb_size);
+    if (!decoder->parameter_sets_annexb ||
+        WelsCreateDecoder(&decoder->codec) != 0 || !decoder->codec) {
+        set_error(error_out, error_out_size, "OpenH264 decoder creation failed");
+        integral_h264_decoder_destroy(decoder);
+        return NULL;
+    }
+    uint8_t *cursor = decoder->parameter_sets_annexb;
+    memset(cursor, 0, 3u); cursor[3] = 1u; cursor += 4u;
+    memcpy(cursor, config + 8u, sps_size); cursor += sps_size;
+    memset(cursor, 0, 3u); cursor[3] = 1u; cursor += 4u;
+    memcpy(cursor, config + 8u + sps_size, pps_size);
+    SDecodingParam parameters;
+    memset(&parameters, 0, sizeof(parameters));
+    parameters.uiTargetDqLayer = UCHAR_MAX;
+    parameters.eEcActiveIdc = ERROR_CON_DISABLE;
+    parameters.sVideoProperty.size = sizeof(parameters.sVideoProperty);
+    parameters.sVideoProperty.eVideoBsType = VIDEO_BITSTREAM_AVC;
+    if ((*decoder->codec)->Initialize(decoder->codec, &parameters) != cmResultSuccess) {
+        set_error(error_out, error_out_size, "OpenH264 decoder configuration failed");
+        integral_h264_decoder_destroy(decoder);
+        return NULL;
+    }
+    int trace_level = WELS_LOG_ERROR;
+    if ((*decoder->codec)->SetOption(decoder->codec,
+                                    DECODER_OPTION_TRACE_LEVEL,
+                                    &trace_level) != cmResultSuccess) {
+        set_error(error_out, error_out_size, "OpenH264 decoder option failed");
+        integral_h264_decoder_destroy(decoder);
+        return NULL;
+    }
+    return decoder;
+}
+
+void integral_h264_decoder_destroy(IntegralH264Decoder *decoder)
+{
+    if (!decoder) return;
+    if (decoder->codec) {
+        (void)(*decoder->codec)->Uninitialize(decoder->codec);
+        WelsDestroyDecoder(decoder->codec);
+    }
+    free(decoder->parameter_sets_annexb);
+    free(decoder);
+}
+
+static int linux_avcc_to_annexb(const uint8_t *input,
+                                size_t input_size,
+                                uint8_t *output,
+                                size_t capacity,
+                                size_t *output_size)
+{
+    size_t read = 0u, written = 0u;
+    while (read + 4u <= input_size) {
+        uint32_t nal_size = linux_get_be32(input + read);
+        read += 4u;
+        if (!nal_size || read + nal_size > input_size ||
+            written + 4u + nal_size > capacity) return -1;
+        memset(output + written, 0, 3u);
+        output[written + 3u] = 1u;
+        memcpy(output + written + 4u, input + read, nal_size);
+        written += 4u + nal_size;
+        read += nal_size;
+    }
+    if (read != input_size || !written) return -1;
+    *output_size = written;
+    return 0;
+}
+
+static void linux_i420_to_rgb24(uint8_t *const planes[3],
+                                const int strides[2],
+                                uint8_t *rgb,
+                                uint16_t width,
+                                uint16_t height)
+{
+    for (unsigned y = 0; y < height; y++) {
+        const uint8_t *y_row = planes[0] + (size_t)y * strides[0];
+        const uint8_t *u_row = planes[1] + (size_t)(y / 2u) * strides[1];
+        const uint8_t *v_row = planes[2] + (size_t)(y / 2u) * strides[1];
+        uint8_t *destination = rgb + (size_t)y * width * 3u;
+        for (unsigned x = 0; x < width; x++) {
+            int yy = (int)y_row[x] - 16;
+            int u = (int)u_row[x / 2u] - 128;
+            int v = (int)v_row[x / 2u] - 128;
+            int c = yy < 0 ? 0 : 298 * yy;
+            destination[x * 3u] = linux_clamp_byte((c + 409 * v + 128) >> 8);
+            destination[x * 3u + 1u] =
+                linux_clamp_byte((c - 100 * u - 208 * v + 128) >> 8);
+            destination[x * 3u + 2u] = linux_clamp_byte((c + 516 * u + 128) >> 8);
+        }
+    }
+}
+
+int integral_h264_decoder_decode_avcc(IntegralH264Decoder *decoder,
+                                 const uint8_t *frame,
+                                 size_t frame_size,
+                                 uint64_t timestamp_us,
+                                 uint8_t *rgb_out,
+                                 size_t rgb_capacity,
+                                 uint16_t *width_out,
+                                 uint16_t *height_out,
+                                 char *error_out,
+                                 size_t error_out_size)
+{
+    if (!decoder || !frame || !frame_size || !rgb_out ||
+        !width_out || !height_out || frame_size > INT_MAX) return -1;
+    size_t required_rgb = (size_t)decoder->width * decoder->height * 3u;
+    size_t annex_capacity = decoder->parameter_sets_annexb_size + frame_size + 64u;
+    if (required_rgb > rgb_capacity || annex_capacity > INT_MAX) {
+        set_error(error_out, error_out_size, "OpenH264 decoded frame buffer too small");
+        return -1;
+    }
+    uint8_t *annexb = malloc(annex_capacity);
+    if (!annexb) {
+        set_error(error_out, error_out_size, "OpenH264 frame allocation failed");
+        return -1;
+    }
+    memcpy(annexb, decoder->parameter_sets_annexb,
+           decoder->parameter_sets_annexb_size);
+    size_t annexb_size = 0u;
+    if (linux_avcc_to_annexb(frame, frame_size,
+                             annexb + decoder->parameter_sets_annexb_size,
+                             annex_capacity - decoder->parameter_sets_annexb_size,
+                             &annexb_size) != 0) {
+        free(annexb);
+        set_error(error_out, error_out_size, "OpenH264 AVCC sample invalid");
+        return -1;
+    }
+    annexb_size += decoder->parameter_sets_annexb_size;
+    uint8_t *planes[3] = {NULL, NULL, NULL};
+    SBufferInfo info;
+    memset(&info, 0, sizeof(info));
+    info.uiInBsTimeStamp = timestamp_us / 1000u;
+    DECODING_STATE status = (*decoder->codec)->DecodeFrameNoDelay(
+        decoder->codec, annexb, (int)annexb_size, planes, &info);
+    free(annexb);
+    if (status != dsErrorFree) {
+        if (error_out && error_out_size) {
+            snprintf(error_out, error_out_size,
+                     "OpenH264 frame decode failed 0x%04x", (unsigned)status);
+        }
+        return -1;
+    }
+    if (!info.iBufferStatus) return 0;
+    int width = info.UsrData.sSystemBuffer.iWidth;
+    int height = info.UsrData.sSystemBuffer.iHeight;
+    if (!planes[0] || !planes[1] || !planes[2] ||
+        width != decoder->width || height != decoder->height ||
+        info.UsrData.sSystemBuffer.iStride[0] < width ||
+        info.UsrData.sSystemBuffer.iStride[1] < width / 2) {
+        set_error(error_out, error_out_size, "OpenH264 decoded frame layout invalid");
+        return -1;
+    }
+    linux_i420_to_rgb24(planes, info.UsrData.sSystemBuffer.iStride,
+                        rgb_out, decoder->width, decoder->height);
     *width_out = decoder->width;
     *height_out = decoder->height;
     return 1;

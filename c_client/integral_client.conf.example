@@ -3,3 +3,5 @@
 login.server=
 login.server_id=primary
 login.remember=0
+window.width=360
+window.height=360

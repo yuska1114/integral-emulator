@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "choice_list.h"
+#include "display_scale.h"
 #include "key_config_menu.h"
 #include "key_config.h"
 #include "log_util.h"
@@ -49,6 +50,8 @@ static const char *menu_row_name(unsigned row)
             return "CLIENT CART";
         case 9:
             return "RTC OFFSET";
+        case 10:
+            return "DISPLAY SCALE";
         default:
             return "UNKNOWN";
     }
@@ -128,7 +131,7 @@ static void log_menu_state(const IntegralGBRuntimeMenu *menu, const char *reason
 {
     fprintf(stderr,
             "menu state: %s row=%u(%s) mode=%s editing=%d quit_confirm=%d quit_yes=%d "
-            "slot1='%s' slot2='%s' speed=x%u host='%s' port='%s' discover=%s client_cart=%s status='%s'\n",
+            "slot1='%s' slot2='%s' speed=x%u scale=%u host='%s' port='%s' discover=%s client_cart=%s status='%s'\n",
             reason,
             menu->selected_row,
             menu_row_name(menu->selected_row),
@@ -139,6 +142,7 @@ static void log_menu_state(const IntegralGBRuntimeMenu *menu, const char *reason
             menu->slot1_rom,
             menu->slot2_rom,
             menu->speed_multiplier,
+            menu->display_scale,
             menu->host,
             menu->port,
             menu->client_auto_discover ? "AUTOMATIC" : "MANUAL",
@@ -173,6 +177,7 @@ static void init_menu(IntegralGBRuntimeMenu *menu)
     menu->client_sends_slot2_paths = true;
     menu->client_auto_discover = true;
     menu->speed_multiplier = 1;
+    menu->display_scale = INTEGRAL_DISPLAY_SCALE_AUTO;
 
     integral_gb_runtime_key_config_slot1_default(&menu->slot1_key_config);
     integral_gb_runtime_key_config_slot2_default(&menu->slot2_key_config);
@@ -235,6 +240,34 @@ static bool activate_selected(IntegralGBRuntimeMenu *menu, SDL_Renderer *rendere
     return true;
 }
 
+static unsigned resolve_menu_display_scale(SDL_Window *window, unsigned requested_scale)
+{
+    int display_index = window ? SDL_GetWindowDisplayIndex(window) : 0;
+    SDL_Rect usable = {0, 0, WINDOW_WIDTH, WINDOW_HEIGHT};
+    if (display_index < 0 || SDL_GetDisplayUsableBounds(display_index, &usable) != 0) {
+        usable.w = WINDOW_WIDTH;
+        usable.h = WINDOW_HEIGHT;
+    }
+    return integral_display_scale_resolve(requested_scale,
+                                          usable.w, usable.h,
+                                          WINDOW_WIDTH, WINDOW_HEIGHT);
+}
+
+static void apply_menu_display_scale(SDL_Window *window,
+                                     IntegralGBRuntimeMenu *menu,
+                                     unsigned *applied_scale)
+{
+    char value[16];
+    integral_display_scale_format(menu->display_scale, value, sizeof(value));
+    (void)SDL_setenv("INTEGRAL_EMULATOR_DISPLAY_SCALE", value, 1);
+    unsigned scale = resolve_menu_display_scale(window, menu->display_scale);
+    if (window && applied_scale && scale != *applied_scale) {
+        SDL_SetWindowSize(window, WINDOW_WIDTH * (int)scale, WINDOW_HEIGHT * (int)scale);
+        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        *applied_scale = scale;
+    }
+}
+
 int main(int argc, char **argv)
 {
     (void)integral_gb_runtime_chdir_to_package_root();
@@ -264,6 +297,7 @@ int main(int argc, char **argv)
         printf("  escape key: %s\n", menu.escape_key);
         printf("  turbo hold key: %s\n", menu.turbo_hold_key);
         printf("  reset key: %s\n", menu.reset_key);
+        printf("  display scale: %u (0=auto)\n", menu.display_scale);
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--smoke-test") == 0) {
@@ -289,13 +323,14 @@ int main(int argc, char **argv)
         printf("  escape key: %s\n", menu.escape_key);
         printf("  turbo hold key: %s\n", menu.turbo_hold_key);
         printf("  reset key: %s\n", menu.reset_key);
+        printf("  display scale: %u (0=auto)\n", menu.display_scale);
         return menu.roms.count > 0 ? 0 : 1;
     }
     if (argc > 2 && strcmp(argv[1], "--smoke-draw-ms") == 0) {
         smoke_draw_ms = (unsigned)strtoul(argv[2], NULL, 10);
     }
 
-    SDL_SetHint(SDL_HINT_IME_SHOW_UI, "0");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_JOYSTICK |
                  SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -305,14 +340,13 @@ int main(int argc, char **argv)
     if (controller_count > 0) {
         printf("  game controllers: %d\n", controller_count);
     }
-    SDL_StopTextInput();
-
+    unsigned applied_display_scale = resolve_menu_display_scale(NULL, menu.display_scale);
     SDL_Window *window = SDL_CreateWindow("INTEGRAL EMULATOR - GB Runtime",
                                           SDL_WINDOWPOS_CENTERED,
                                           SDL_WINDOWPOS_CENTERED,
-                                          WINDOW_WIDTH,
-                                          WINDOW_HEIGHT,
-                                          SDL_WINDOW_SHOWN);
+                                          WINDOW_WIDTH * (int)applied_display_scale,
+                                          WINDOW_HEIGHT * (int)applied_display_scale,
+                                          SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_Quit();
@@ -320,7 +354,6 @@ int main(int argc, char **argv)
     }
     SDL_RaiseWindow(window);
     (void)SDL_SetWindowInputFocus(window);
-    SDL_StopTextInput();
 
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!renderer) {
@@ -332,6 +365,15 @@ int main(int argc, char **argv)
         SDL_Quit();
         return 1;
     }
+    if (SDL_RenderSetLogicalSize(renderer, WINDOW_WIDTH, WINDOW_HEIGHT) != 0) {
+        fprintf(stderr, "SDL_RenderSetLogicalSize failed: %s\n", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+    (void)SDL_RenderSetIntegerScale(renderer, SDL_TRUE);
+    apply_menu_display_scale(window, &menu, &applied_display_scale);
 
     bool running = true;
     while (running) {
@@ -569,6 +611,17 @@ int main(int argc, char **argv)
                     (void)activate_selected(&menu, renderer, window);
                 }
             }
+        }
+
+        if (menu.display_scale_dirty) {
+            if (integral_gb_runtime_menu_save_config_file(&menu) != 0) {
+                snprintf(menu.status, sizeof(menu.status), "DISPLAY SCALE SAVE FAILED");
+            }
+            else {
+                snprintf(menu.status, sizeof(menu.status), "DISPLAY SCALE SAVED");
+            }
+            apply_menu_display_scale(window, &menu, &applied_display_scale);
+            menu.display_scale_dirty = false;
         }
 
         integral_gb_runtime_menu_draw(renderer, &menu);

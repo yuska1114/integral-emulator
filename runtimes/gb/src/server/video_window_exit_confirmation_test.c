@@ -9,9 +9,112 @@
 #include <string.h>
 
 static unsigned checks;
+static uint32_t *readback_pixels;
+static int readback_pitch;
+static int readback_result = -1;
 #define CHECK(value) do { checks++; if (!(value)) { \
     fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value); exit(1); \
 } } while (0)
+
+void integral_gb_runtime_video_window_test_readback(SDL_Renderer *renderer)
+{
+    if (!readback_pixels) return;
+    readback_result = SDL_RenderReadPixels(renderer, NULL,
+                                           SDL_PIXELFORMAT_ARGB8888,
+                                           readback_pixels, readback_pitch);
+}
+
+static SDL_Window *find_test_window(void)
+{
+    for (Uint32 id = 1u; id < 64u; id++) {
+        SDL_Window *window = SDL_GetWindowFromID(id);
+        if (window) return window;
+    }
+    return NULL;
+}
+
+static int run_real_rom_capture(const char *rom_path,
+                                const char *output_path,
+                                unsigned frame_count,
+                                unsigned window_width,
+                                unsigned window_height)
+{
+    IntegralGBRuntimeRomProfile profile;
+    IntegralGBRuntimeRomModelReason reason;
+    GB_model_t model;
+    IntegralGBRuntimeSlot slot;
+    if (!rom_path || !output_path || frame_count == 0u ||
+        integral_gb_runtime_slot_model_for_rom(
+            rom_path, &model, &profile, &reason) != 0) {
+        return 2;
+    }
+    IntegralGBRuntimeSlotConfig config = {
+        .name = "real-rom-layout-test",
+        .rom_path = rom_path,
+        .model = model,
+        .skip_boot_rom = true,
+        .battery_mode = INTEGRAL_GB_RUNTIME_BATTERY_MEMORY_ONLY,
+    };
+    if (integral_gb_runtime_slot_init(&slot, &config) != 0) return 1;
+
+    IntegralGBRuntimeVideoWindow *window = NULL;
+    if (integral_gb_runtime_video_window_open_titled_unthrottled_sized(
+            &window, 1u, 1u, "GB real-ROM layout test",
+            window_width, window_height) != 0) {
+        integral_gb_runtime_slot_free_without_save(&slot);
+        return 1;
+    }
+    if (integral_gb_runtime_slot_run_frames(&slot, frame_count) != 0) {
+        integral_gb_runtime_video_window_close(window);
+        integral_gb_runtime_slot_free_without_save(&slot);
+        return 1;
+    }
+    bool suppressed = integral_gb_runtime_slot_presentation_suppressed(&slot);
+
+    SDL_Window *sdl_window = find_test_window();
+    SDL_Renderer *renderer = sdl_window ? SDL_GetRenderer(sdl_window) : NULL;
+    int output_width = 0;
+    int output_height = 0;
+    if (!renderer ||
+        SDL_GetRendererOutputSize(renderer, &output_width, &output_height) != 0 ||
+        output_width < (int)window_width || output_height < (int)window_height) {
+        integral_gb_runtime_video_window_close(window);
+        integral_gb_runtime_slot_free_without_save(&slot);
+        return 1;
+    }
+    uint32_t *capture = calloc((size_t)output_width * (size_t)output_height,
+                               sizeof(*capture));
+    if (!capture) {
+        integral_gb_runtime_video_window_close(window);
+        integral_gb_runtime_slot_free_without_save(&slot);
+        return 1;
+    }
+    readback_pixels = capture;
+    readback_pitch = output_width * (int)sizeof(*capture);
+    readback_result = -1;
+    int result = integral_gb_runtime_video_window_render(window, &slot, NULL);
+    readback_pixels = NULL;
+    readback_pitch = 0;
+    if (result == 0 && readback_result == 0) {
+        SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(
+            capture, output_width, output_height, 32,
+            output_width * (int)sizeof(*capture), SDL_PIXELFORMAT_ARGB8888);
+        if (!surface || SDL_SaveBMP(surface, output_path) != 0) result = -1;
+        if (surface) SDL_FreeSurface(surface);
+    }
+    else {
+        result = -1;
+    }
+    printf("REAL_ROM_LAYOUT model=%s frames=%u window=%ux%u output=%dx%d checksum=%08X suppressed=%s file=%s\n",
+           integral_gb_runtime_slot_model_name(model), frame_count,
+           window_width, window_height, output_width, output_height,
+           integral_gb_runtime_slot_pixel_checksum(&slot),
+           suppressed ? "yes" : "no", output_path);
+    free(capture);
+    integral_gb_runtime_video_window_close(window);
+    integral_gb_runtime_slot_free_without_save(&slot);
+    return result == 0 ? 0 : 1;
+}
 
 static void push_key(Uint32 type, SDL_Keycode key)
 {
@@ -31,13 +134,120 @@ static IntegralGBRuntimeVideoWindowPollResult poll_window(
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
-    CHECK(SDL_setenv("SDL_VIDEODRIVER", "dummy", 1) == 0);
-    CHECK(SDL_setenv("SDL_AUDIODRIVER", "dummy", 1) == 0);
+    if (argc == 4 || argc == 6) {
+        char *end = NULL;
+        unsigned long frames = strtoul(argv[3], &end, 10);
+        if (!end || *end || frames == 0ul || frames > 10000ul) return 2;
+        unsigned long width = 640ul;
+        unsigned long height = 480ul;
+        if (argc == 6) {
+            width = strtoul(argv[4], &end, 10);
+            if (!end || *end || width > 16384ul) return 2;
+            height = strtoul(argv[5], &end, 10);
+            if (!end || *end || height > 16384ul) return 2;
+        }
+        return run_real_rom_capture(argv[1], argv[2], (unsigned)frames,
+                                    (unsigned)width, (unsigned)height);
+    }
+    if (argc != 1) {
+        fprintf(stderr, "usage: %s [ROM OUTPUT_BMP FRAMES [WIDTH HEIGHT]]\n", argv[0]);
+        return 2;
+    }
+    if (!getenv("INTEGRAL_EMULATOR_REAL_VIDEO_DRIVER_TEST")) {
+        CHECK(SDL_setenv("SDL_VIDEODRIVER", "dummy", 1) == 0);
+        CHECK(SDL_setenv("SDL_AUDIODRIVER", "dummy", 1) == 0);
+    }
     IntegralGBRuntimeVideoWindow *window = NULL;
-    CHECK(integral_gb_runtime_video_window_open_titled_unthrottled(
-              &window, 1, 1, "exit confirmation test") == 0);
+    CHECK(integral_gb_runtime_video_window_open_titled_unthrottled_sized(
+              &window, 1, 1, "invalid target test", 159u, 480u) != 0);
+    CHECK(integral_gb_runtime_video_window_open_titled_unthrottled_sized(
+              &window, 1, 1, "exit confirmation test", 640u, 480u) == 0);
+    SDL_Window *sdl_window = find_test_window();
+    int actual_width = 0;
+    int actual_height = 0;
+    CHECK(sdl_window != NULL);
+    SDL_GetWindowSize(sdl_window, &actual_width, &actual_height);
+    CHECK(actual_width == 640);
+    CHECK(actual_height == 480);
+    CHECK((SDL_GetWindowFlags(sdl_window) & SDL_WINDOW_RESIZABLE) != 0u);
+    int minimum_width = 0;
+    int minimum_height = 0;
+    SDL_GetWindowMinimumSize(sdl_window, &minimum_width, &minimum_height);
+    CHECK(minimum_width == INTEGRAL_GB_RUNTIME_GB_WIDTH);
+    CHECK(minimum_height == INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+    SDL_Renderer *renderer = SDL_GetRenderer(sdl_window);
+    int logical_width = 0;
+    int logical_height = 0;
+    CHECK(renderer != NULL);
+    SDL_RenderGetLogicalSize(renderer, &logical_width, &logical_height);
+    CHECK(logical_width == 640);
+    CHECK(logical_height == 480);
+    int output_width = 0;
+    int output_height = 0;
+    CHECK(SDL_GetRendererOutputSize(renderer, &output_width, &output_height) == 0);
+    CHECK(output_width >= 640 && output_width % 640 == 0);
+    CHECK(output_height >= 480 && output_height % 480 == 0);
+    unsigned output_scale_x = (unsigned)output_width / 640u;
+    unsigned output_scale_y = (unsigned)output_height / 480u;
+    uint32_t *capture = calloc((size_t)output_width * (size_t)output_height,
+                               sizeof(*capture));
+    CHECK(capture != NULL);
+    readback_pixels = capture;
+    readback_pitch = output_width * (int)sizeof(*capture);
+    IntegralGBRuntimeSlot slot = {0};
+    slot.initialized = true;
+    for (unsigned i = 0;
+         i < INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+         i++) {
+        slot.pixels[i] = 0xFF12AB34u;
+    }
+    CHECK(integral_gb_runtime_video_window_render(window, &slot, NULL) == 0);
+    CHECK(readback_result == 0);
+#define CAPTURE_PIXEL(x, y) \
+    capture[((size_t)(y) * output_scale_y) * (size_t)output_width + \
+            ((size_t)(x) * output_scale_x)]
+    CHECK((CAPTURE_PIXEL(0u, 0u) & 0x00FFFFFFu) == 0u);
+    CHECK((CAPTURE_PIXEL(79u, 24u) & 0x00FFFFFFu) == 0u);
+    CHECK((CAPTURE_PIXEL(80u, 24u) & 0x00FFFFFFu) == 0x0012AB34u);
+    CHECK((CAPTURE_PIXEL(559u, 455u) & 0x00FFFFFFu) == 0x0012AB34u);
+    CHECK((CAPTURE_PIXEL(560u, 455u) & 0x00FFFFFFu) == 0u);
+    CHECK((CAPTURE_PIXEL(80u, 456u) & 0x00FFFFFFu) == 0u);
+#undef CAPTURE_PIXEL
+    readback_pixels = NULL;
+    readback_pitch = 0;
+    free(capture);
+
+    SDL_SetWindowSize(sdl_window, 721, 530);
+    SDL_GetWindowSize(sdl_window, &actual_width, &actual_height);
+    CHECK(actual_width == 721);
+    CHECK(actual_height == 530);
+    CHECK(SDL_GetRendererOutputSize(renderer, &output_width, &output_height) == 0);
+    CHECK(output_width >= actual_width && output_width % actual_width == 0);
+    CHECK(output_height >= actual_height && output_height % actual_height == 0);
+    output_scale_x = (unsigned)output_width / (unsigned)actual_width;
+    output_scale_y = (unsigned)output_height / (unsigned)actual_height;
+    capture = calloc((size_t)output_width * (size_t)output_height, sizeof(*capture));
+    CHECK(capture != NULL);
+    readback_pixels = capture;
+    readback_pitch = output_width * (int)sizeof(*capture);
+    readback_result = -1;
+    CHECK(integral_gb_runtime_video_window_render(window, &slot, NULL) == 0);
+    CHECK(readback_result == 0);
+    SDL_RenderGetLogicalSize(renderer, &logical_width, &logical_height);
+    CHECK(logical_width == actual_width);
+    CHECK(logical_height == actual_height);
+#define RESIZED_CAPTURE_PIXEL(x, y) \
+    capture[((size_t)(y) * output_scale_y) * (size_t)output_width + \
+            ((size_t)(x) * output_scale_x)]
+    CHECK((RESIZED_CAPTURE_PIXEL(119u, 49u) & 0x00FFFFFFu) == 0u);
+    CHECK((RESIZED_CAPTURE_PIXEL(120u, 49u) & 0x00FFFFFFu) == 0x0012AB34u);
+    CHECK((RESIZED_CAPTURE_PIXEL(599u, 480u) & 0x00FFFFFFu) == 0x0012AB34u);
+    CHECK((RESIZED_CAPTURE_PIXEL(600u, 480u) & 0x00FFFFFFu) == 0u);
+    CHECK((RESIZED_CAPTURE_PIXEL(120u, 481u) & 0x00FFFFFFu) == 0u);
+#undef RESIZED_CAPTURE_PIXEL
+    readback_pixels = NULL;
+    readback_pitch = 0;
+    free(capture);
     IntegralGBRuntimeInputRouter input;
     integral_gb_runtime_input_router_init(&input, NULL, NULL);
     integral_gb_runtime_input_router_disable_speed_controls(&input);

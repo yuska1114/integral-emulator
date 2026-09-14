@@ -172,10 +172,16 @@ INTEGRAL_EMULATOR_API_HOST=127.0.0.1
 INTEGRAL_EMULATOR_API_PORT=8080
 INTEGRAL_EMULATOR_STORAGE_ROOT=/var/lib/integral-server
 INTEGRAL_EMULATOR_PUBLIC_BASE_PATH=
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_RELOAD_INTERVAL_SECONDS=60
 INTEGRAL_EMULATOR_ADMIN_PASSWORD=<自動生成された値>
 INTEGRAL_EMULATOR_ALLOW_UNLISTED_ROMS=1
 INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION=0
 INTEGRAL_EMULATOR_ALLOW_USER_INITIAL_SAVE_IMPORT=0
+INTEGRAL_EMULATOR_GB_LOCAL_GAME_SECONDS=172800
+INTEGRAL_EMULATOR_GB_MOBILE_GAME_SECONDS=172800
+INTEGRAL_EMULATOR_N64_LOCAL_GAME_SECONDS=172800
+INTEGRAL_EMULATOR_LINK_CABLE_ROOM_GAME_SECONDS=3600
+INTEGRAL_EMULATOR_N64_ROOM_GAME_SECONDS=7200
 INTEGRAL_EMULATOR_LINK_CABLE_ROOMS=1-16
 INTEGRAL_EMULATOR_N64_ROOMS=65-80
 ```
@@ -199,6 +205,12 @@ INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION=0
 利用できます。
 
 自己登録を許可する場合は`1`へ変更して、サーバーを再起動します。
+
+### ゲーム期限
+
+LOCALとMobileの既定期限は48時間、Link Cable ROOMは1時間、N64 ROOMは2時間です。
+上記の`*_GAME_SECONDS`を正の秒数へ変更してサーバーを再起動すると、新しく開始する
+ゲームへ反映されます。生存確認は短い利用権だけを更新し、ゲーム期限自体は延長しません。
 
 ### ROOM数
 
@@ -293,13 +305,48 @@ INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PUBLIC_HOST=relay.example.com
 INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_PORT=25164
 INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_FILE=/etc/integral-server/media-relay.crt
 INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_KEY_FILE=/etc/integral-server/media-relay.key
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_RELOAD_INTERVAL_SECONDS=60
 ```
 
 証明書は`PUBLIC_HOST`に指定したホスト名に対して有効である必要があります。
 
-### 同じPCまたは家庭LANで使用する場合
+Media Relayは指定された証明書と秘密鍵を定期的に再確認します。正常な組を読み込めた
+場合だけ新規接続用のTLS Contextを交換します。接続中の通信は維持されます。証明書と
+秘密鍵の不一致、形式不正、読取り失敗時は直前の正常なContextを使い続けます。
+監視間隔は秒単位の正数で指定します。
 
-信頼できるネットワーク内に限り、`plain`を明示的に選択できます。
+Caddyが管理する証明書を使用する場合も、ファイルのコピーやACME処理はIntegral Server
+では行いません。例えばCaddyの実際の保存先をそのまま指定します。
+
+```text
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CERT_FILE=/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.crt
+INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_KEY_FILE=/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.key
+```
+
+実際のパスはCaddyの保存内容を確認して置き換えてください。Caddyの保存領域全体を
+公開したり、`integral-server`ユーザーを`caddy`グループへ追加したりせず、親ディレクトリ
+には通過権限、証明書と秘密鍵の2ファイルだけに読取り権限を付与します。付属の監視
+インストーラーはPOSIX ACLを初回設定し、Caddyが対象ファイルを置換した後にも同じACLを
+自動的に再付与します。既存の`/etc/integral-server`の所有者、グループ、権限、ACLは
+変更せず、監視専用の`certificate-acl-watch.env`だけをroot所有・mode 0600で保存します。
+
+```bash
+sudo apt install acl
+sudo ./install-certificate-acl-watch.sh \
+  /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.crt \
+  /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.key
+sudo -u integral-server test -r /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.crt
+sudo -u integral-server test -r /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/example.com/example.com.key
+systemctl status integral-server-certificate-acl.path
+```
+
+監視サービスは証明書の取得、コピー、Relayの再起動を行いません。対象ファイルが
+一時的に読めない場合、Media Relayは旧Contextを維持し、ACL復旧後の次回監視で新しい
+証明書を読み込みます。
+
+### 同じPCまたは信頼できるLANで使用する場合
+
+信頼できるLAN内に限り、`plain`を明示的に選択できます。
 
 ```text
 INTEGRAL_EMULATOR_NETWORK_MODE=plain

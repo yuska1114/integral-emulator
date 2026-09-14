@@ -8,7 +8,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 output_dir=${1:-"$project_root/dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_BUILD"}
 icon_bmp=${INTEGRAL_EMULATOR_ICON_BMP:-"$project_root/assets/public/integral_emulator_icon.bmp"}
-for command in cc make cmake pkg-config sdl2-config strip python3; do
+for command in cc make cmake pkg-config sdl2-config strip python3 env ldd readlink dpkg-query; do
   command -v "$command" >/dev/null || { echo "Missing command: $command" >&2; exit 1; }
 done
 cmake_version=$(cmake --version | awk 'NR == 1 { print $3 }')
@@ -36,9 +36,11 @@ make -C "$project_root/runtimes/n64" frontend
 
 rm -rf -- "$output_dir"
 mkdir -p "$output_dir/runtimes/gb/libmobile" \
+  "$output_dir/runtimes/linux/lib" \
   "$output_dir/runtimes/n64/build/prefix/lib/mupen64plus" \
   "$output_dir/runtimes/n64/build/prefix/share/mupen64plus" \
-  "$output_dir/assets"
+  "$output_dir/assets" \
+  "$output_dir/LICENSES/runtime-dependencies/OpenH264"
 install -m 0644 "$icon_bmp" \
   "$output_dir/assets/integral_emulator_icon.bmp"
 install -m 0755 "$project_root/c_client/build/integral_client" "$output_dir/integral_client"
@@ -48,6 +50,16 @@ install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_mobile_
 libmobile=$(find "$project_root/runtimes/gb/build_exp/libmobile" -maxdepth 1 -type f -name 'libmobile.so.*' | sort | tail -n 1)
 [[ -n "$libmobile" ]] || { echo "Missing libmobile shared library." >&2; exit 1; }
 install -m 0755 "$libmobile" "$output_dir/runtimes/gb/libmobile/libmobile.so.0.0.0"
+openh264_link=$(env -u LD_LIBRARY_PATH ldd "$project_root/c_client/build/integral_client" | awk '$1 ~ /^libopenh264\.so\./ { print $3; exit }')
+[[ -n "$openh264_link" && -f "$openh264_link" ]] || { echo "Missing OpenH264 shared library." >&2; exit 1; }
+openh264_real=$(readlink -f "$openh264_link")
+openh264_name=$(basename "$openh264_link")
+install -m 0755 "$openh264_real" "$output_dir/runtimes/linux/lib/$openh264_name"
+openh264_package=$(dpkg-query -S "$openh264_real" 2>/dev/null | awk -F: 'NR == 1 { print $1 }')
+openh264_copyright="/usr/share/doc/$openh264_package/copyright"
+[[ -n "$openh264_package" && -f "$openh264_copyright" ]] || { echo "Missing OpenH264 package copyright." >&2; exit 1; }
+install -m 0644 "$openh264_copyright" \
+  "$output_dir/LICENSES/runtime-dependencies/OpenH264/copyright"
 install -m 0755 "$project_root/runtimes/n64/build/integral_n64_runtime_frontend" "$output_dir/runtimes/n64/build/integral_n64_runtime_frontend"
 install -m 0755 "$project_root/runtimes/n64/build/prefix/lib/libmupen64plus.so.2.0.0" "$output_dir/runtimes/n64/build/prefix/lib/libmupen64plus.so.2.0.0"
 for plugin in audio-sdl input-sdl rsp-hle video-GLideN64; do

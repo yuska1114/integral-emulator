@@ -42,8 +42,6 @@ mkdir -p "$config" "$hotkey_config" "$screenshots" "$save_dir"
     --frame 2 >"$log" 2>&1
 
 grep -Fq 'N64 Runtime: controller 1 profile CUSTOM' "$log"
-grep -Fq 'N64 Runtime: direct keyboard input active before Core execution' "$log"
-grep -Fq 'Input INFO: Direct keyboard input active; IME disabled' "$log"
 grep -Fq 'DPad R = "scancode(135)"' "$config/mupen64plus.cfg"
 grep -Fq 'X Axis = "scancode(135,135)"' "$config/mupen64plus.cfg"
 grep -Fq 'Y Axis = "scancode(135,135)"' "$config/mupen64plus.cfg"

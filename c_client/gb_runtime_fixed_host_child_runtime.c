@@ -30,6 +30,7 @@ bool integral_gb_runtime_fixed_host_child_runtime_start(
         .remote_save = pair.remote_data,
         .remote_save_size = pair.remote_size,
         .rtc_offset_seconds = config->rtc_offset_seconds,
+        .rtc_target_unix = config->rtc_target_unix,
         .preserve_both_audio = true,
     };
     if (integral_gb_runtime_fixed_host_runtime_init(&runtime->core, &core_config) != 0 ||

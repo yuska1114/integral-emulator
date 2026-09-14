@@ -24,6 +24,8 @@ typedef struct ServerOptions {
     unsigned frames;
     bool display;
     unsigned scale;
+    unsigned window_width;
+    unsigned window_height;
     bool skip_boot_rom;
     bool link_enabled;
     bool remote_input_enabled;

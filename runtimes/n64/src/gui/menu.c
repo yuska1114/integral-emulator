@@ -17,7 +17,6 @@
 #include "gui/hotkeys.h"
 #include "gui/keymap.h"
 #include "gui/text.h"
-#include "platform/ime.h"
 
 enum {
     GUI_WIDTH = 480,
@@ -612,10 +611,6 @@ int integral_n64_runtime_gui_run(const char *program_path, const char *smoke_pat
     SDL_Renderer *renderer;
     bool running = true;
     int window_flags = smoke_path ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
-    if (!smoke_path && !integral_n64_runtime_ime_force_direct_input()) {
-        fprintf(stderr, "N64 Runtime GUI: could not switch to direct keyboard input\n");
-        return 35;
-    }
     memset(&state, 0, sizeof(state));
     for (unsigned controller = 0u; controller < 4u; ++controller) {
         state.controller_modes[controller] = 2;
@@ -649,11 +644,6 @@ int integral_n64_runtime_gui_run(const char *program_path, const char *smoke_pat
         fprintf(stderr, "N64 Runtime GUI: SDL init failed: %s\n", SDL_GetError());
         return 30;
     }
-    if (!smoke_path && !integral_n64_runtime_ime_force_direct_input()) {
-        fprintf(stderr, "N64 Runtime GUI: could not disable text input\n");
-        SDL_Quit();
-        return 35;
-    }
     open_joysticks(&state);
     window = SDL_CreateWindow("INTEGRAL EMULATOR - N64 Runtime", SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED, GUI_WIDTH, GUI_HEIGHT,
@@ -665,13 +655,6 @@ int integral_n64_runtime_gui_run(const char *program_path, const char *smoke_pat
     }
     SDL_RaiseWindow(window);
     (void)SDL_SetWindowInputFocus(window);
-    if (!smoke_path && !integral_n64_runtime_ime_force_direct_input()) {
-        fprintf(stderr, "N64 Runtime GUI: direct input focus failed\n");
-        SDL_DestroyWindow(window);
-        close_joysticks(&state);
-        SDL_Quit();
-        return 35;
-    }
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!renderer) renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if (!renderer) {
@@ -698,15 +681,6 @@ int integral_n64_runtime_gui_run(const char *program_path, const char *smoke_pat
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_WINDOWEVENT &&
-                event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
-                if (!integral_n64_runtime_ime_force_direct_input()) {
-                    snprintf(state.status, sizeof(state.status),
-                             "DIRECT INPUT SWITCH FAILED");
-                    running = false;
-                }
-                continue;
-            }
             if (event.type == SDL_JOYDEVICEADDED) {
                 open_joysticks(&state);
                 continue;

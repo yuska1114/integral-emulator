@@ -54,18 +54,23 @@ copy_file "$linux_input/integral_client" "$linux_package/client/integral_client"
 copy_file "$linux_input/assets/integral_emulator_icon.bmp" "$linux_package/assets/integral_emulator_icon.bmp"
 for runtime in dual_server fixed_host mobile_runtime; do copy_file "$linux_input/integral_gb_runtime_$runtime" "$linux_package/runtimes/gb/integral_gb_runtime_$runtime"; done
 copy_file "$linux_input/runtimes/gb/libmobile/libmobile.so.0.0.0" "$linux_package/runtimes/gb/libmobile/libmobile.so.0"
+openh264=$(find "$linux_input/runtimes/linux/lib" -maxdepth 1 -type f -name 'libopenh264.so.*' | sort | head -n 1)
+[ -n "$openh264" ] || { echo "Required OpenH264 shared library not found." >&2; exit 1; }
+copy_file "$openh264" "$linux_package/runtimes/linux/lib/$(basename "$openh264")"
 copy_file "$project_root/runtimes/gb/assets/bootroms/sgb2_boot.bin" "$linux_package/runtimes/gb/bootroms/sgb2_boot.bin"
 copy_file "$project_root/c_client/integral_client.conf.example" "$linux_package/config/integral_client.conf.example"; copy_n64 linux "$linux_input/runtimes/n64/build" "$linux_package/runtimes/n64/build"; copy_common_legal "$linux_package"
 copy_file "$project_root/runtimes/gb/third_party/libmobile/COPYING.LESSER" "$linux_package/LICENSES/runtime-dependencies/libmobile/COPYING.LESSER"
+copy_file "$linux_input/LICENSES/runtime-dependencies/OpenH264/copyright" "$linux_package/LICENSES/runtime-dependencies/OpenH264/copyright"
 cat > "$linux_package/RUNTIME_DEPENDENCIES.md" <<'EOF'
 # 同梱共有ライブラリ
 | ファイル | コンポーネント | ライセンス | 原文 |
 | --- | --- | --- | --- |
 | `runtimes/gb/libmobile/libmobile.so.0` | libmobile | LGPL-3.0-or-later | `LICENSES/runtime-dependencies/libmobile/COPYING.LESSER` |
+| `runtimes/linux/lib/libopenh264.so.*` | OpenH264 | BSD-2-Clause | `LICENSES/runtime-dependencies/OpenH264/copyright` |
 
 その他のLinux共有ライブラリはOSから提供され、配布物には同梱しません。
 EOF
-chmod 0755 "$linux_package/INTEGRAL_EMULATOR.sh" "$linux_package/client/integral_client" "$linux_package/runtimes/gb/integral_gb_runtime_"* "$linux_package/runtimes/n64/build/integral_n64_runtime_frontend"
+chmod 0755 "$linux_package/INTEGRAL_EMULATOR.sh" "$linux_package/client/integral_client" "$linux_package/runtimes/gb/integral_gb_runtime_"* "$linux_package/runtimes/linux/lib/libopenh264.so."* "$linux_package/runtimes/n64/build/integral_n64_runtime_frontend"
 
 copy_file "$project_root/c_client/RELEASE_README.txt" "$windows_package/README.txt"; copy_file "$windows_input/INTEGRAL EMULATOR.exe" "$windows_package/INTEGRAL_EMULATOR.exe"
 copy_file "$windows_input/client/integral_client.exe" "$windows_package/client/integral_client.exe"

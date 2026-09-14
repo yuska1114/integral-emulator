@@ -24,6 +24,7 @@ typedef struct IntegralGBRuntimeLinkEngineConfig {
     const uint8_t *input_b;
     size_t input_frames;
     uint64_t rtc_offset_seconds;
+    uint64_t rtc_target_unix;
     int display_role;
     bool preserve_both_audio;
 } IntegralGBRuntimeLinkEngineConfig;
@@ -59,6 +60,13 @@ typedef struct IntegralGBRuntimeLinkRTCRegisters {
     bool overflowed;
 } IntegralGBRuntimeLinkRTCRegisters;
 
+typedef enum IntegralGBRuntimeLinkSavePreflightStatus {
+    INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_ROM_ERROR = -1,
+    INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_OK = 0,
+    INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_RTC_MISSING = 1,
+    INTEGRAL_GB_RUNTIME_LINK_SAVE_PREFLIGHT_RTC_UNSUPPORTED = 2,
+} IntegralGBRuntimeLinkSavePreflightStatus;
+
 typedef struct IntegralGBRuntimeLinkEngine {
     IntegralGBRuntimeSlot a;
     IntegralGBRuntimeSlot b;
@@ -81,6 +89,8 @@ typedef struct IntegralGBRuntimeLinkEngine {
 
 int integral_gb_runtime_link_engine_init(IntegralGBRuntimeLinkEngine *engine,
                                  const IntegralGBRuntimeLinkEngineConfig *config);
+IntegralGBRuntimeLinkSavePreflightStatus
+integral_gb_runtime_link_save_preflight(const char *rom_path, size_t save_size);
 int integral_gb_runtime_link_engine_run_frame(IntegralGBRuntimeLinkEngine *engine,
                                       uint8_t input_a,
                                       uint8_t input_b);

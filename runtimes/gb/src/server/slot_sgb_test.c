@@ -49,6 +49,39 @@ static void observe_palette_states(IntegralGBRuntimeSlot *slot, bool *seen_a, bo
     }
 }
 
+static bool pixels_are_zero(const uint32_t *pixels)
+{
+    for (unsigned i = 0;
+         i < INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+         i++) {
+        if (pixels[i] != 0u) return false;
+    }
+    return true;
+}
+
+static void assert_sameboot_presentation_boundary(IntegralGBRuntimeSlot *slot)
+{
+    assert(integral_gb_runtime_slot_presentation_suppressed(slot));
+    slot->audio_buffer[0] = 123;
+    slot->audio_buffer[1] = -123;
+    slot->audio_frames = 1u;
+    int16_t audio[2] = {0};
+    assert(integral_gb_runtime_slot_drain_audio(slot, audio, 1u) == 0u);
+    assert(slot->audio_frames == 0u);
+
+    bool saw_hidden_core_frame = false;
+    for (unsigned frame = 0; frame < 400u; frame++) {
+        assert(integral_gb_runtime_slot_run_frames(slot, 1u) == 0);
+        if (!integral_gb_runtime_slot_presentation_suppressed(slot)) break;
+        if (!pixels_are_zero(slot->pixels)) saw_hidden_core_frame = true;
+        assert(pixels_are_zero(integral_gb_runtime_slot_presented_pixels(slot)));
+        assert(integral_gb_runtime_slot_drain_audio(slot, audio, 1u) == 0u);
+    }
+    assert(saw_hidden_core_frame);
+    assert(!integral_gb_runtime_slot_presentation_suppressed(slot));
+    assert(integral_gb_runtime_slot_presented_pixels(slot) == slot->pixels);
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -78,6 +111,8 @@ int main(int argc, char **argv)
     assert(GB_get_screen_width(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_GB_WIDTH);
     assert(GB_get_screen_height(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_GB_HEIGHT);
 
+    assert_sameboot_presentation_boundary(&guarded.slot);
+
     bool seen_a = false;
     bool seen_b = false;
     observe_palette_states(&guarded.slot, &seen_a, &seen_b);
@@ -85,6 +120,7 @@ int main(int argc, char **argv)
     assert_guards(&guarded);
 
     integral_gb_runtime_slot_reset(&guarded.slot);
+    assert_sameboot_presentation_boundary(&guarded.slot);
     observe_palette_states(&guarded.slot, &seen_a, &seen_b);
     assert(seen_a && seen_b);
     assert_guards(&guarded);

@@ -519,7 +519,9 @@ int main(int argc, char **argv)
              "INTEGRAL EMULATOR - GB Runtime (%s mode)",
              integral_gb_runtime_server_window_mode_name(&options));
     if (options.display &&
-        integral_gb_runtime_video_window_open_titled(&window, options.scale, options.display_slots, window_title) != 0) {
+        integral_gb_runtime_video_window_open_titled_sized(
+            &window, options.scale, options.display_slots, window_title,
+            options.window_width, options.window_height) != 0) {
         close_stream_server_heap(&stream_server, &stream_server_open);
         close_stream_server_heap(&stream_server_slot1, &stream_server_slot1_open);
         if (slot2_ready) {

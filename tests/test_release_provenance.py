@@ -119,6 +119,25 @@ class ReleaseProvenanceTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 LICENSES.verify(root, "macos")
 
+    def test_linux_openh264_license_is_required(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            required = LICENSES.COMMON_REQUIRED + LICENSES.LINUX_REQUIRED
+            for relative in required:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("license\n", encoding="utf-8")
+            (root / "THIRD_PARTY_NOTICES.md").write_text(
+                "\n".join(LICENSES.NOTICE_REFERENCES), encoding="utf-8"
+            )
+            (root / "RUNTIME_DEPENDENCIES.md").write_text(
+                "\n".join(LICENSES.LINUX_REQUIRED), encoding="utf-8"
+            )
+            LICENSES.verify(root, "linux")
+            (root / LICENSES.LINUX_REQUIRED[0]).unlink()
+            with self.assertRaises(SystemExit):
+                LICENSES.verify(root, "linux")
+
 
 if __name__ == "__main__":
     unittest.main()

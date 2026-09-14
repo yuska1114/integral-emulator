@@ -24,6 +24,9 @@ MACOS_REQUIRED = (
     "LICENSES/runtime-dependencies/FreeType/FTL.TXT",
     "LICENSES/runtime-dependencies/FreeType/GPLv2.TXT",
 )
+LINUX_REQUIRED = (
+    "LICENSES/runtime-dependencies/OpenH264/copyright",
+)
 NOTICE_REFERENCES = (
     "LICENSES/third-party/mupen64plus-core/gpl-license",
     "LICENSES/third-party/mupen64plus-core/lgpl-license",
@@ -33,7 +36,11 @@ NOTICE_REFERENCES = (
 
 
 def verify(root: Path, platform: str) -> None:
-    required = COMMON_REQUIRED + (MACOS_REQUIRED if platform == "macos" else ())
+    required = COMMON_REQUIRED
+    if platform == "macos":
+        required += MACOS_REQUIRED
+    elif platform == "linux":
+        required += LINUX_REQUIRED
     failures: list[str] = []
     for relative in required:
         safe = PurePosixPath(relative)
@@ -55,6 +62,16 @@ def verify(root: Path, platform: str) -> None:
             else ""
         )
         for reference in MACOS_REQUIRED:
+            if reference not in dependencies:
+                failures.append(f"runtime dependency reference missing: {reference}")
+    elif platform == "linux":
+        dependencies_path = root / "RUNTIME_DEPENDENCIES.md"
+        dependencies = (
+            dependencies_path.read_text(encoding="utf-8")
+            if dependencies_path.is_file()
+            else ""
+        )
+        for reference in LINUX_REQUIRED:
             if reference not in dependencies:
                 failures.append(f"runtime dependency reference missing: {reference}")
 

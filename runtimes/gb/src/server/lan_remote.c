@@ -391,10 +391,11 @@ static void build_frame_bmp(const IntegralGBRuntimeSlot *slot, uint8_t *bmp)
     put_u32_le(bmp + 34, LAN_REMOTE_BMP_PIXEL_SIZE);
 
     uint8_t *pixels = bmp + LAN_REMOTE_BMP_HEADER_SIZE;
+    const uint32_t *presented = integral_gb_runtime_slot_presented_pixels(slot);
     for (unsigned y = 0; y < INTEGRAL_GB_RUNTIME_GB_HEIGHT; y++) {
         unsigned src_y = INTEGRAL_GB_RUNTIME_GB_HEIGHT - 1u - y;
         for (unsigned x = 0; x < INTEGRAL_GB_RUNTIME_GB_WIDTH; x++) {
-            uint32_t argb = slot->pixels[src_y * INTEGRAL_GB_RUNTIME_GB_WIDTH + x];
+            uint32_t argb = presented[src_y * INTEGRAL_GB_RUNTIME_GB_WIDTH + x];
             uint8_t *dest = pixels + y * LAN_REMOTE_BMP_ROW_SIZE + x * 3u;
             dest[0] = (uint8_t)(argb & 0xFFu);
             dest[1] = (uint8_t)((argb >> 8) & 0xFFu);
@@ -405,8 +406,9 @@ static void build_frame_bmp(const IntegralGBRuntimeSlot *slot, uint8_t *bmp)
 
 static void build_frame_rgb565(const IntegralGBRuntimeSlot *slot, uint8_t *payload)
 {
+    const uint32_t *pixels = integral_gb_runtime_slot_presented_pixels(slot);
     for (unsigned i = 0; i < INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT; i++) {
-        uint16_t pixel = integral_gb_runtime_rgb888_to_rgb565(slot->pixels[i]);
+        uint16_t pixel = integral_gb_runtime_rgb888_to_rgb565(pixels[i]);
         payload[i * 2u] = (uint8_t)(pixel >> 8);
         payload[i * 2u + 1u] = (uint8_t)pixel;
     }
