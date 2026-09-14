@@ -5353,10 +5353,18 @@ static void handle_login_key(AppState *app, const SDL_KeyboardEvent *key)
     }
     char before_server_id[sizeof(state->server_id)];
     char before_server[sizeof(state->server)];
+    char before_username[sizeof(state->username)];
     bool before_remember = state->remember_login;
     copy_text(before_server_id, sizeof(before_server_id), login_server_id_or_default(state));
     copy_text(before_server, sizeof(before_server), state->server);
+    copy_text(before_username, sizeof(before_username), state->username);
     handle_key(state, key);
+    if (before_remember && !state->remember_login &&
+        before_server[0] != '\0' && before_username[0] != '\0' &&
+        integral_credential_store_delete(before_server, before_username) != 0) {
+        state->remember_login = true;
+        copy_text(state->status, sizeof(state->status), "CREDENTIAL DELETE FAILED");
+    }
     if (strcasecmp(before_server_id, login_server_id_or_default(state)) != 0 ||
         strcmp(before_server, state->server) != 0 ||
         before_remember != state->remember_login) {
@@ -10879,6 +10887,12 @@ static void start_local_gb_mobile(AppState *state)
                                "--rtc-offset-seconds", rtc_offset_text,
                                "--window-width", gb_window_width_text,
                                "--window-height", gb_window_height_text,
+                               "--slot1-keys", state->keys.slot1,
+                               "--fast-key", state->keys.fast,
+                               "--screenshot-key", state->keys.screenshot,
+                               "--escape-key", state->keys.escape,
+                               "--turbo-hold-key", state->keys.turbo_hold,
+                               "--reset-key", state->keys.reset,
                                NULL);
     if (spawned == -1) {
         integral_api_cancel_mobile_session(state->login.server, state->login.token, mobile_session_id, game_session_id, fencing_token, "runtime start failed", error, sizeof(error));
@@ -10912,6 +10926,12 @@ static void start_local_gb_mobile(AppState *state)
                   "--rtc-offset-seconds", rtc_offset_text,
                   "--window-width", gb_window_width_text,
                   "--window-height", gb_window_height_text,
+                  "--slot1-keys", state->keys.slot1,
+                  "--fast-key", state->keys.fast,
+                  "--screenshot-key", state->keys.screenshot,
+                  "--escape-key", state->keys.escape,
+                  "--turbo-hold-key", state->keys.turbo_hold,
+                  "--reset-key", state->keys.reset,
                   (char *)NULL);
             _exit(127);
         }

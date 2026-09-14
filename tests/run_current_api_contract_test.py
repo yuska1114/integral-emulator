@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import json
+import os
+import ssl
 import subprocess
 import sys
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,7 +34,12 @@ ROM_APPLY = "/rom-slots/apply"
 AUTH_LOGIN = "/auth/login"
 
 
-def run_case(binary: Path, base_path: str = "", relay_transport: str = "tls") -> list[str]:
+def run_case(
+    binary: Path,
+    base_path: str = "",
+    relay_transport: str = "tls",
+    api_tls: bool = False,
+) -> list[str]:
     paths: list[str] = []
 
     def canonical_path(raw_path: str) -> str:
@@ -324,17 +332,42 @@ def run_case(binary: Path, base_path: str = "", relay_transport: str = "tls") ->
         def log_message(self, _format: str, *args: object) -> None:
             return
 
+    certificate_temp = tempfile.TemporaryDirectory()
+    certificate_dir = Path(certificate_temp.name)
+    cert = certificate_dir / "api.crt"
+    key = certificate_dir / "api.key"
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    environment = os.environ.copy()
+    scheme = "http"
+    host = "127.0.0.1"
+    if api_tls:
+        subprocess.run(
+            [
+                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256",
+                "-days", "1", "-nodes", "-keyout", str(key), "-out", str(cert),
+                "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        environment["SSL_CERT_FILE"] = str(cert)
+        scheme = "https"
+        host = "localhost"
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         result = subprocess.run(
-            [str(binary), f"http://127.0.0.1:{server.server_port}{base_path}",
+            [str(binary), f"{scheme}://{host}:{server.server_port}{base_path}",
              relay_transport],
             check=False,
             capture_output=True,
             text=True,
             timeout=10,
+            env=environment,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -345,6 +378,7 @@ def run_case(binary: Path, base_path: str = "", relay_transport: str = "tls") ->
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+        certificate_temp.cleanup()
     return paths
 
 
@@ -357,7 +391,7 @@ def main() -> int:
     expected = [AUTH_LOGIN] + room_paths + [ROM_APPLY, N64_RUNTIME_SAVE,
         N64_ROOM_START, ROOM_HEARTBEAT, GAME_START, MOBILE_SCENARIOS, MOBILE,
         MOBILE, MOBILE, MOBILE_COMPLETE] + fixed_paths
-    if run_case(binary, relay_transport="tls") != expected:
+    if run_case(binary, relay_transport="tls", api_tls=True) != expected:
         raise RuntimeError("client request sequence was not canonical-only")
     prefixed_expected = [f"/sample-api{path}" for path in expected]
     if run_case(binary, "/sample-api", relay_transport="plain") != prefixed_expected:

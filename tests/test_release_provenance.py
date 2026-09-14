@@ -109,13 +109,24 @@ class ReleaseProvenanceTest(unittest.TestCase):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("license\n", encoding="utf-8")
+            app_ssl = root / "Test.app/Contents/Resources/ssl"
+            app_ssl.mkdir(parents=True)
+            (app_ssl / "cert.pem").write_text("certificate\n", encoding="utf-8")
+            (app_ssl / "README.md").write_text("provenance\n", encoding="utf-8")
             notices = root / "THIRD_PARTY_NOTICES.md"
-            notices.write_text("\n".join(LICENSES.NOTICE_REFERENCES), encoding="utf-8")
+            notices.write_text(
+                "\n".join(LICENSES.NOTICE_REFERENCES + LICENSES.MACOS_NOTICE_REFERENCES),
+                encoding="utf-8",
+            )
             (root / "RUNTIME_DEPENDENCIES.md").write_text(
-                "\n".join(LICENSES.MACOS_REQUIRED), encoding="utf-8"
+                "\n".join(LICENSES.MACOS_DEPENDENCY_REFERENCES), encoding="utf-8"
             )
             LICENSES.verify(root, "macos")
             (root / LICENSES.MACOS_REQUIRED[0]).unlink()
+            with self.assertRaises(SystemExit):
+                LICENSES.verify(root, "macos")
+            (root / LICENSES.MACOS_REQUIRED[0]).write_text("license\n", encoding="utf-8")
+            (app_ssl / "cert.pem").unlink()
             with self.assertRaises(SystemExit):
                 LICENSES.verify(root, "macos")
 

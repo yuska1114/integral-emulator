@@ -58,18 +58,24 @@ int main(int argc, char **argv)
           "virtual Joy-Con is exposed through SDL GameController");
     CHECK(integral_gb_runtime_key_config_open_game_controllers() >= 1,
           "open first virtual device");
+    SDL_JoystickID instance_a = SDL_JoystickGetDeviceInstanceID(virtual_a);
+    CHECK(instance_a >= 0, "remember first virtual device instance");
     virtual_b = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 2, 8, 1);
     CHECK(virtual_b >= 0, "hot-plug second virtual Joy-Con-equivalent device");
+    SDL_JoystickID instance_b = SDL_JoystickGetDeviceInstanceID(virtual_b);
+    CHECK(instance_b >= 0 && instance_b != instance_a,
+          "remember second virtual device instance");
     SDL_Event added;
     SDL_zero(added);
     added.type = SDL_JOYDEVICEADDED;
     added.jdevice.which = virtual_b;
     integral_gb_runtime_key_config_handle_device_event(&added);
-    joystick_a = SDL_JoystickFromInstanceID(SDL_JoystickGetDeviceInstanceID(virtual_a));
-    joystick_b = SDL_JoystickFromInstanceID(SDL_JoystickGetDeviceInstanceID(virtual_b));
+    joystick_a = SDL_JoystickFromInstanceID(instance_a);
+    joystick_b = SDL_JoystickFromInstanceID(instance_b);
     CHECK(joystick_a && joystick_b, "resolve virtual joystick handles");
-    SDL_JoystickID instance_a = SDL_JoystickInstanceID(joystick_a);
-    SDL_JoystickID instance_b = SDL_JoystickInstanceID(joystick_b);
+    CHECK(SDL_JoystickInstanceID(joystick_a) == instance_a &&
+              SDL_JoystickInstanceID(joystick_b) == instance_b,
+          "virtual device handles keep their original instances");
 
     SDL_Event a_down;
     SDL_zero(a_down);

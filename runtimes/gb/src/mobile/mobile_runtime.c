@@ -32,6 +32,8 @@ typedef struct RuntimeOptions {
   const char *input_script_path;
   unsigned scale, window_width, window_height, frame_limit, screenshot_every;
   int64_t rtc_offset_seconds;
+  IntegralGBRuntimeKeyConfig slot1_keys;
+  SDL_Keycode fast_key, screenshot_key, escape_key, turbo_hold_key, reset_key;
   bool headless, dump_screenshot;
 } RuntimeOptions;
 
@@ -74,6 +76,12 @@ static int parse_options(int argc, char **argv, RuntimeOptions *o) {
   memset(o, 0, sizeof(*o));
   o->scale = integral_display_scale_from_environment(
       "INTEGRAL_EMULATOR_DISPLAY_SCALE");
+  integral_gb_runtime_key_config_slot1_default(&o->slot1_keys);
+  o->fast_key = integral_gb_runtime_key_config_fast_default();
+  o->screenshot_key = integral_gb_runtime_key_config_screenshot_default();
+  o->escape_key = integral_gb_runtime_key_config_escape_default();
+  o->turbo_hold_key = integral_gb_runtime_key_config_turbo_hold_default();
+  o->reset_key = integral_gb_runtime_key_config_reset_default();
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--rom") && i + 1 < argc)
       o->rom_path = argv[++i];
@@ -91,6 +99,35 @@ static int parse_options(int argc, char **argv, RuntimeOptions *o) {
     }
     else if (!strcmp(argv[i], "--input-script") && i + 1 < argc)
       o->input_script_path = argv[++i];
+    else if (!strcmp(argv[i], "--slot1-keys") && i + 1 < argc) {
+      if (integral_gb_runtime_key_config_parse(&o->slot1_keys, argv[++i]))
+        return -1;
+    }
+    else if (!strcmp(argv[i], "--fast-key") && i + 1 < argc) {
+      o->fast_key = integral_gb_runtime_key_config_key_from_name(argv[++i]);
+      if (o->fast_key == SDLK_UNKNOWN)
+        return -1;
+    }
+    else if (!strcmp(argv[i], "--screenshot-key") && i + 1 < argc) {
+      o->screenshot_key = integral_gb_runtime_key_config_key_from_name(argv[++i]);
+      if (o->screenshot_key == SDLK_UNKNOWN)
+        return -1;
+    }
+    else if (!strcmp(argv[i], "--escape-key") && i + 1 < argc) {
+      o->escape_key = integral_gb_runtime_key_config_key_from_name(argv[++i]);
+      if (o->escape_key == SDLK_UNKNOWN)
+        return -1;
+    }
+    else if (!strcmp(argv[i], "--turbo-hold-key") && i + 1 < argc) {
+      o->turbo_hold_key = integral_gb_runtime_key_config_key_from_name(argv[++i]);
+      if (o->turbo_hold_key == SDLK_UNKNOWN)
+        return -1;
+    }
+    else if (!strcmp(argv[i], "--reset-key") && i + 1 < argc) {
+      o->reset_key = integral_gb_runtime_key_config_key_from_name(argv[++i]);
+      if (o->reset_key == SDLK_UNKNOWN)
+        return -1;
+    }
     else if (!strcmp(argv[i], "--scale") && i + 1 < argc) {
       if (integral_display_scale_parse(argv[++i], &o->scale))
         return -1;
@@ -363,6 +400,8 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
         "PATH --runtime-result PATH [--rtc-offset-seconds N] [--headless] "
         "[--frames N] [--scale auto|1|2|3|4|5|6] "
         "[--window-width N --window-height N] "
+        "[--slot1-keys SPEC] [--fast-key KEY] [--screenshot-key KEY] "
+        "[--escape-key KEY] [--turbo-hold-key KEY] [--reset-key KEY] "
         "[--input-script PATH] [--screenshot-every N] [--dump-screenshot]\n",
         argv[0]);
     return 2;
@@ -442,6 +481,9 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
   IntegralGBRuntimeAudioPlayer *audio = NULL;
   if (running) {
     integral_gb_runtime_input_router_init(&input, &slot, NULL);
+    integral_gb_runtime_input_router_set_keymaps(
+        &input, &o.slot1_keys, NULL, o.fast_key, o.screenshot_key,
+        o.escape_key, o.turbo_hold_key, o.reset_key);
     integral_gb_runtime_input_router_disable_speed_controls(&input);
   }
   if (running && !o.headless &&
@@ -468,6 +510,18 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
       integral_gb_runtime_mobile_adapter_bridge_reset_pipeline(&bridge);
       integral_gb_runtime_slot_reset(&slot);
       mobile_start(adapter);
+      integral_gb_runtime_video_window_show_message(window, "RESET");
+    }
+    if (integral_gb_runtime_input_router_take_screenshot_request(&input)) {
+      char screenshot_path[512];
+      if (integral_gb_runtime_screenshot_save_slot(
+              &slot, screenshot_path, sizeof(screenshot_path)) == 0) {
+        printf("screenshot saved: %s\n", screenshot_path);
+        integral_gb_runtime_video_window_show_message(window, "SCREENSHOT SAVED");
+      } else {
+        fprintf(stderr, "Failed to save screenshot\n");
+        integral_gb_runtime_video_window_show_message(window, "SCREENSHOT FAILED");
+      }
     }
     for (unsigned i = 0; i < 1u && (!o.frame_limit || frame < o.frame_limit);
          i++) {

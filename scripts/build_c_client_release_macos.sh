@@ -56,6 +56,7 @@ FRAMEWORKS_DIR="${CONTENTS_DIR}/Frameworks"
 CLIENT_DIR="${RESOURCES_DIR}/client"
 GB_RUNTIME_DIR="${RESOURCES_DIR}/runtimes/gb"
 N64_RUNTIME_DIR="${RESOURCES_DIR}/runtimes/n64"
+SSL_DIR="${RESOURCES_DIR}/ssl"
 ZIP_PATH="${RELEASE_ROOT}/${PACKAGE_NAME}.zip"
 FORMAL_ARGS=()
 if [[ "$(cd "${RELEASE_ROOT}" && pwd)" == "${PROJECT_ROOT}/dist/releases" ]]; then
@@ -96,8 +97,10 @@ mkdir -p \
   "${GB_RUNTIME_DIR}" \
   "${GB_RUNTIME_DIR}/bootroms" \
   "${N64_RUNTIME_DIR}" \
+  "${SSL_DIR}" \
   "${FRAMEWORKS_DIR}" \
   "${PACKAGE_DIR}/LICENSES/third-party" \
+  "${PACKAGE_DIR}/LICENSES/third-party/mozilla-ca" \
   "${PACKAGE_DIR}/LICENSES/runtime-dependencies" \
   "${PACKAGE_DIR}/roms" \
   "${PACKAGE_DIR}/config" \
@@ -106,6 +109,10 @@ mkdir -p \
 cp -f "${PROJECT_ROOT}/c_client/build/integral_client" "${CLIENT_DIR}/integral_client"
 cp -f "${PROJECT_ROOT}/c_client/integral_client.conf.example" "${PACKAGE_DIR}/config/integral_client.conf.example"
 cp -f "${PROJECT_ROOT}/c_client/RELEASE_README.txt" "${PACKAGE_DIR}/README.txt"
+python3 "${PROJECT_ROOT}/scripts/verify_ca_bundle.py" "${PROJECT_ROOT}/c_client/ssl/cacert.pem"
+cp -f "${PROJECT_ROOT}/c_client/ssl/cacert.pem" "${SSL_DIR}/cert.pem"
+cp -f "${PROJECT_ROOT}/c_client/ssl/README.md" "${SSL_DIR}/README.md"
+cp -f "${PROJECT_ROOT}/c_client/ssl/MPL-2.0.txt" "${PACKAGE_DIR}/LICENSES/third-party/mozilla-ca/MPL-2.0.txt"
 cp -f "${PROJECT_ROOT}/scripts/unlock_macos.sh" "${PACKAGE_DIR}/unlock_macos.sh"
 chmod +x "${PACKAGE_DIR}/unlock_macos.sh"
 cp -f "${PROJECT_ROOT}/runtimes/gb/build_exp/integral_gb_runtime_dual_server" "${GB_RUNTIME_DIR}/integral_gb_runtime_dual_server"
@@ -155,8 +162,16 @@ set -euo pipefail
 APP_BUNDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RELEASE_DIR="$(cd "${APP_BUNDLE}/.." && pwd)"
 RESOURCES_DIR="${APP_BUNDLE}/Contents/Resources"
+CA_FILE="${RESOURCES_DIR}/ssl/cert.pem"
+if [[ ! -r "${CA_FILE}" ]]; then
+  echo "Bundled CA certificate file is missing: ${CA_FILE}" >&2
+  exit 1
+fi
 mkdir -p "${RELEASE_DIR}/roms" "${RELEASE_DIR}/config" "${RELEASE_DIR}/export"
 cd "${RELEASE_DIR}"
+export SSL_CERT_FILE="${CA_FILE}"
+export INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_CA_FILE="${CA_FILE}"
+export INTEGRAL_EMULATOR_N64_RUNTIME_MEDIA_RELAY_CA_FILE="${CA_FILE}"
 export INTEGRAL_EMULATOR_GB_RUNTIME_DUAL_SERVER="${RESOURCES_DIR}/runtimes/gb/integral_gb_runtime_dual_server"
 export INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RUNTIME="${RESOURCES_DIR}/runtimes/gb/integral_gb_runtime_fixed_host"
 export INTEGRAL_EMULATOR_GB_RUNTIME_MOBILE_RUNTIME="${RESOURCES_DIR}/runtimes/gb/integral_gb_runtime_mobile_runtime"
@@ -426,10 +441,11 @@ while IFS= read -r framework; do
   [[ "${permitted}" == 1 ]] || { echo "Bundled dylib lacks a reviewed license mapping: ${name}" >&2; exit 1; }
 done < <(find "${FRAMEWORKS_DIR}" -maxdepth 1 -type f -name '*.dylib' | sort)
 cat > "${PACKAGE_DIR}/RUNTIME_DEPENDENCIES.md" <<'EOF'
-# macOS同梱dylib
+# macOS同梱コンポーネント
 
-| dylib | コンポーネント | ライセンス原文 |
+| ファイル | コンポーネント | ライセンス原文 |
 | --- | --- | --- |
+| Contents/Resources/ssl/cert.pem | Mozilla CA Certificate Store | LICENSES/third-party/mozilla-ca/MPL-2.0.txt |
 | libSDL2-2.0.0.dylib | SDL2 / sdl2-compat | LICENSES/runtime-dependencies/SDL2/LICENSE.txt |
 | libSDL3.dylib | SDL3 | LICENSES/runtime-dependencies/SDL3/LICENSE.txt |
 | libSDL2_ttf-2.0.0.dylib | SDL2_ttf | LICENSES/runtime-dependencies/SDL2_ttf/LICENSE.txt |

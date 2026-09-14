@@ -252,6 +252,37 @@ int main(int argc, char **argv)
     integral_gb_runtime_input_router_init(&input, NULL, NULL);
     integral_gb_runtime_input_router_disable_speed_controls(&input);
 
+    IntegralGBRuntimeInputRouter mobile_input;
+    IntegralGBRuntimeKeyConfig mobile_keys;
+    CHECK(integral_gb_runtime_key_config_parse(
+              &mobile_keys, "D,A,W,S,G,H,R,T") == 0);
+    integral_gb_runtime_input_router_init(&mobile_input, NULL, NULL);
+    integral_gb_runtime_input_router_set_keymaps(
+        &mobile_input, &mobile_keys, NULL, SDLK_v, SDLK_c, SDLK_q, SDLK_n,
+        SDLK_m);
+    integral_gb_runtime_input_router_disable_speed_controls(&mobile_input);
+    CHECK(mobile_input.slot1_keys.a == SDLK_g);
+    CHECK(mobile_input.screenshot_key == SDLK_c);
+    CHECK(mobile_input.escape_key == SDLK_q);
+    CHECK(mobile_input.reset_key == SDLK_m);
+    CHECK(mobile_input.fast_key == SDLK_UNKNOWN);
+    CHECK(mobile_input.turbo_hold_key == SDLK_UNKNOWN);
+    SDL_Event mobile_event;
+    memset(&mobile_event, 0, sizeof(mobile_event));
+    mobile_event.type = SDL_KEYDOWN;
+    mobile_event.key.type = SDL_KEYDOWN;
+    mobile_event.key.keysym.sym = SDLK_c;
+    CHECK(integral_gb_runtime_input_router_handle_event(
+              &mobile_input, &mobile_event));
+    CHECK(integral_gb_runtime_input_router_take_screenshot_request(
+              &mobile_input));
+    mobile_event.key.keysym.sym = SDLK_v;
+    CHECK(integral_gb_runtime_input_router_handle_event(
+              &mobile_input, &mobile_event));
+    CHECK(mobile_input.speed_multiplier == 1u);
+    CHECK(!integral_gb_runtime_input_router_take_speed_multiplier_changed(
+              &mobile_input));
+
     push_key(SDL_KEYDOWN, integral_gb_runtime_key_config_fast_default());
     CHECK(poll_window(window, &input) == INTEGRAL_GB_RUNTIME_VIDEO_WINDOW_CONTINUE);
     CHECK(integral_gb_runtime_input_router_speed_multiplier(&input) == 1u);

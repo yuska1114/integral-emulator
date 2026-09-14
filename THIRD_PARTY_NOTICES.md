@@ -14,6 +14,7 @@ Integral Emulatorの公開ソースには、第三者由来のコードが含ま
 | mupen64plus-audio-sdl | `runtimes/n64/third_party/mupen64plus-audio-sdl/` | `THIRD_PARTY_LOCK.json` | `LICENSES` |
 | mupen64plus-rsp-hle | `runtimes/n64/third_party/mupen64plus-rsp-hle/` | `THIRD_PARTY_LOCK.json` | `LICENSES` |
 | GLideN64 | `runtimes/n64/third_party/GLideN64/` | `THIRD_PARTY_LOCK.json` | `LICENSE` |
+| Mozilla CA Certificate Store | `c_client/ssl/cacert.pem` | `c_client/ssl/README.md` | `c_client/ssl/MPL-2.0.txt` |
 
 `THIRD_PARTY_LOCK.json`は、対象コンポーネントのupstream baseline、収録範囲、hash、patchを記録します。libmobileは同ディレクトリの`INTEGRAL_REVISION.txt`でrevisionを記録し、専用スクリプトでsource treeを検証します。
 

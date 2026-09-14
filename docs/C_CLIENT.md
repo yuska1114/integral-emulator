@@ -108,6 +108,9 @@ Gatekeeperのquarantine属性だけを解除する`unlock_macos.sh`を含む配�
 `dist/releases/`に作成されます。現在のHomebrew依存ライブラリから作成する成果物は
 macOS 26.0以降／Apple Silicon向けです。
 
+macOS配布版はMozilla由来のCA証明書バンドルを同梱し、API、GB Media Relay、
+N64 Media RelayのTLS証明書検証に使用します。CA証明書の利用にHomebrewは必要ありません。
+
 ## 接続設定
 
 手動設定のひな形は`c_client/integral_client.conf.example`です。
@@ -119,9 +122,13 @@ macOS 26.0以降／Apple Silicon向けです。
 - `window.width`／`window.height`: Clientのウィンドウサイズ
 
 `login.remember`によるパスワード保存には、Windows Credential Managerまたは
-macOS Keychainを使用します。Ubuntuでは現在利用できないため、自動的に無効になります。
+macOS Keychainを使用します。Linuxでは、パスワードを平文で
+`$XDG_CONFIG_HOME/integral-emulator/credentials/`へ保存します。`XDG_CONFIG_HOME`が
+未設定の場合は`~/.config/integral-emulator/credentials/`を使用します。
+Linuxの保存先ディレクトリは`0700`、接続先・ユーザー別の保存ファイルは`0600`です。
+記憶を無効にすると、対応する保存ファイルを削除します。
 
-パスワードとBearer tokenは設定ファイルへ保存しません。
+パスワードとBearer tokenはClient設定ファイルへ保存しません。
 
 ## Runtime・フォント・TLSの設定
 
@@ -145,6 +152,7 @@ macOS Keychainを使用します。Ubuntuでは現在利用できないため、
 ゲーム実行中と`KEY CONFIG`画面では、SDLが認識するコントローラーを使用できます。
 GBとN64の割当は`KEY CONFIG`画面で設定し、Client設定ファイルへ保存します。
 Link Cable ROOMでは、Host／Remoteとも各Clientの`SLOT 1 KEYS`を使用します。
+Mobile Modeでは`SLOT 1 KEYS`と共通操作の割当を使用しますが、倍速操作は無効です。
 OSで選択中のキーボード入力方式は変更しません。
 
 Clientはウィンドウの端をドラッグして自由に大きさを変更でき、終了時のサイズを次回起動時に

@@ -5,6 +5,7 @@
 - GB Runtime: SameBoy、libmobile
 - N64 Runtime: Mupen64Plus core、audio-sdl、input-sdl、rsp-hle、GLideN64
 - Linux版ROOM映像処理: OpenH264
+- macOS版CA証明書バンドル: Mozilla CA Certificate Store（MPL 2.0）
 - OS別共有ライブラリ: `RUNTIME_DEPENDENCIES.md`に記載したコンポーネント
 
 対応するライセンス原文と著作権表示は`LICENSES/third-party/`および

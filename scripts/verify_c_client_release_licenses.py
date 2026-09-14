@@ -21,9 +21,16 @@ COMMON_REQUIRED = (
     "LICENSES/third-party/GLideN64/gles2n64/LICENSE",
 )
 MACOS_REQUIRED = (
+    "LICENSES/third-party/mozilla-ca/MPL-2.0.txt",
     "LICENSES/runtime-dependencies/FreeType/FTL.TXT",
     "LICENSES/runtime-dependencies/FreeType/GPLv2.TXT",
 )
+MACOS_DEPENDENCY_REFERENCES = (
+    "LICENSES/third-party/mozilla-ca/MPL-2.0.txt",
+    "LICENSES/runtime-dependencies/FreeType/FTL.TXT",
+    "LICENSES/runtime-dependencies/FreeType/GPLv2.TXT",
+)
+MACOS_NOTICE_REFERENCES = ("Mozilla CA Certificate Store",)
 LINUX_REQUIRED = (
     "LICENSES/runtime-dependencies/OpenH264/copyright",
 )
@@ -48,11 +55,28 @@ def verify(root: Path, platform: str) -> None:
         if not path.is_file() or path.stat().st_size == 0:
             failures.append(f"missing or empty: {relative}")
 
+    if platform == "macos":
+        app_roots = sorted(path for path in root.glob("*.app") if path.is_dir())
+        if len(app_roots) != 1:
+            failures.append("macOS package must contain exactly one app bundle")
+        else:
+            for relative in (
+                "Contents/Resources/ssl/cert.pem",
+                "Contents/Resources/ssl/README.md",
+            ):
+                path = app_roots[0] / relative
+                if not path.is_file() or path.stat().st_size == 0:
+                    failures.append(f"missing or empty: {app_roots[0].name}/{relative}")
+
     notices_path = root / "THIRD_PARTY_NOTICES.md"
     notices = notices_path.read_text(encoding="utf-8") if notices_path.is_file() else ""
     for reference in NOTICE_REFERENCES:
         if reference not in notices:
             failures.append(f"notice reference missing: {reference}")
+    if platform == "macos":
+        for reference in MACOS_NOTICE_REFERENCES:
+            if reference not in notices:
+                failures.append(f"notice reference missing: {reference}")
 
     if platform == "macos":
         dependencies_path = root / "RUNTIME_DEPENDENCIES.md"
@@ -61,7 +85,7 @@ def verify(root: Path, platform: str) -> None:
             if dependencies_path.is_file()
             else ""
         )
-        for reference in MACOS_REQUIRED:
+        for reference in MACOS_DEPENDENCY_REFERENCES:
             if reference not in dependencies:
                 failures.append(f"runtime dependency reference missing: {reference}")
     elif platform == "linux":

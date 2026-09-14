@@ -75,6 +75,7 @@ ROM_METADATA_TEST_TARGET := $(BUILD_DIR)/rom_metadata_test$(EXEEXT)
 ROOM_MATCHING_RESPONSE_TEST_TARGET := $(BUILD_DIR)/room_matching_response_test$(EXEEXT)
 MOBILE_SESSION_CONTRACT_TEST_TARGET := $(BUILD_DIR)/mobile_session_contract_test$(EXEEXT)
 CLIENT_CONFIG_CONTROLLER_TEST_TARGET := $(BUILD_DIR)/client_config_controller_test$(EXEEXT)
+CREDENTIAL_STORE_TEST_TARGET := $(BUILD_DIR)/credential_store_test$(EXEEXT)
 SOURCES := login_client.c sdl_text.c sdl_unicode_text.c http_client.c client_config.c credential_store.c rom_metadata.c \
 	media_relay_client.c media_codec.c media_h264.c n64_runtime_media_stream.c room_poll_worker.c \
 	mobile_session_contract.c gb_runtime_fixed_host_rom_resolver.c gb_runtime_fixed_host_runtime.c gb_runtime_fixed_host_product_runtime.c gb_runtime_fixed_host_snapshot_ipc.c gb_runtime_fixed_host_result_ipc.c gb_runtime_fixed_host_child_runtime.c \
@@ -99,7 +100,7 @@ CLIENT_HEADERS := client_config.h credential_store.h http_client.h mobile_sessio
 	gb_runtime_fixed_host_snapshot_ipc.h gb_runtime_fixed_host_result_ipc.h \
 	gb_runtime_fixed_host_child_runtime.h $(GB_ENGINE_HEADERS)
 
-.PHONY: all gb-runtime-fixed-host-product gb-runtime-fixed-host-product-smoke gb-runtime-fixed-host-trade-terminal-smoke gb-runtime-fixed-host-runtime-test gb-runtime-fixed-host-product-runtime-test gb-runtime-fixed-host-snapshot-ipc-test gb-runtime-fixed-host-result-ipc-test gb-runtime-fixed-host-scheduler-test gb-runtime-fixed-host-rom-resolver-test rom-metadata-test client-config-controller-test clean smoke media-relay-smoke media-codec-test media-foundation-probe media-h264-test media-h264-interop room-poll-worker-test current-api-contract-test room-matching-response-test mobile-session-contract-test n64-runtime-stop-process-test
+.PHONY: all gb-runtime-fixed-host-product gb-runtime-fixed-host-product-smoke gb-runtime-fixed-host-trade-terminal-smoke gb-runtime-fixed-host-runtime-test gb-runtime-fixed-host-product-runtime-test gb-runtime-fixed-host-snapshot-ipc-test gb-runtime-fixed-host-result-ipc-test gb-runtime-fixed-host-scheduler-test gb-runtime-fixed-host-rom-resolver-test rom-metadata-test client-config-controller-test credential-store-test clean smoke media-relay-smoke media-codec-test media-foundation-probe media-h264-test media-h264-interop room-poll-worker-test current-api-contract-test room-matching-response-test mobile-session-contract-test n64-runtime-stop-process-test
 
 all: $(TARGET) $(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET)
 
@@ -307,8 +308,16 @@ $(ROM_METADATA_TEST_TARGET): rom_metadata_test.c rom_metadata.c rom_metadata.h |
 rom-metadata-test: $(ROM_METADATA_TEST_TARGET)
 	./$(ROM_METADATA_TEST_TARGET)
 
+$(CREDENTIAL_STORE_TEST_TARGET): credential_store_test.c credential_store.c credential_store.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(OPENSSL_CFLAGS) -DINTEGRAL_CREDENTIAL_STORE_LINUX_TEST \
+		-o $@ credential_store_test.c credential_store.c $(OPENSSL_LIBS) $(PLATFORM_LIBS)
+
+credential-store-test: $(CREDENTIAL_STORE_TEST_TARGET)
+	./$(CREDENTIAL_STORE_TEST_TARGET)
+
 smoke: $(TARGET)
 	$(MAKE) client-config-controller-test
+	$(MAKE) credential-store-test
 	$(MAKE) current-api-contract-test
 	$(MAKE) room-matching-response-test
 	$(MAKE) mobile-session-contract-test

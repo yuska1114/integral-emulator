@@ -255,6 +255,17 @@ sudo cp -a /var/lib/integral-server \
   /var/backups/integral-server-YYYYMMDD/storage
 ```
 
+コピーがエラーなく完了したことを確認し、サービスを再開します。
+
+```bash
+sudo integral-server start
+integral-server status
+curl --fail http://127.0.0.1:8080/health
+```
+
+`status`でAPIとMedia Relayの両サービスが稼働していることと、`/health`から
+`{"ok": true}`が返ることを確認してください。
+
 復旧時はSQLiteファイルだけでなく、対応するSAVツリーも同じバックアップ時点へ
 戻してください。稼働中のSQLiteファイルだけを単独コピーしないでください。
 
