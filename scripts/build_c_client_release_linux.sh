@@ -50,7 +50,7 @@ install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_mobile_
 libmobile=$(find "$project_root/runtimes/gb/build_exp/libmobile" -maxdepth 1 -type f -name 'libmobile.so.*' | sort | tail -n 1)
 [[ -n "$libmobile" ]] || { echo "Missing libmobile shared library." >&2; exit 1; }
 install -m 0755 "$libmobile" "$output_dir/runtimes/gb/libmobile/libmobile.so.0.0.0"
-openh264_link=$(env -u LD_LIBRARY_PATH ldd "$project_root/c_client/build/integral_client" | awk '$1 ~ /^libopenh264\.so\./ { print $3; exit }')
+openh264_link=$(env -u LD_LIBRARY_PATH ldd "$project_root/c_client/build/integral_client" | awk '$1 ~ /^libopenh264\.so\./ && !found { print $3; found = 1 }')
 [[ -n "$openh264_link" && -f "$openh264_link" ]] || { echo "Missing OpenH264 shared library." >&2; exit 1; }
 openh264_real=$(readlink -f "$openh264_link")
 openh264_name=$(basename "$openh264_link")
