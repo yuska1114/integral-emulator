@@ -3,7 +3,7 @@
 C Clientは、ログイン、ROM登録、LOCALプレイ、ROOM参加、GB Mobile Mode、
 GB／N64 Runtimeの起動を行うデスクトップクライアントです。
 
-ログイン時には機械判定用の版`0.2.0-beta`を送信します（画面表記は`0.2BETA`）。
+ログイン時には機械判定用の版`0.3.0-beta`を送信します（画面表記は`0.3BETA`）。
 `ASK SERVER ADMIN FOR SUPPORTED VERSION`が表示された場合は、管理者へ対応版を確認してください。
 
 ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として管理します。
@@ -252,6 +252,9 @@ LAN待受は開始しません。ネットワーク待受は明示的なLAN REMO
 
 ## GB ROOM
 
+Link Cable ROOM／N64 ROOMの作成側（User1）は、相手が使用するGB ROMも自分のPCに
+用意し、ROM REGISTERのROM1～ROM8へ登録してください。相手のROMは転送されません。
+
 User1のPCが固定Hostとなり、2つのGB Runtime slotとローカルLink Cableを実行します。
 相手のSAVスナップショットは匿名パイプを通してRuntimeへ渡し、通常のSAVファイル、
 EXPORT、回復用outboxには保存しません。
@@ -263,7 +266,7 @@ Link Cable ROOMを正常終了できるのはHostだけです。HostがEscまた
 終了確認が一致した場合だけ両者のSAVを反映します。Remoteが同じ操作を行った場合は
 Tradeの終了確認に両者のSAVが更新されない旨を表示し、ROOMからの明示離脱となります。
 再接続やSAV反映は行いません。一時的なRemote切断だけは、
-従来どおり最大20秒間Hostを停止して再接続を待ちます。
+最大25秒間Hostを停止して再接続を待ちます。
 
 RTC搭載ROMのSAVにRTC情報がない場合や形式が対応外の場合は、通信開始前に拒否します。
 User1側で両者のSAVを確認し、確認が終わるまで通信接続は開始しません。その場合は
@@ -315,6 +318,14 @@ make -C runtimes/gb/src display-scale-test menu-config-display-scale-test
 ログ権限、一時ファイル処理、主要画面の検証が含まれます。
 
 Windowsでは、次のOS固有検証も実行します。
+
+上記の`menu-config-display-scale-test`は、Windows UCRT64でも標準ターゲットを使用します。
+修正前のソースで必要だった試験専用の`-Umain`／`-DSDL_MAIN_HANDLED`の手動追加は不要です。
+F4 ROM一覧はWindowsのUnicodeファイル名をUTF-8へ変換し、日本語名のGB／GBC／N64 ROMも
+選択・読込みできます。`make -C c_client rom-editor-test`でこの経路を検証します。
+Link Cable HostのROMハッシュ照合もUTF-8パスを使用します。
+`make -C c_client gb-runtime-fixed-host-rom-resolver-test`で、日本語・空白を含むパスの
+実ファイル読込み、ハッシュ照合、metadata照合まで確認します。
 
 ```bash
 make -C c_client media-foundation-probe

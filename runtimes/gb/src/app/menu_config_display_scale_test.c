@@ -9,8 +9,10 @@
 #include <unistd.h>
 #endif
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argc;
+    (void)argv;
 #ifdef _WIN32
     const char *path = "gb-runtime-display-scale-test.conf";
 #else
@@ -20,7 +22,12 @@ int main(void)
     snprintf(path_buffer, sizeof(path_buffer), "%s/settings.conf", directory);
     const char *path = path_buffer;
 #endif
-    if (SDL_setenv("GB_RUNTIME_KEY_CONFIG", path, 1) != 0) return 1;
+#ifdef _WIN32
+    if (_putenv_s("GB_RUNTIME_KEY_CONFIG", path) != 0) return 1;
+#else
+    if (setenv("GB_RUNTIME_KEY_CONFIG", path, 1) != 0) return 1;
+#endif
+    if (!getenv("GB_RUNTIME_KEY_CONFIG") || strcmp(getenv("GB_RUNTIME_KEY_CONFIG"), path)) return 1;
 
     IntegralGBRuntimeMenu saved;
     memset(&saved, 0, sizeof(saved));
@@ -32,7 +39,7 @@ int main(void)
     integral_gb_runtime_menu_load_config_file(&loaded);
     if (loaded.display_scale != 4u) return 3;
 
-    (void)remove(path);
+    if (remove(path) != 0) return 4;
 #ifndef _WIN32
     (void)rmdir(directory);
 #endif

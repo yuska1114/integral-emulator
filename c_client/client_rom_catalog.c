@@ -3,7 +3,11 @@
 #include "client_rom_catalog.h"
 #include "rom_metadata.h"
 
+#ifdef _WIN32
+#include "../runtimes/gb/src/common/utf8_file.h"
+#else
 #include <dirent.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -112,6 +116,44 @@ static bool rom_extension_matches(const char *name)
 
 int scan_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity)
 {
+#ifdef _WIN32
+    char pattern[INTEGRAL_CONFIG_PATH_MAX];
+    int length = snprintf(pattern, sizeof(pattern), "%s/*", folder);
+    if (length < 0 || (size_t)length >= sizeof(pattern)) return -1;
+    wchar_t *wide_pattern = integral_utf8_wide(pattern);
+    if (!wide_pattern) return -1;
+    WIN32_FIND_DATAW entry;
+    HANDLE search = FindFirstFileW(wide_pattern, &entry);
+    DWORD error = GetLastError();
+    free(wide_pattern);
+    if (search == INVALID_HANDLE_VALUE) return error == ERROR_FILE_NOT_FOUND ? 0 : -1;
+    unsigned count = 0;
+    while (count < capacity) {
+        if (!(entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            char name[INTEGRAL_CONFIG_PATH_MAX];
+            if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, entry.cFileName,
+                                     -1, name, sizeof(name), NULL, NULL)) {
+                FindClose(search);
+                return -1;
+            }
+            if (rom_extension_matches(name)) {
+                length = snprintf(entries[count], sizeof(entries[count]), "%s/%s", folder, name);
+                if (length < 0 || (size_t)length >= sizeof(entries[count])) {
+                    FindClose(search);
+                    return -1;
+                }
+                count++;
+            }
+        }
+        if (!FindNextFileW(search, &entry)) {
+            error = GetLastError();
+            FindClose(search);
+            return error == ERROR_NO_MORE_FILES ? (int)count : -1;
+        }
+    }
+    FindClose(search);
+    return (int)count;
+#else
     DIR *dir = opendir(folder);
     if (!dir) return -1;
     unsigned count = 0;
@@ -123,6 +165,7 @@ int scan_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX],
     }
     closedir(dir);
     return (int)count;
+#endif
 }
 
 void integral_rom_cycle_local(const IntegralConfigRomSlot *slots, int local_indices[2],

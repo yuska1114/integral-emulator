@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "gb_runtime_fixed_host_rom_resolver.h"
 #include "../runtimes/gb/src/server/content_hash.h"
+#include "../runtimes/gb/src/common/utf8_file.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -46,7 +47,7 @@ static bool slot_matches(
     FILE *file;
     size_t size;
     if (!valid_path(slot->rom_path) || !server_slot->sha256[0]) return false;
-    file = fopen(slot->rom_path, "rb");
+    file = integral_fopen(slot->rom_path, "rb");
     if (!file) return false;
     integral_gb_runtime_content_sha256_init(&hash);
     while ((size = fread(buffer, 1u, sizeof(buffer), file)) > 0u) {

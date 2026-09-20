@@ -45,6 +45,8 @@ curl http://127.0.0.1:8080/health
 
 ## 開発用macOS配布の注意
 
+macOS配布版のRuntimeは、`.app/Contents/Resources/runtimes/`内にあります。
+
 開発・検証用のmacOS版は、Developer ID署名およびApple Notarizationを行っていません。ダウンロードしたreleaseには、macOSのquarantine属性が付与される場合があります。
 
 Client、GB Runtime、N64 Runtime、helper binaryを個別にGatekeeperで許可する代わりに、releaseフォルダ直下の`unlock_macos.sh`を使って、そのフォルダ配下の`com.apple.quarantine`属性だけを一括解除できます。Terminalでreleaseフォルダを開き、内容を確認して信頼できる場合に限り、ユーザー自身で次を実行してください。管理者権限は不要です。
@@ -56,6 +58,9 @@ sh unlock_macos.sh
 この操作の対象は、`unlock_macos.sh`が置かれているreleaseフォルダだけです。Gatekeeper全体を無効化するものではなく、quarantine以外の拡張属性も削除しません。
 
 ## テスト
+
+配布アーカイブとともに提供する外側の`SHA256SUMS`はアーカイブ自体、
+展開後の`SHA256SUMS`は配布物内ファイルの確認に使います。
 
 PythonテストにはC Clientとの統合試験が含まれます。[C Clientのビルド依存関係](docs/C_CLIENT.md)を導入し、ROOM試験バイナリを作成してから実行してください。
 
@@ -84,6 +89,17 @@ python3 scripts/public_source_integrity.py --directory .
 この検証はファイル内容の一致を確認するものであり、配布元の真正性を保証するものではありません。
 
 ## ドキュメント
+
+サーバー配布物を再作成する場合は、検証済みの公開ソースZIPを展開し、そのルートで実行します。
+
+```bash
+python3 scripts/public_source_integrity.py --directory .
+python3 scripts/build_integral_server_distribution.py
+```
+
+公開manifestのないツリー、許可外ファイルや内容の不一致があるツリーからは生成しません。
+配布物のソースは同梱の`PUBLIC_SOURCE_MANIFEST.json`の部分集合です。
+生成する`BUILD_PROVENANCE.json`と`SHA256SUMS`に、出自・収録内容のハッシュを記録します。
 
 - [API概要](docs/API.md)
 - [C Client](docs/C_CLIENT.md)

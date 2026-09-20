@@ -132,6 +132,8 @@ SAVが必要です。保存と終了の方法は、後述の「セーブデー�
 - ROOM：作成側はCREATE ROOMでLINK CABLE ROOMまたはN64 ROOMを選び、表示された
   5桁のコードを相手へ伝えます。参加側はJOIN ROOMでコードを入力します。
   入室後、各自のROMなど必要な項目を設定し、両者がREADYにします。
+  Link Cable ROOM／N64 ROOMの作成側（User1）は、相手が使用するGB ROMも自分のPCに
+  用意し、ROM REGISTERのROM1～ROM8へ登録してください。相手のROMは転送されません。
 - Mobile：LOCAL → MOBILE MODEでSLOT1とSCENARIOを選び、STARTで開始します。
   対象ROMに対応した追加パッケージを、サーバー管理者が導入している必要があります。
   Clientの導入だけでは利用できません。SCENARIOがNOT AVAILABLEの場合は、ROMの
@@ -193,6 +195,7 @@ Client本体は、ゲームと保存処理が終わるまで開いたままに�
   RUNTIME_DEPENDENCIES.md  同梱共有ライブラリとライセンスの対応表
   BUILD_PROVENANCE.json  ビルド情報
 
-展開後のSHA256SUMSには、配布物内ファイルのハッシュが記録されています。
-アーカイブと同じ場所にある.sha256ファイルには、tar.gzまたはZIP自体のハッシュが
-記録されています。
+macOS版のRuntimeは、.app/Contents/Resources/runtimes/内にあります。
+
+アーカイブとともに配布する外側のSHA256SUMSは、ZIP・tar.gz自体の確認用です。
+展開後のSHA256SUMSは、配布物内ファイルの確認用です。

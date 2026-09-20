@@ -39,7 +39,7 @@ curl http://127.0.0.1:8080/health
 - `GET /me`
 
 `POST /auth/login`は、C Clientが以後の認証に使用するBearer tokenを返します。
-リクエストの`client_version`は機械判定用文字列（例：`0.2.0-beta`）です。
+リクエストの`client_version`は機械判定用文字列（現行版：`0.3.0-beta`）です。
 サーバーの照合は既定で無効で、未送信のClientも接続できます。有効時は許可リストへ
 完全一致する版のみログインできます。未送信・不一致はHTTP `426 Upgrade Required`、
 `error.code=client_version_not_allowed`、

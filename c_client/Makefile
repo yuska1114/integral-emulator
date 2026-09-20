@@ -353,11 +353,11 @@ $(CLIENT_CONFIG_CONTROLLER_TEST_TARGET): client_config_controller_test.c client_
 client-config-controller-test: $(CLIENT_CONFIG_CONTROLLER_TEST_TARGET)
 	./$(CLIENT_CONFIG_CONTROLLER_TEST_TARGET)
 
-$(GB_RUNTIME_FIXED_HOST_ROM_RESOLVER_TEST_TARGET): gb_runtime_fixed_host_rom_resolver_test.c gb_runtime_fixed_host_rom_resolver.c gb_runtime_fixed_host_rom_resolver.h rom_metadata.c rom_metadata.h client_config.h ../runtimes/gb/src/server/content_hash.c | $(BUILD_DIR)
+$(GB_RUNTIME_FIXED_HOST_ROM_RESOLVER_TEST_TARGET): gb_runtime_fixed_host_rom_resolver_test.c gb_runtime_fixed_host_rom_resolver.c gb_runtime_fixed_host_rom_resolver.h rom_metadata.c rom_metadata.h client_config.h ../runtimes/gb/src/server/content_hash.c ../runtimes/gb/src/common/utf8_file.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I../runtimes/gb/src/server -o $@ gb_runtime_fixed_host_rom_resolver_test.c gb_runtime_fixed_host_rom_resolver.c rom_metadata.c ../runtimes/gb/src/server/content_hash.c
 
 gb-runtime-fixed-host-rom-resolver-test: $(GB_RUNTIME_FIXED_HOST_ROM_RESOLVER_TEST_TARGET)
-	./$(GB_RUNTIME_FIXED_HOST_ROM_RESOLVER_TEST_TARGET)
+	work_dir=$$(mktemp -d) && cd "$$work_dir" && "$(abspath $(GB_RUNTIME_FIXED_HOST_ROM_RESOLVER_TEST_TARGET))"
 
 $(ROM_METADATA_TEST_TARGET): rom_metadata_test.c rom_metadata.c rom_metadata.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ rom_metadata_test.c rom_metadata.c

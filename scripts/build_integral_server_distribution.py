@@ -8,10 +8,17 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import io
 import os
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from public_source_integrity import (
+    MANIFEST_NAME, canonical_json, sha256_bytes, source_identity, verify_directory,
+)
 
 
 VERSION = "0.1.1"
@@ -42,38 +49,45 @@ def excluded(path: Path) -> bool:
     )
 
 
-def normalized_info(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
-    relative = Path(info.name)
-    if excluded(relative):
-        return None
-    info.uid = 0
-    info.gid = 0
-    info.uname = "root"
-    info.gname = "root"
-    info.mtime = 0
-    if info.isdir():
-        info.mode = 0o755
-    elif info.name.endswith(
-        (
-            "/install.sh",
-            "/install-certificate-acl-watch.sh",
-            "/deploy/integral-server/integral-server",
-            "/deploy/integral-server/certificate-acl-reapply",
-            "/deploy/integral-server/uninstall",
-        )
-    ):
-        info.mode = 0o755
-    else:
-        info.mode = 0o644
-    return info
-
-
 def build(root: Path, output: Path) -> str:
+    # Only an exported, verified public tree is a distribution source. Never
+    # silently filter private files from the internal development checkout.
+    manifest = verify_directory(root)
+    source = source_identity(root)
+    payload: dict[str, bytes] = {}
     for relative in INCLUDE:
-        if not (root / relative).exists():
+        source_path = root / relative
+        if not source_path.exists():
             raise FileNotFoundError(
                 f"required distribution path is missing: {relative}"
             )
+        paths = [source_path]
+        if source_path.is_dir():
+            paths.extend(sorted(source_path.rglob("*")))
+        for path in paths:
+            name = path.relative_to(root).as_posix()
+            if path.is_symlink():
+                raise ValueError(f"distribution symlink is not allowed: {name}")
+            if path.is_dir() or excluded(path):
+                continue
+            if not path.is_file() or name not in manifest["files"]:
+                raise ValueError(f"distribution file is outside public manifest: {name}")
+            data = path.read_bytes()
+            if sha256_bytes(data) != manifest["files"][name]:
+                raise ValueError(f"distribution content differs from public manifest: {name}")
+            payload[name] = data
+    provenance = canonical_json({
+        "format": 1,
+        "source": source,
+        "files": {name: sha256_bytes(data) for name, data in sorted(payload.items())},
+    })
+    # These three generated metadata files are not source payload. The original
+    # public manifest and provenance allow an independent subset/hash check.
+    payload[MANIFEST_NAME] = (root / MANIFEST_NAME).read_bytes()
+    payload["BUILD_PROVENANCE.json"] = provenance
+    payload["SHA256SUMS"] = "".join(
+        f"{sha256_bytes(data)}  {name}\n" for name, data in sorted(payload.items())
+    ).encode("utf-8")
     output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{output.name}.", dir=output.parent
@@ -88,25 +102,28 @@ def build(root: Path, output: Path) -> str:
                 with tarfile.open(
                     mode="w", fileobj=compressed, format=tarfile.PAX_FORMAT
                 ) as archive:
-                    for relative in INCLUDE:
-                        archive.add(
-                            root / relative,
-                            arcname=f"{PACKAGE_ROOT}/{relative.as_posix()}",
-                            recursive=True,
-                            filter=normalized_info,
-                        )
+                    for name, data in sorted(payload.items()):
+                        info = tarfile.TarInfo(f"{PACKAGE_ROOT}/{name}")
+                        info.size = len(data)
+                        info.mode = 0o755 if manifest["file_modes"].get(name) == "100755" else 0o644
+                        archive.addfile(info, io.BytesIO(data))
         with tarfile.open(temporary, "r:gz") as archive:
             members = archive.getmembers()
-            if not members:
-                raise ValueError("distribution archive is empty")
+            if len(members) != len(payload):
+                raise ValueError("distribution archive inventory differs")
             for member in members:
                 path = Path(member.name)
                 if (
                     not path.parts
                     or path.parts[0] != PACKAGE_ROOT
                     or excluded(path)
+                    or not member.isfile()
+                    or path.relative_to(PACKAGE_ROOT).as_posix() not in payload
                 ):
                     raise ValueError(f"invalid distribution member: {member.name}")
+                name = path.relative_to(PACKAGE_ROOT).as_posix()
+                if archive.extractfile(member).read() != payload[name]:
+                    raise ValueError(f"distribution archive content differs: {name}")
         os.replace(temporary, output)
     finally:
         if temporary.exists():

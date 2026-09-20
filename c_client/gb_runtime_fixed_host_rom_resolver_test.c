@@ -1,6 +1,8 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "gb_runtime_fixed_host_rom_resolver.h"
+#include "../runtimes/gb/src/common/utf8_file.h"
+#include "../runtimes/gb/src/server/content_hash.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -40,8 +42,63 @@ static void set_slot(IntegralConfigRomSlot *local, IntegralApiRomSlot *server,
     snprintf(server->rom_header_title, sizeof(server->rom_header_title), "%s", header);
 }
 
-int main(void)
+static int unicode_resolver_test(void)
 {
+    const char *paths[] = {"日本語 金 試験.gbc", "日本語 銀 試験.gb"};
+    IntegralConfigRomSlot local[2] = {0};
+    IntegralApiRomSlot server[2] = {0};
+    IntegralGBRuntimeFixedHostRomResolution result;
+    unsigned char rom[0x150] = {0}, digest[32];
+    char hash[65];
+    memcpy(rom + 0x134, "UNICODE ROM", 11);
+    for (unsigned i = 0x134; i <= 0x14c; i++) rom[0x14d] -= rom[i] + 1;
+    IntegralGBRuntimeContentSha256 context;
+    integral_gb_runtime_content_sha256_init(&context);
+    integral_gb_runtime_content_sha256_update(&context, rom, sizeof(rom));
+    integral_gb_runtime_content_sha256_finish(&context, digest);
+    integral_gb_runtime_content_sha256_hex(digest, hash);
+    for (unsigned i = 0; i < 2; i++) {
+        FILE *file = integral_fopen(paths[i], "wb");
+        CHECK(file && fwrite(rom, 1, sizeof(rom), file) == sizeof(rom));
+        CHECK(fclose(file) == 0);
+        set_slot(&local[i], &server[i], paths[i], hash, i ? "b" : "a", "UNICODE ROM");
+    }
+#ifdef _WIN32
+    printf("Windows resolver ACP=%u (UTF-8=%u)\n", GetACP(), CP_UTF8);
+    if (GetACP() != CP_UTF8) {
+        FILE *narrow = fopen(paths[0], "rb");
+        CHECK(narrow == NULL); /* Prove this fixture catches the old narrow fopen. */
+    }
+#endif
+    CHECK(integral_gb_runtime_fixed_host_rom_resolve_local(local, server, 2,
+        "a", "gb", "UNICODE ROM", "b", "gb", "UNICODE ROM", &result) ==
+        INTEGRAL_GB_RUNTIME_FIXED_HOST_ROM_RESOLVE_OK);
+    CHECK(result.slot_a == 0 && result.slot_b == 1 && !result.shared_asset);
+    CHECK(!strcmp(result.path_a, paths[0]) && !strcmp(result.path_b, paths[1]));
+    server[1].sha256[0] = hash[0] == '0' ? '1' : '0';
+    CHECK(integral_gb_runtime_fixed_host_rom_resolve_local(local, server, 2,
+        "a", "gb", "UNICODE ROM", "b", "gb", "UNICODE ROM", &result) ==
+        INTEGRAL_GB_RUNTIME_FIXED_HOST_ROM_RESOLVE_MISSING_B);
+    for (unsigned i = 0; i < 2; i++) {
+#ifdef _WIN32
+        wchar_t *wide = integral_utf8_wide(paths[i]);
+        CHECK(wide && _wremove(wide) == 0);
+        free(wide);
+#else
+        CHECK(remove(paths[i]) == 0);
+#endif
+    }
+    puts("UTF-8 resolver: real ROM hash + metadata, both slots and wrong-hash rejection PASS");
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+#ifdef _WIN32
+    if (argc == 2 && !strcmp(argv[1], "--require-non-utf8-acp")) CHECK(GetACP() != CP_UTF8);
+#else
+    (void)argc; (void)argv;
+#endif
     IntegralConfigRomSlot local[INTEGRAL_CONFIG_ROM_SLOTS] = {0};
     IntegralApiRomSlot server[INTEGRAL_CONFIG_ROM_SLOTS] = {0};
     IntegralGBRuntimeFixedHostRomResolution result;
@@ -80,6 +137,7 @@ int main(void)
               INTEGRAL_GB_RUNTIME_FIXED_HOST_ROM_RESOLVE_MISSING_B)[0] != '\0');
     remove("alpha.gbc");
     remove("beta.gbc");
+    CHECK(unicode_resolver_test() == 0);
     puts("gb runtime fixed host ROM resolver test passed");
     return 0;
 }

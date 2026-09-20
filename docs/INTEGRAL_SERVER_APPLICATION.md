@@ -87,6 +87,39 @@ SAVは維持されます。
 本手順書は展開した配布ディレクトリ内の`docs/INTEGRAL_SERVER_APPLICATION.md`に
 あります。インストール先へはコピーされません。
 
+## 更新
+
+全利用者のゲームと保存処理の終了を確認し、新版を別のディレクトリへ展開します。
+サービスを停止し、両方が`inactive`であることを確認してください。
+
+```bash
+sudo integral-server stop
+systemctl is-active integral-server.service integral-server-media-relay.service
+```
+
+停止後に設定と永続データをバックアップします。次の`YYYYMMDD-HHMM`は未使用の日時名へ
+置き換えてください。独自の保存先を設定している場合は、その保存先も保全してください。
+
+```bash
+sudo install -d -m 0700 /var/backups/integral-server-YYYYMMDD-HHMM
+sudo cp -a /etc/integral-server /var/backups/integral-server-YYYYMMDD-HHMM/config
+sudo cp -a /var/lib/integral-server /var/backups/integral-server-YYYYMMDD-HHMM/storage
+```
+
+バックアップ成功後、新版の展開先で実行します。
+
+```bash
+sudo ./install.sh
+sudo integral-server doctor
+sudo integral-server start
+integral-server status
+systemctl is-active integral-server.service integral-server-media-relay.service
+curl http://127.0.0.1:8080/health
+```
+
+両サービスの`active`とhealthの`{"ok": true}`を確認します。待受設定を変更している場合は
+確認先も合わせてください。稼働中のサービスに`start`を実行するだけでは、新しいコードは読み込まれません。
+
 ## 主な配置先
 
 - `/opt/integral-server/app`: サーバーアプリケーションとデータ定義
