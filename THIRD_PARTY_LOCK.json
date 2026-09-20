@@ -22,10 +22,16 @@
           "order": 1,
           "path": "runtimes/gb/patches/sameboy-integral-rtc-and-windows-build.patch",
           "sha256": "523d3a33739b371e425bc50d890121374e2ffa5914f3c697e833ac5349d121bc"
+        },
+        {
+          "license": "MIT",
+          "order": 2,
+          "path": "runtimes/gb/patches/sameboy-integral-ir-release-delay.patch",
+          "sha256": "46977b6265c30962f939b4d0ca1ee30c1dc3fed4e9f509f5321b0286ac5f7e19"
         }
       ],
       "public_source_file_count": 75,
-      "public_source_tree_sha256": "8d8a4a6a3b714b579ae6ac0ff69fc67c165afc5040fa2eaaf53b65b4e7d928e4",
+      "public_source_tree_sha256": "7ffb9748858138182525b454cb703c3085702e2af426f10c89525165748efc1a",
       "source_path": "runtimes/gb/third_party/SameBoy",
       "upstream_archive_sha256": "aca79238ef23c220b6332abb28b6a4bbe467995ff7a26073dcb3070a7054eab6",
       "upstream_archive_url": "https://codeload.github.com/LIJI32/SameBoy/tar.gz/208ba4afabffab9edde416f2dbb8ae459e34adb8",
@@ -35,7 +41,7 @@
       "upstream_tree_oid": "74605c44c72c74979907e1f0680e982410af050f",
       "upstream_tree_sha256": "6c0a825ce2ea2bbbf4aefe420ed39935653c77fe08f67f648d21a4cfe1dd5f23",
       "vendored_file_count": 631,
-      "vendored_tree_sha256": "ad6bb2ba92c36369f569212952003cfe0b3bcc41f6cd5d4a1a73384db3c65857"
+      "vendored_tree_sha256": "160362e9f8c6112bc84910ed6ded06443a08531c692df8fd5eb326df6c487c63"
     },
     {
       "build_patches": [
@@ -68,6 +74,18 @@
           "order": 5,
           "path": "runtimes/n64/patches/mupen64plus-core-current-rdram.patch",
           "sha256": "0f0167fb6f5b949738c6f195de9caf381ed70caf0f76947f956076fe8d38a6dc"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 6,
+          "path": "runtimes/n64/patches/mupen64plus-core-startup-focus.patch",
+          "sha256": "33dc98ca4460e4e779bd8215dd8a60d24f1cbeaf77e74d78b7a7113bbd865571"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 7,
+          "path": "runtimes/n64/patches/mupen64plus-core-util-keys.patch",
+          "sha256": "82ad8482b5b6cc05a9b9755afa652b0c02eaef5b7826957b9d0608633cbb9bb8"
         }
       ],
       "component": "mupen64plus-core",
@@ -131,7 +149,7 @@
           "license": "GPL-2.0-or-later",
           "order": 2,
           "path": "runtimes/n64/patches/mupen64plus-input-sdl-remote-controller2.patch",
-          "sha256": "b47bda924b85c1e9c0e27ee0bd6b5a20ee3b14ece69e674dd047fd55a1c601a5"
+          "sha256": "56de19c172dc08029f64fd0a1dd6e0c4d48b3d0bd7c0e62a2e470b898b574386"
         }
       ],
       "component": "mupen64plus-input-sdl",

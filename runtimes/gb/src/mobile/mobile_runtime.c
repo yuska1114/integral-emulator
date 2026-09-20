@@ -514,8 +514,8 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
     }
     if (integral_gb_runtime_input_router_take_screenshot_request(&input)) {
       char screenshot_path[512];
-      if (integral_gb_runtime_screenshot_save_slot(
-              &slot, screenshot_path, sizeof(screenshot_path)) == 0) {
+      if (integral_gb_runtime_screenshot_save_pair(
+              &slot, NULL, "gb_mobile", "local", screenshot_path, sizeof(screenshot_path)) == 0) {
         printf("screenshot saved: %s\n", screenshot_path);
         integral_gb_runtime_video_window_show_message(window, "SCREENSHOT SAVED");
       } else {

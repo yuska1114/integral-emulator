@@ -1,5 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#define GB_INTERNAL
 #include "gb_link_engine.h"
 
 #include <stdio.h>
@@ -12,6 +13,61 @@ static unsigned checks;
 #define CHECK(value) do { checks++; if (!(value)) { \
     fprintf(stderr, "CHECK failed line %d: %s\n", __LINE__, #value); exit(1); \
 } } while (0)
+
+static void tick_ir(GB_gameboy_t *gb)
+{
+    gb->halted = true;
+    gb->interrupt_enable = 0;
+    CHECK(GB_run(gb) == 8);
+}
+
+static void check_ir_release_delay(const char *rom)
+{
+    GB_gameboy_t *gb = calloc(1, sizeof(*gb));
+    CHECK(gb != NULL);
+    GB_init(gb, GB_MODEL_CGB_E);
+    CHECK(GB_load_rom(gb, rom) == 0);
+    const unsigned delays[] = {0, 32, 64, 256};
+    for (unsigned n = 0; n < sizeof(delays)/sizeof(delays[0]); n++) {
+        GB_reset(gb);
+        gb->cgb_mode = true;
+        gb->io_registers[GB_IO_RP] = 0xc0;
+        gb->ir_sensor = 19900;
+        GB_set_infrared_off_delay(gb, delays[n]);
+        GB_set_infrared_input(gb, true);
+        for (unsigned tick = 0; tick < 240; tick += 8) tick_ir(gb);
+        CHECK(gb->effective_ir_input);
+        CHECK(gb->ir_off_delay_remaining == delays[n]);
+        GB_set_infrared_input(gb, false);
+        tick_ir(gb);
+        CHECK(gb->effective_ir_input == (delays[n] > 8));
+        if (delays[n]) {
+            size_t size = GB_get_save_state_size(gb);
+            uint8_t *state = malloc(size);
+            CHECK(state != NULL);
+            GB_save_state_to_buffer(gb, state);
+            unsigned remaining = gb->ir_off_delay_remaining;
+            tick_ir(gb);
+            CHECK(GB_load_state_from_buffer(gb, state, size) == 0);
+            CHECK(gb->ir_off_delay_remaining == remaining);
+            free(state);
+            for (unsigned tick = 8; tick < delays[n]; tick += 8) tick_ir(gb);
+            CHECK(!gb->effective_ir_input);
+        }
+        GB_set_infrared_input(gb, true);
+        gb->ir_sensor = 19900;
+        for (unsigned tick = 0; tick < 240; tick += 8) tick_ir(gb);
+        GB_set_infrared_input(gb, false);
+        gb->io_registers[GB_IO_RP] = 0;
+        tick_ir(gb);
+        CHECK(!gb->effective_ir_input && gb->ir_off_delay_remaining == 0);
+        GB_reset(gb);
+        CHECK(gb->ir_off_delay_ticks == delays[n]);
+        CHECK(gb->ir_off_delay_remaining == 0);
+    }
+    GB_free(gb);
+    free(gb);
+}
 
 static void put_u64_le(uint8_t *data, uint64_t value)
 {
@@ -45,6 +101,7 @@ static void prepare_vba64_rtc_save(uint8_t *save, uint8_t seconds,
 
 int main(int argc, char **argv)
 {
+    if (argc > 2) check_ir_release_delay(argv[2]);
     if (argc != 4 && argc != 6) {
         fprintf(stderr,
                 "usage: %s RTC_ROM NON_RTC_ROM SGB_ROM [REAL_RTC_ROM LOCAL_EXIT_SAVE]\n",

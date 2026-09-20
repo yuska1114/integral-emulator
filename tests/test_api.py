@@ -46,7 +46,7 @@ from integral_emulator.sessions import LinkSessionStatus
 from integral_emulator.room_session_policy import RoomSessionPolicy
 from integral_emulator.storage import LeagueStorage
 from integral_emulator.gb_runtime_link_modes import link_mode_profile
-from integral_emulator.ui import DASHBOARD_HTML, render_admin_html, render_admin_login_html
+from integral_emulator.ui import render_admin_html, render_admin_login_html
 
 
 def synthetic_rom(
@@ -89,6 +89,122 @@ def hold_api_storage_lock(root: str, ready: Queue, release: Queue) -> None:
 
 
 class ApiTests(unittest.TestCase):
+    def test_n64_preflight_failure_retains_room_clears_ready_and_locks(self) -> None:
+        users, tokens = [], []
+        for name in ("preflight_host", "preflight_remote"):
+            users.append(self.post("/auth/register", {"username": name, "password": "password123"})["user"])
+            tokens.append(self.post("/auth/login", {"username": name, "password": "password123"})["token"]["token"])
+            self.join_room_fixture(65, token=tokens[-1])
+        rooms = self.app.room_manager
+        manager = self.app.n64_runtime_media_sessions
+        media = manager.create_or_get(room_number=65,
+            host_user_id=users[0]["id"], remote_user_id=users[1]["id"],
+            host_n64_slot="ROM1", host_gb_slot="ROM2", remote_gb_slot="ROM1",
+            host_n64_rom_id="n64", host_gb_rom_id="gb1", remote_gb_rom_id="gb2",
+            host_n64_save_id="", host_save_id="", remote_save_id="", game_type="sample_alpha")
+        for user, token in zip(users, tokens):
+            self.app.sessions.acquire_media_game_session_lock(user["id"], media.id,
+                self.app.game_session_lease_expires_at(), hashlib.sha256(token.encode()).hexdigest(), [])
+            rooms.update_user_state(65, user["id"], ready=True)
+        rooms.set_game_started(65, True)
+        code = rooms.room(65).room_code
+        path = f"/n64-runtime-media-sessions/{media.id}/terminate"
+        body = {"room_code": code, "reason": "preflight_failed"}
+        with self.assertRaises(ValidationError):
+            self.post(path, body, token=tokens[1])
+        with patch("integral_emulator.sqlite_room.SQLiteRoomManager.end_game_for_room", side_effect=RuntimeError("rollback")):
+            with self.assertRaises(RuntimeError):
+                self.post(path, body, token=tokens[0])
+        self.assertEqual(manager.get(media.id).status, "CREATED")
+        result = self.post(path, body, token=tokens[0])["media_session"]
+        self.assertEqual((result["status"], result["termination_reason"]), ("CANCELLED", "preflight_failed"))
+        self.assertEqual(self.post(path, body, token=tokens[0])["media_session"], result)
+        room = rooms.room(65)
+        self.assertEqual(room.room_code, code)
+        self.assertFalse(room.game_started)
+        self.assertEqual(len(room.users), 2)
+        with self.app.authority_database.transaction() as connection:
+            self.assertEqual(connection.execute("SELECT SUM(ready) FROM room_members WHERE room_number=65").fetchone()[0], 0)
+        for user in users:
+            self.assertIsNone(self.app.sessions.active_game_session_for_user(user["id"]))
+            self.assertIsNotNone(rooms.current_room(user["id"]))
+        # Terminal ticket/recovery cannot resurrect media. ROOM remains usable.
+        self.assertEqual(manager.recover(media.id).status, "CANCELLED")
+        self.post("/rooms/65/chat", {"message": "still here"}, token=tokens[1])
+        arguments = {name: getattr(media, name) for name in (
+            "room_number", "host_user_id", "remote_user_id", "host_n64_slot", "host_gb_slot",
+            "remote_gb_slot", "host_n64_rom_id", "host_gb_rom_id", "remote_gb_rom_id",
+            "host_n64_save_id", "host_save_id", "remote_save_id", "game_type")}
+        fresh = manager.create_or_get(**arguments)
+        self.assertNotEqual(fresh.id, media.id)
+        for user in users: rooms.update_user_state(65, user["id"], ready=True)
+        self.post(path, body, token=tokens[0])  # Delayed old failure cannot clear new READY.
+        with self.app.authority_database.transaction() as connection:
+            self.assertEqual(connection.execute("SELECT SUM(ready) FROM room_members WHERE room_number=65").fetchone()[0], 2)
+        self.assertEqual(manager.get(fresh.id).status, "CREATED")
+        self.post("/room-matching/leave", {}, token=tokens[0])
+        self.assertIsNone(rooms.current_room(users[0]["id"]))
+
+    def test_client_version_configuration(self) -> None:
+        with patch.dict(os.environ, {"INTEGRAL_EMULATOR_CLIENT_VERSION_CHECK_ENABLED": "0",
+                                    "INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS": ""}):
+            app = LeagueApplication(Path(self.temp_dir.name) / "version-default")
+        self.assertFalse(app.client_version_check_enabled)
+        with patch.dict(os.environ, {"INTEGRAL_EMULATOR_CLIENT_VERSION_CHECK_ENABLED": "1",
+                                    "INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS": " 0.2.0-beta,0.3.0-beta, "}):
+            app = LeagueApplication(Path(self.temp_dir.name) / "version-check")
+        self.assertTrue(app.client_version_check_enabled)
+        self.assertEqual(app.allowed_client_versions, {"0.2.0-beta", "0.3.0-beta"})
+
+    def test_client_version_http_policy_auth_and_rate_limit(self) -> None:
+        password = "correct horse battery staple"
+        for name in ("VersionOff", "VersionOn", "VersionRate"):
+            self.app.auth.register(name, password)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(self.app))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        def login(name, extra, secret=password):
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+            try:
+                connection.request("POST", "/auth/login", json.dumps(
+                    {"username": name, "password": secret, **extra}),
+                    {"Content-Type": "application/json"})
+                response = connection.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                connection.close()
+
+        try:
+            self.app.client_version_check_enabled = False
+            self.app.allowed_client_versions = frozenset({"0.2.0-beta"})
+            for extra in ({}, {"client_version": "unknown"}, {"client_version": "0.2.0-beta"}):
+                self.assertEqual(login("VersionOff", extra)[0], 200)
+            self.app.client_version_check_enabled = True
+            self.assertEqual(login("VersionOn", {"client_version": "0.2.0-beta"})[0], 200)
+            for extra in ({}, {"client_version": "0.3.0-beta"}, {"client_version": "0.2.0-BETA"},
+                          {"client_version": " 0.2.0-beta"}, {"client_version": None},
+                          {"client_version": ["0.2.0-beta"]}):
+                with patch.object(self.app.auth.repository, "create_session") as create:
+                    status, body = login("VersionOn", extra)
+                self.assertEqual(status, 426)
+                self.assertEqual(body["error"]["code"], "client_version_not_allowed")
+                self.assertEqual(body["error"]["message"], "ASK SERVER ADMIN FOR SUPPORTED VERSION")
+                create.assert_not_called()
+            status, body = login("VersionOn", {}, "wrong password")
+            self.assertEqual(status, 401)
+            self.assertEqual(body["error"]["code"], "authentication_failed")
+            self.app.allowed_client_versions = frozenset()
+            self.assertEqual(login("VersionOn", {"client_version": "0.2.0-beta"})[0], 426)
+            for _ in range(10):
+                self.assertEqual(login("VersionRate", {})[0], 426)
+            status, body = login("VersionRate", {})
+            self.assertEqual(status, 429)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.original_allowed_roms = allowed_rom_catalog._ALLOWED_ROMS
@@ -224,6 +340,10 @@ class ApiTests(unittest.TestCase):
             ("POST", "/mobile-sessions/{session_id}/complete"),
             ("POST", "/mobile-sessions/{session_id}/cancel"),
             ("GET", "/n64-runtime-media-sessions/{session_id}"),
+            ("POST", "/n64-runtime-media-sessions/{session_id}/finish"),
+            ("POST", "/n64-runtime-media-sessions/{session_id}/recover"),
+            ("POST", "/n64-runtime-media-sessions/{session_id}/terminate"),
+            ("POST", "/gb-runtime-fixed-host-sessions/{session_id}/blocked"),
             ("GET", "/n64-runtime-media-sessions/{session_id}/runtime-saves/{kind}"),
         }
         self.assertEqual(documented, expected)
@@ -1188,6 +1308,34 @@ class ApiTests(unittest.TestCase):
                 token=token,
             )
 
+    def test_committed_save_receipt_after_game_end_and_new_login(self) -> None:
+        self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
+        token = self.post("/auth/login", {"username": "player_a", "password": "correct horse battery staple"})["token"]["token"]
+        save = self.create_test_save({"game_type": "sample_alpha", "save_data": encode(b"one")}, token=token)["save"]
+        game = self.post("/game/start", {"execution_mode": "LOCAL_CLIENT", "save_ids": [save["id"]]}, token=token)
+        payload = {"expected_revision": 1, "save_data": encode(b"two"), "request_id": "f5-lost-response"}
+        first = self.put(f"/saves/{save['id']}", {**payload, **self.game_fence(game)}, token=token)
+        # Unfenced recovery cannot interfere with a still-running monitor.
+        with self.assertRaises(GameSessionFenceError):
+            self.put(f"/saves/{save['id']}", payload, token=token)
+        self.post("/game/stop", self.game_fence(game), token=token)
+        token2 = self.post("/auth/login", {"username": "player_a", "password": "correct horse battery staple"})["token"]["token"]
+        replay = self.put(f"/saves/{save['id']}", payload, token=token2)
+        self.assertTrue(replay["idempotent_replay"])
+        self.assertEqual(first["save"], replay["save"])
+        latest = self.put(f"/saves/{save['id']}", {"expected_revision": 2,
+            "save_data": encode(b"three"), "request_id": "f5-latest"}, token=token2)
+        self.assertEqual(latest["save"]["revision"], 3)
+        replay = self.put(f"/saves/{save['id']}", payload, token=token2)
+        self.assertEqual(replay["save"]["revision"], 2)
+        self.assertEqual(self.get(f"/saves/{save['id']}", token=token2)["save"]["revision"], 3)
+        with self.assertRaises(ValidationError):
+            self.put(f"/saves/{save['id']}", {**payload, "save_data": encode(b"bad")}, token=token2)
+        self.post("/auth/register", {"username": "Player_B", "password": "correct horse battery staple"})
+        other = self.post("/auth/login", {"username": "player_b", "password": "correct horse battery staple"})["token"]["token"]
+        with self.assertRaises(NotFoundError):
+            self.put(f"/saves/{save['id']}", payload, token=other)
+
     def test_save_upload_request_recovers_after_commit_before_result_record(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
         token = self.post("/auth/login", {"username": "player_a", "password": "correct horse battery staple"})["token"]["token"]
@@ -1537,6 +1685,17 @@ class ApiTests(unittest.TestCase):
             return response.status, response_headers, data
 
         try:
+            for path in ("/", "/?console=1"):
+                status, _headers, data = request("GET", path)
+                self.assertEqual(status, 404)
+                self.assertNotIn(b"Local Console", data)
+                self.assertNotIn(b"<script", data)
+            status, _headers, data = request("GET", "/health")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(data), {"ok": True})
+            for path in ("/admin/users", "/admin/operations", "/me"):
+                status, _headers, _data = request("GET", path)
+                self.assertEqual(status, 401)
             status, _headers, login_page = request("GET", "/admin")
             self.assertEqual(status, 200)
             self.assertIn(b'const ADMIN_BASE_PATH = "/sample-api/admin";', login_page)
@@ -1990,6 +2149,18 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn("slot_filename", outsider_room["users"][0])
         self.assertNotIn("n64_slot_filename", outsider_room["users"][0])
         host_start = self.post("/rooms/65/start", {}, token=token_a)
+        records_before = self.app.storage.load_n64_runtime_media_sessions()
+        with self.assertRaises(NotFoundError):
+            self.post("/rooms/65/start", {"expected_media_session_id": "ended-session"}, token=token_a)
+        self.assertEqual(records_before, self.app.storage.load_n64_runtime_media_sessions())
+        resumed = self.post("/rooms/65/start", {
+            "expected_media_session_id": host_start["media_session"]["id"],
+        }, token=token_a)
+        self.assertEqual(resumed["media_session"]["id"], host_start["media_session"]["id"])
+        self.assertNotEqual(resumed["connection"]["ticket"], host_start["connection"]["ticket"])
+        self.assertFalse(self.app.n64_runtime_media_sessions.validate_ticket(
+            host_start["media_session"]["id"], "host", host_start["connection"]["ticket"]))
+        host_start = resumed
         with self.assertRaisesRegex(ValidationError, "participants are not reserved"):
             self.get(
                 f"/n64-runtime-media-sessions/{host_start['media_session']['id']}/runtime-saves/n64",
@@ -2136,6 +2307,216 @@ class ApiTests(unittest.TestCase):
         )["save"]
         self.assertEqual(resumed["revision"], 2)
 
+    def test_n64_finish_is_atomic_authorized_and_idempotent(self) -> None:
+        users, tokens, saves = [], [], []
+        for name in ("finish_host", "finish_remote"):
+            users.append(self.post("/auth/register", {"username": name, "password": "password123"})["user"])
+            tokens.append(self.post("/auth/login", {"username": name, "password": "password123"})["token"]["token"])
+            saves.append(self.create_test_save({"game_type": "sample_alpha", "save_data": encode(b"save")}, token=tokens[-1])["save"])
+            self.join_room_fixture(65, token=tokens[-1])
+        media = self.app.n64_runtime_media_sessions.create_or_get(
+            room_number=65, host_user_id=users[0]["id"], remote_user_id=users[1]["id"],
+            host_n64_slot="ROM1", host_gb_slot="ROM2", remote_gb_slot="ROM1",
+            host_n64_rom_id="n64", host_gb_rom_id="gb1", remote_gb_rom_id="gb2",
+            host_n64_save_id=saves[0]["id"], host_save_id=saves[0]["id"],
+            remote_save_id=saves[1]["id"], game_type="sample_alpha")
+        for user, token, save in zip(users, tokens, saves):
+            self.app.sessions.acquire_media_game_session_lock(
+                user["id"], media.id, self.app.game_session_lease_expires_at(),
+                hashlib.sha256(token.encode()).hexdigest(), [self.app.saves.get_save(save["id"])])
+        path = f"/n64-runtime-media-sessions/{media.id}/finish"
+        with self.assertRaisesRegex(ValidationError, "host role"):
+            self.post(path, {}, token=tokens[1])
+        other = self.post("/auth/login", {"username": "finish_host", "password": "password123"})["token"]["token"]
+        with self.assertRaisesRegex(ValidationError, "active host reservation"):
+            self.post(path, {}, token=other)
+        with patch("integral_emulator.sqlite_room.SQLiteRoomManager._close_room", side_effect=RuntimeError("injected")):
+            with self.assertRaisesRegex(RuntimeError, "injected"):
+                self.post(path, {}, token=tokens[0])
+        self.assertEqual(self.app.n64_runtime_media_sessions.get(media.id).status, "CREATED")
+        for user in users:
+            self.assertIsNotNone(self.app.sessions.active_game_session_for_user(user["id"]))
+        result = self.post(path, {}, token=tokens[0])["media_session"]
+        self.assertEqual((result["status"], result["termination_reason"]), ("COMPLETED", "host_finished"))
+        self.assertEqual(self.post(path, {}, token=tokens[0])["media_session"], result)
+        for user in users:
+            self.assertIsNone(self.app.sessions.active_game_session_for_user(user["id"]))
+            self.assertIsNone(self.app.room_manager.current_room(user["id"]))
+            self.assertEqual(self.app.session_lifecycle_for_user(user["id"])["termination_reason"], "host_finished")
+        with self.app.authority_database.transaction() as connection:
+            run = connection.execute("SELECT status, termination_reason FROM game_runs WHERE game_run_id = ?", (media.id,)).fetchone()
+        self.assertEqual(tuple(run), ("COMPLETED", "host_finished"))
+        self.assertEqual(self.get(f"/n64-runtime-media-sessions/{media.id}", token=tokens[1])["media_session"]["status"], "COMPLETED")
+        self.join_room_fixture(65, token=tokens[0])
+        self.join_room_fixture(65, token=tokens[1])
+
+        # Delay old-session callbacks across immediate room-number reuse.
+        # No sleeps/retries: both cancellation and stale expiry race new join.
+        for _ in range(10):
+            self.app.room_manager.leave_room(users[0]["id"])
+            self.join_room_fixture(65, token=tokens[0])
+            new_code = self.app.room_manager.room(65).room_code
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                jobs = [pool.submit(self.app.n64_runtime_media_sessions.cancel, media.id),
+                        pool.submit(self.app.n64_runtime_media_sessions.expire, media.id, "session_expired"),
+                        pool.submit(self.join_room_fixture, 65, token=tokens[1])]
+                for job in jobs:
+                    job.result()
+            self.assertEqual(self.app.room_manager.room(65).room_code, new_code)
+            self.assertEqual(len(self.app.room_manager.room(65).users), 2)
+
+        # An active orphan belongs to its original code, never just number 65.
+        orphan = self.app.n64_runtime_media_sessions.create_or_get(
+            room_number=65, host_user_id=users[0]["id"], remote_user_id=users[1]["id"],
+            host_n64_slot="ROM1", host_gb_slot="ROM2", remote_gb_slot="ROM1",
+            host_n64_rom_id="n64", host_gb_rom_id="gb1", remote_gb_rom_id="gb2",
+            host_n64_save_id=saves[0]["id"], host_save_id=saves[0]["id"],
+            remote_save_id=saves[1]["id"], game_type="sample_alpha")
+        self.app.room_manager.leave_room(users[0]["id"])
+        context = self.app.build_request_context(tokens[0])
+        with patch("integral_emulator.sqlite_room.secrets.choice", return_value=65):
+            fresh = self.app.room_manager.create_room("n64", users[0]["id"], users[0]["username"], context.auth_session_id_digest)
+        self.post(f"/n64-runtime-media-sessions/{orphan.id}/terminate",
+                  {"room_code": self.app.n64_runtime_media_sessions.get(orphan.id).room_code}, token=tokens[0])
+        self.assertEqual(self.app.room_manager.room(65).room_code, fresh.room_code)
+        with self.assertRaises(ValidationError):
+            self.app.storage.mark_n64_room_started(orphan.id)
+        self.assertFalse(self.app.room_manager.room(65).game_started)
+
+    def test_round7_explicit_terminal_both_roles_and_stale_request(self) -> None:
+        for role in (0, 1):
+            for outage in (26, 32):
+                users, tokens = [], []
+                for seat in (0, 1):
+                    name = f"r7_{role}_{outage}_{seat}"
+                    users.append(self.post("/auth/register", {"username": name, "password": "password123"})["user"])
+                    tokens.append(self.post("/auth/login", {"username": name, "password": "password123"})["token"]["token"])
+                    self.join_room_fixture(65, token=tokens[-1])
+                rooms = self.app.room_manager
+                code = rooms.room(65).room_code
+                manager = self.app.n64_runtime_media_sessions
+                media = manager.create_or_get(room_number=65,
+                    host_user_id=users[0]["id"], remote_user_id=users[1]["id"],
+                    host_n64_slot="ROM1", host_gb_slot="ROM2", remote_gb_slot="ROM1",
+                    host_n64_rom_id="n64", host_gb_rom_id="gb1", remote_gb_rom_id="gb2",
+                    host_n64_save_id="", host_save_id="", remote_save_id="", game_type="sample_alpha")
+                for user, token in zip(users, tokens):
+                    self.app.sessions.acquire_media_game_session_lock(user["id"], media.id,
+                        self.app.game_session_lease_expires_at(), hashlib.sha256(token.encode()).hexdigest(), [])
+                path = f"/n64-runtime-media-sessions/{media.id}/terminate"
+                with self.assertRaises(ValidationError):
+                    self.post(path, {"room_code": "wrong"}, token=tokens[role])
+                with patch("integral_emulator.sqlite_room.SQLiteRoomManager._close_room", side_effect=RuntimeError("rollback")):
+                    with self.assertRaises(RuntimeError):
+                        self.post(path, {"room_code": code}, token=tokens[role])
+                self.assertEqual(manager.get(media.id).status, "CREATED")
+                started = datetime.now(timezone.utc)
+                with patch("integral_emulator.n64_runtime_media_sessions.datetime", wraps=datetime) as clock:
+                    clock.now.return_value = started
+                    manager.recover(media.id)
+                    clock.now.return_value = started + timedelta(seconds=outage)
+                    result = self.post(path, {"room_code": code}, token=tokens[role])["media_session"]
+                self.assertEqual((result["status"], result["termination_reason"]), ("EXPIRED", "recovery_timeout"))
+                for user in users:
+                    self.assertIsNone(rooms.current_room(user["id"]))
+                    self.assertIsNone(self.app.sessions.active_game_session_for_user(user["id"]))
+                self.join_room_fixture(65, token=tokens[0])
+                self.join_room_fixture(65, token=tokens[1])
+                next_code = rooms.room(65).room_code
+                self.post(path, {"room_code": code}, token=tokens[role])
+                self.assertEqual(rooms.room(65).room_code, next_code)
+                self.assertEqual(len(rooms.room(65).users), 2)
+                rooms.leave_room(users[0]["id"])
+
+    def test_round7_link_leave_after_game_stop_closes_both_seats(self) -> None:
+        for role in (0, 1):
+            users, tokens, saves = [], [], []
+            for seat in (0, 1):
+                name = f"r7_link_{role}_{seat}"
+                users.append(self.post("/auth/register", {"username": name, "password": "password123"})["user"])
+                tokens.append(self.post("/auth/login", {"username": name, "password": "password123"})["token"]["token"])
+                saves.append(self.create_test_save({"game_type": "sample_alpha", "save_data": encode(b"test")}, token=tokens[-1])["save"])
+                self.join_room_fixture(1, token=tokens[-1])
+            session = self.app.sessions.create_session(users[0]["id"], users[1]["id"],
+                saves[0]["id"], saves[1]["id"], room_number=1, base_port=self.app.room_base_port(1),
+                lock_expires_at=self.app.game_session_lease_expires_at(),
+                auth_session_ids={u["id"]: hashlib.sha256(t.encode()).hexdigest() for u,t in zip(users,tokens)})
+            self.app.room_manager.set_link_session(1, session.id)
+            self.app.sessions.transition(session.id, LinkSessionStatus.RUNNING)
+            self.post("/game/stop", self.game_fence(self.get("/game/status", token=tokens[role])), token=tokens[role])
+            self.post("/room-matching/leave", {}, token=tokens[role])
+            for user in users:
+                self.assertIsNone(self.app.room_manager.current_room(user["id"]))
+                self.assertIsNone(self.app.sessions.active_game_session_for_user(user["id"]))
+            self.join_room_fixture(1, token=tokens[role])
+            self.join_room_fixture(1, token=tokens[1-role])
+            self.app.room_manager.leave_room(users[role]["id"])
+
+    def test_n64_expiry_atomically_closes_membership_and_allows_immediate_reentry(self) -> None:
+        from dataclasses import replace
+        from integral_emulator.sqlite_room import SQLiteRoomManager
+
+        for reason in ("recovery_timeout", "session_expired", "participant_lease_expired"):
+            with self.subTest(reason=reason):
+                users, tokens = [], []
+                for role in ("host", "remote"):
+                    name = f"{reason}_{role}"
+                    users.append(self.post("/auth/register", {"username": name, "password": "password123"})["user"])
+                    tokens.append(self.post("/auth/login", {"username": name, "password": "password123"})["token"]["token"])
+                    self.join_room_fixture(65, token=tokens[-1])
+                rooms = self.app.room_manager
+                code = rooms.room(65).room_code
+                manager = self.app.n64_runtime_media_sessions
+                media = manager.create_or_get(
+                    room_number=65, host_user_id=users[0]["id"], remote_user_id=users[1]["id"],
+                    host_n64_slot="ROM1", host_gb_slot="ROM2", remote_gb_slot="ROM1",
+                    host_n64_rom_id="n64", host_gb_rom_id="gb1", remote_gb_rom_id="gb2",
+                    host_n64_save_id="", host_save_id="", remote_save_id="", game_type="sample_alpha")
+                for user, token in zip(users, tokens):
+                    self.app.sessions.acquire_media_game_session_lock(
+                        user["id"], media.id, self.app.game_session_lease_expires_at(),
+                        hashlib.sha256(token.encode()).hexdigest(), [])
+                with patch.object(SQLiteRoomManager, "_close_room", side_effect=RuntimeError("rollback probe")):
+                    with self.assertRaisesRegex(RuntimeError, "rollback probe"):
+                        manager.expire(media.id, reason)
+                self.assertEqual(manager.get(media.id).status, "CREATED")
+                for user in users:
+                    self.assertIsNotNone(self.app.sessions.active_game_session_for_user(user["id"]))
+                    self.assertIsNotNone(rooms.current_room(user["id"]))
+                # Exercise lazy expiry too: it must not expose terminal before cleanup.
+                if reason != "participant_lease_expired":
+                    current = manager.get(media.id)
+                    field = "recovery_deadline" if reason == "recovery_timeout" else "expires_at"
+                    expired = replace(current, **{field: "2000-01-01T00:00:00+00:00"})
+                    self.app.storage.update_n64_runtime_media_session(expired.to_storage_dict(), current.row_version)
+                    manager.get(media.id)
+                else:
+                    current = manager.get(media.id)
+                    paired = replace(current, host_ticket_used=True, remote_ticket_used=True)
+                    self.app.storage.update_n64_runtime_media_session(paired.to_storage_dict(), current.row_version)
+                    with self.app.authority_database.transaction(write=True) as connection:
+                        connection.execute("UPDATE game_session_locks SET lease_expires_at_ms=1 WHERE game_run_id=?", (media.id,))
+                    self.app.reconcile_session_lifecycle()
+                terminal = manager.get(media.id)
+                self.assertEqual((terminal.status, terminal.termination_reason), ("EXPIRED", reason))
+                with self.app.authority_database.transaction() as connection:
+                    self.assertEqual(connection.execute("SELECT COUNT(*) FROM rooms WHERE room_number=65").fetchone()[0], 0)
+                    self.assertEqual(connection.execute("SELECT COUNT(*) FROM room_members WHERE room_number=65").fetchone()[0], 0)
+                    self.assertIsNotNone(connection.execute("SELECT 1 FROM room_code_tombstones WHERE room_code=?", (code,)).fetchone())
+                    run = connection.execute("SELECT status, termination_reason FROM game_runs WHERE game_run_id=?", (media.id,)).fetchone()
+                    self.assertEqual(tuple(run), ("EXPIRED", reason))
+                for user in users:
+                    self.assertIsNone(self.app.sessions.active_game_session_for_user(user["id"]))
+                    self.assertEqual(rooms.recent_termination_notice(user["id"])["termination_reason"], reason)
+                # Both users can create, and the other can join, without leave of the old room.
+                for creator, peer in ((0, 1), (1, 0)):
+                    new = rooms.create_room("n64", users[creator]["id"], users[creator]["username"], hashlib.sha256(tokens[creator].encode()).hexdigest())
+                    rooms.join_room_by_code(new.room_code, users[peer]["id"], users[peer]["username"], hashlib.sha256(tokens[peer].encode()).hexdigest())
+                    manager.expire(media.id, reason)
+                    self.assertEqual(manager.get(media.id), terminal)
+                    self.assertEqual(len(rooms.room(new.room_number).users), 2)
+                    rooms.leave_room(users[creator]["id"])
+
     def test_n64_runtime_media_leave_logout_require_participant_auth_session_owner(self) -> None:
         scenarios = [
             (role, owner, operation)
@@ -2241,8 +2622,7 @@ class ApiTests(unittest.TestCase):
                     self.assertEqual(stored_media.status, "CANCELLED")
                     self.assertIsNone(locks[host_user["id"]])
                     self.assertIsNone(locks[remote_user["id"]])
-                    expected_users = 0 if role == "host" else 1
-                    self.assertEqual(len(room["users"]), expected_users)
+                    self.assertEqual(len(room["users"]), 0)
                 else:
                     if operation == "leave":
                         self.assertFalse(result["left"])
@@ -2416,6 +2796,11 @@ class ApiTests(unittest.TestCase):
         )
 
         self.app.gb_runtime_fixed_host_sessions.peer_disconnected(link["id"], "host")
+        paused_heartbeat = self.post("/rooms/heartbeat", {}, token=token_b)
+        self.assertTrue(paused_heartbeat["lock_renewed"])
+        paused = self.app.storage.load_gb_runtime_fixed_host_sessions()[link["id"]]
+        paused["pause_expires_at"] = "2000-01-01T00:00:00+00:00"
+        self.app.storage.update_gb_runtime_fixed_host_session(paused, int(paused["__row_version"]))
         heartbeat = self.post("/rooms/heartbeat", {}, token=token_b)
         self.assertEqual(heartbeat["lock_renewed"], [])
         self.assertEqual(
@@ -3134,11 +3519,6 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual([item.id for item in recovered], [session["id"]])
         self.assertEqual(recovered[0].status, "FAILED")
-
-    def test_dashboard_html_contains_local_console_controls(self) -> None:
-        self.assertIn("INTEGRAL EMULATOR Local Console", DASHBOARD_HTML)
-        self.assertIn("Run full demo", DASHBOARD_HTML)
-        self.assertIn("/link-sessions", DASHBOARD_HTML)
 
     def test_lifecycle_sweeper_removes_expired_standalone_game_lock(self) -> None:
         user = self.post(

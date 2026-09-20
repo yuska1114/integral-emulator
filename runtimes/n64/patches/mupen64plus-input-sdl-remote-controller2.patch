@@ -94,3 +94,19 @@ diff --git a/src/plugin.c b/src/plugin.c
      *Keys = controller[Control].buttons;
  
      /* handle mempack / rumblepak switching (only if rumble is active on joystick) */
+@@ -969,6 +1039,15 @@ EXPORT void CALL InitiateControllers(CONTROL_INFO ControlInfo)
+     // read configuration
+     load_configuration(0);
+ 
++    /* LOCAL exposes four N64 ports even when AUTO found no device. */
++    m64p_handle integral_section = NULL;
++    if (ConfigOpenSection("IntegralRuntime", &integral_section) == M64ERR_SUCCESS &&
++        ConfigGetParamBool(integral_section, "LocalFourPorts"))
++    {
++        for (i = 0; i < 4; i++)
++            controller[i].control->Present = 1;
++    }
++
+     for( i = 0; i < 4; i++ )
+     {
+         // test for rumble support for this joystick

@@ -237,6 +237,25 @@ class SQLiteRoomManagerTests(unittest.TestCase):
         self.assertEqual(policy.link_seconds, 104)
         self.assertEqual(policy.n64_runtime_seconds, 105)
 
+    def test_long_n64_game_guest_leave_starts_fresh_waiting_deadline(self) -> None:
+        owner_token = self.seed_user("long-owner")
+        guest_token = self.seed_user("long-guest")
+        room = self.room_manager.create_room("n64", "user-long-owner", "long-owner", owner_token)
+        self.room_manager.join_room_by_code(room.room_code or "", "user-long-guest", "long-guest", guest_token)
+        start_ms = self.room_manager._now_ms()
+        end_ms = start_ms + 35 * 60 * 1000
+        with self.database.transaction(write=True) as connection:
+            connection.execute("UPDATE rooms SET game_started=1 WHERE room_number=?", (room.room_number,))
+        policy = RoomSessionPolicy(waiting_room_idle_seconds=1800)
+        end = datetime.fromtimestamp(end_ms / 1000, timezone.utc)
+        self.assertEqual(self.room_manager.prune_idle_rooms(policy, end), [])
+        with patch.object(self.room_manager, "_now_ms", return_value=end_ms):
+            self.room_manager.leave_room("user-long-guest")
+        self.assertEqual(self.room_manager.prune_idle_rooms(policy, end), [])
+        self.assertEqual(self.room_manager.prune_idle_rooms(policy, end + timedelta(seconds=1799)), [])
+        expired = self.room_manager.prune_idle_rooms(policy, end + timedelta(seconds=1801))
+        self.assertEqual(expired[0]["reason"], "room_idle_timeout")
+
     def test_two_user_ready_and_post_game_deadlines_close_rooms(self) -> None:
         policy = RoomSessionPolicy(waiting_room_idle_seconds=1)
         now = datetime.now(timezone.utc)

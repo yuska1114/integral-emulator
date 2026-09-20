@@ -739,17 +739,25 @@ class SQLiteAssetRepository:
             ).fetchone()
         return dict(save)
 
-    def list_prepared_save_uploads(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_prepared_save_uploads(self, limit: int = 100, *, save_ids=None) -> list[dict[str, Any]]:
         bounded_limit = max(1, min(int(limit), 1000))
+        parameters = []
+        selection = ""
+        if save_ids is not None:
+            if not save_ids:
+                return []
+            parameters.extend(sorted(save_ids))
+            selection = " AND save_id IN (" + ",".join("?" for _ in parameters) + ")"
+        parameters.append(bounded_limit)
         with self.database.transaction() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT * FROM save_upload_requests
-                WHERE state = 'PREPARED'
+                WHERE state = 'PREPARED' {selection}
                 ORDER BY updated_at_ms, request_id
                 LIMIT ?
                 """,
-                (bounded_limit,),
+                parameters,
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -772,6 +780,18 @@ class SQLiteGameSessionRepository:
     def __init__(self, database: AuthorityDatabase):
         self.database = database
 
+    @staticmethod
+    def _require_current_bindings(connection, game_run, lock):
+        # Serialize launch against ROM replacement's metadata transaction.
+        for binding in lock.get("save_binding") or []:
+            if not connection.execute(
+                "SELECT 1 FROM save_records WHERE save_id=? AND user_id=? AND server_id=? "
+                "AND revision=? AND sha256=?",
+                (binding.get("save_id"), lock["user_id"], game_run["server_id"],
+                 binding.get("revision"), binding.get("sha256")),
+            ).fetchone():
+                raise RepositoryConflictError("SAV binding changed; reload ROM slots")
+
     def acquire_pair(
         self,
         game_run: dict[str, Any],
@@ -784,6 +804,8 @@ class SQLiteGameSessionRepository:
             raise RepositoryConflictError("game pair requires two users")
         try:
             with self.database.transaction(write=True) as connection:
+                self._require_current_bindings(connection, game_run, first_lock)
+                self._require_current_bindings(connection, game_run, second_lock)
                 connection.execute(
                     "DELETE FROM game_session_locks WHERE lease_expires_at_ms <= ?",
                     (now_ms,),
@@ -852,6 +874,7 @@ class SQLiteGameSessionRepository:
     ) -> int:
         try:
             with self.database.transaction(write=True) as connection:
+                self._require_current_bindings(connection, game_run, lock)
                 connection.execute(
                     "DELETE FROM game_session_locks WHERE lease_expires_at_ms <= ?",
                     (now_ms,),

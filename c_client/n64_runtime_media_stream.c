@@ -1,6 +1,8 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "n64_runtime_media_stream.h"
+#include "../runtimes/common/screenshot.h"
+#include "../runtimes/common/window_focus.h"
 
 #include "media_codec.h"
 #include "media_h264.h"
@@ -87,6 +89,9 @@ typedef struct MetricsAccumulator {
 } MetricsAccumulator;
 
 struct IntegralN64RuntimeMediaStream {
+    uint64_t last_receive_us;
+    char screenshot_notice[32];
+    Uint64 screenshot_notice_until;
     SDL_Window *parent_window;
     SDL_Renderer *renderer;
     char window_title[128];
@@ -150,6 +155,7 @@ struct IntegralN64RuntimeMediaStream {
     uint16_t decoded_height;
     DecodeWorkerMetrics decode_metrics;
     SDL_Window *video_window;
+    bool startup_focus_requested;
     SDL_Renderer *video_renderer;
     bool video_present_vsync;
     uint32_t video_refresh_hz;
@@ -692,6 +698,22 @@ void integral_n64_runtime_media_stream_set_video_renderer_driver(IntegralN64Runt
     stream->video_renderer_driver_required = driver_name && driver_name[0];
 }
 
+void integral_n64_runtime_media_stream_transport_lost(IntegralN64RuntimeMediaStream *stream)
+{
+    if (!stream) return;
+    stop_host_encode_worker(stream);
+    stop_decode_worker(stream);
+    integral_h264_encoder_destroy(stream->encoder);
+    integral_h264_decoder_destroy(stream->decoder);
+    stream->encoder = NULL;
+    stream->decoder = NULL;
+    stream->encoder_width = stream->encoder_height = 0;
+    stream->h264_config_size = 0;
+    stream->remote_control_ready = false;
+    integral_audio_jitter_init(&stream->jitter, 3, 60000);
+    if (stream->audio_device) SDL_ClearQueuedAudio(stream->audio_device);
+}
+
 void integral_n64_runtime_media_stream_reset(IntegralN64RuntimeMediaStream *stream)
 {
     if (!stream) return;
@@ -1206,6 +1228,10 @@ static int sync_remote_video_frame(IntegralN64RuntimeMediaStream *stream,
             SDL_UnlockMutex(stream->decode_mutex);
             return -1;
         }
+        if (!stream->startup_focus_requested) {
+            stream->startup_focus_requested = true;
+            integral_focus_new_game_window(stream->video_window);
+        }
         if (fixed_target) {
             SDL_SetWindowMinimumSize(stream->video_window, (int)width, (int)height);
         }
@@ -1303,11 +1329,7 @@ static int sync_remote_video_frame(IntegralN64RuntimeMediaStream *stream,
         }
 #endif
         stream->texture_width = width; stream->texture_height = height;
-        if (!fixed_target) {
-            SDL_SetWindowSize(stream->video_window,
-                              (int)width * (int)stream->video_window_scale_resolved,
-                              (int)height * (int)stream->video_window_scale_resolved);
-        }
+        /* Frame/texture dimensions never own the user's window geometry. */
         if (fixed_target &&
             SDL_RenderSetLogicalSize(stream->video_renderer,
                                      (int)width,
@@ -1344,6 +1366,7 @@ int integral_n64_runtime_media_stream_pump_remote(IntegralN64RuntimeMediaStream 
         (void)flags;
         if (received < 0) return -1;
         if (!received) break;
+        stream->last_receive_us = now_us;
         if (type == INTEGRAL_MEDIA_MESSAGE_H264_CONFIG ||
             type == INTEGRAL_MEDIA_MESSAGE_H264_FRAME) {
             if (type == INTEGRAL_MEDIA_MESSAGE_H264_CONFIG) {
@@ -1418,6 +1441,37 @@ bool integral_n64_runtime_media_stream_take_remote_control(IntegralN64RuntimeMed
     return true;
 }
 
+bool integral_n64_runtime_media_stream_save_screenshot(
+    IntegralN64RuntimeMediaStream *stream, const char *mode)
+{
+    if (!stream) return false;
+    SDL_Surface *surface = NULL;
+    if (stream->decode_mutex) {
+        SDL_LockMutex(stream->decode_mutex);
+        if (stream->decoded_frame_sequence && stream->rgb &&
+            stream->decoded_width && stream->decoded_height) {
+            surface = SDL_CreateRGBSurfaceWithFormat(0, stream->decoded_width,
+                stream->decoded_height, 24, SDL_PIXELFORMAT_RGB24);
+            if (surface) {
+                for (unsigned y = 0; y < stream->decoded_height; ++y)
+                    memcpy((uint8_t *)surface->pixels + y * surface->pitch,
+                           stream->rgb + y * stream->decoded_width * 3u,
+                           stream->decoded_width * 3u);
+            }
+        }
+        SDL_UnlockMutex(stream->decode_mutex);
+    }
+    char path[1024];
+    bool saved = surface && integral_screenshot_save_surface(
+        surface, mode, "remote", path, sizeof(path)) == 0;
+    SDL_FreeSurface(surface);
+    snprintf(stream->screenshot_notice, sizeof(stream->screenshot_notice),
+             "%s", saved ? "SCREENSHOT SAVED" : "SCREENSHOT FAILED");
+    stream->screenshot_notice_until = SDL_GetTicks64() + 2000;
+    stream->texture_dirty = true;
+    return saved;
+}
+
 bool integral_n64_runtime_media_stream_render(IntegralN64RuntimeMediaStream *stream,
                                        SDL_Renderer *renderer,
                                        const SDL_Rect *bounds)
@@ -1430,7 +1484,7 @@ bool integral_n64_runtime_media_stream_render(IntegralN64RuntimeMediaStream *str
      * present.  A decoded frame can otherwise arrive just after pump_remote()
      * and wait through an unnecessary refresh before it is synchronized on
      * the next iteration, turning WAN arrival jitter into visible frame loss. */
-    if (!stream->texture_dirty && !stream->exit_confirming) return true;
+    if (!stream->texture_dirty && !stream->exit_confirming && !stream->screenshot_notice_until) return true;
     bool fixed_target = stream->video_window_target_width != 0u &&
                         stream->video_window_target_height != 0u;
     int window_width = fixed_target ? (int)stream->texture_width : 0;
@@ -1456,6 +1510,12 @@ bool integral_n64_runtime_media_stream_render(IntegralN64RuntimeMediaStream *str
     SDL_SetRenderDrawColor(stream->video_renderer, 0, 0, 0, 255);
     SDL_RenderClear(stream->video_renderer);
     SDL_RenderCopy(stream->video_renderer, stream->texture, NULL, &destination);
+    if (stream->screenshot_notice_until) {
+        if (SDL_GetTicks64() < stream->screenshot_notice_until)
+            integral_sdl_draw_text(stream->video_renderer, 8, 8,
+                stream->screenshot_notice, 1, (SDL_Color){255, 255, 255, 255});
+        else stream->screenshot_notice_until = 0;
+    }
     if (stream->exit_confirming) {
         int text_scale = window_width >= 440 && window_height >= 160
                              ? 3
@@ -1701,6 +1761,11 @@ bool integral_n64_runtime_media_stream_is_video_window(const IntegralN64RuntimeM
 {
     return stream && stream->video_window && stream->video_window_id != 0 &&
            stream->video_window_id == window_id;
+}
+
+uint64_t integral_n64_runtime_media_stream_last_receive_us(const IntegralN64RuntimeMediaStream *stream)
+{
+    return stream ? stream->last_receive_us : 0;
 }
 
 bool integral_n64_runtime_media_stream_is_video_vsync_paced(const IntegralN64RuntimeMediaStream *stream)

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "menu.h"
+#include "../../../common/window_focus.h"
 
 #include <dirent.h>
 #include <stdbool.h>
@@ -653,8 +654,7 @@ int integral_n64_runtime_gui_run(const char *program_path, const char *smoke_pat
         SDL_Quit();
         return 31;
     }
-    SDL_RaiseWindow(window);
-    (void)SDL_SetWindowInputFocus(window);
+    integral_focus_new_game_window(window);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!renderer) renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if (!renderer) {

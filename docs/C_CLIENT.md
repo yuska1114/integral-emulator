@@ -3,7 +3,61 @@
 C Clientは、ログイン、ROM登録、LOCALプレイ、ROOM参加、GB Mobile Mode、
 GB／N64 Runtimeの起動を行うデスクトップクライアントです。
 
+ログイン時には機械判定用の版`0.2.0-beta`を送信します（画面表記は`0.2BETA`）。
+`ASK SERVER ADMIN FOR SUPPORTED VERSION`が表示された場合は、管理者へ対応版を確認してください。
+
 ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として管理します。
+
+RESETの既定キーはOです。保存済みの割当ては維持され、KEY CONFIGのDEFAULTで既定値へ戻せます。
+
+LOCAL N64の2～4Pは、アカウント別`.conf`の`keys.n64_p2`、`keys.n64_p3`、
+`keys.n64_p4`へ1Pと同じ18項目形式で指定できます。未設定はAUTOです。
+KEY CONFIGで編集するのは1Pだけで、UI保存・DEFAULT操作では2～4Pの手動設定を保持します。
+LOCAL N64の4ポートはGB SLOTの有無にかかわらず有効です。
+N64で使用するゲームパッドはゲーム開始前に接続してください。起動後の初接続は対象外です。
+ROMパス編集のEnterは入力の確定、Escは取消です。サーバーへの反映はREGISTERで行います。
+Backspaceのローカルパス消去ではサーバー登録・SAVは削除されません。
+EXPORTは登録枠番号付きのSAV名で出力し、同名ROMの別枠も別ファイルになります。
+
+## GBのIR受信調整（実験的設定）
+
+Clientを終了して、アカウント別設定ファイル
+`config/integral_client_<server>_<user>.conf` に `gb.ir_off_delay_ticks=32` を指定できます。
+既定32、範囲0〜256、0は従来のSameBoy動作です。単位は8MHz tick（32は約3.8μ秒）。
+SERVER2とLink Cable ROOMのHostに適用し、Hostの両コアを同じ値で動かします。
+Remote側の値は使用しません。次回ゲーム起動時に読み込みます。
+1画面LOCAL・Mobile・N64には適用しません。大きくすると短いOFF区間を
+見失う可能性があり、実機の応答時間を保証する設定ではありません。
+
+## スクリーンショット閲覧
+
+メインメニューの`SCREENSHOTS`で保存画像を閲覧できます。更新日時の新しい画像から
+表示し、矢印キーで前後の画像へ切り替え、Enter／Escでメニューへ戻ります。
+Delete／Backspaceで削除確認を開きます（初期選択はNO）。削除した画像は元に戻せません。
+
+対象は共通の`screenshot/`内のBMP／PNGです。既存のN64セッション内
+`screenshots/`の画像も閲覧できます。新規撮影はセッション終了後も残ります。
+
+UTIL KEYSの適用範囲は次のとおりです。
+
+キーボードのほか、汎用の`PAD@...`／`JOY@...`によるボタン・軸・Hatを割り当てられます。
+Screenshot／Escape／Resetは押下時に1回、FASTは倍率切替、TURBOは従来の連射対象指定です。
+ログイン・メニュー・ROOMの通常操作はキーボードのみです。
+
+| モード | SCREENSHOT / ESCAPE | RESET | FAST / TURBO |
+|---|---|---|---|
+| LOCAL GB（1スロット） | 有効 | 有効 | 有効 |
+| LOCAL GB SERVER2 | 有効 | 両スロット同時 | 無効 |
+| GB MOBILE | 有効 | 有効 | 無効 |
+| LINK CABLE ROOM | 有効 | 無効 | 無効 |
+| LOCAL N64 | 有効 | 有効 | 無効 |
+| N64 ROOM | 有効 | 無効 | 無効 |
+
+撮影ファイル名にはモード・local／host／remote・日時を含めます。
+撮影結果はゲーム画面へ短く表示します（N64 LOCAL／Hostはタイトルへ約2秒）。ESCAPEとウィンドウの閉じる操作は
+終了確認を表示し、キャンセルできます。ROOMの保存方針は変更しません。
+N64 ROOM Hostは親画面にフォーカスがある場合も撮影できます。ゲームパッドの撮影入力は親が受け、Runtimeへ要求します。Remoteは受信表示フレームを保存します。
+画像は縦横比を維持して画面内に収めます。新しく保存した画像は閲覧画面を開き直すと反映されます。
 
 ## 対応環境
 
@@ -26,7 +80,7 @@ sudo apt update
 sudo apt install -y build-essential cmake pkg-config nasm \
   libsdl2-dev libsdl2-ttf-dev libssl-dev \
   libfreetype6-dev libgl1-mesa-dev libglu1-mesa-dev libpng-dev zlib1g-dev \
-  libsamplerate0-dev libspeexdsp-dev libvulkan-dev libopenh264-dev
+  libsamplerate0-dev libspeexdsp-dev libvulkan-dev libopenh264-dev fonts-noto-cjk
 ```
 
 ソースツリーのルートで、GB RuntimeとC Clientをビルドします。
@@ -147,6 +201,10 @@ Linuxの保存先ディレクトリは`0700`、接続先・ユーザー別の保
 
 ## 操作とコントローラー
 
+ゲーム画面は生成時に1回だけ前面化と入力フォーカス取得を要求します。
+別アプリへ切り替えた後の自動再取得は行いません。OS側のフォーカス制限により
+前面化されない場合は、ゲームウィンドウを選択してください。
+
 通常のClient画面はキーボードで操作します。
 
 ゲーム実行中と`KEY CONFIG`画面では、SDLが認識するコントローラーを使用できます。
@@ -186,6 +244,8 @@ LOCALプレイとMobile Modeでは、サーバーから取得したSAVをセッ�
 
 SERVER2では、同じROMをSLOT1とSLOT2に指定できます。登録枠ごとに異なるSAVを使用し、
 同じSAVを両方へ指定することはできません。
+LOCAL SERVER2は同一プロセス内でLink Cableを接続し、両スロットの入力をSDLで処理します。
+LAN待受は開始しません。ネットワーク待受は明示的なLAN REMOTE利用時のみです。
 
 通信障害などでSAVを反映できなかった場合は、利用者自身の候補SAVを
 `runtime/save-outbox/`へ保護して、次回の再送に使用します。
@@ -227,7 +287,8 @@ User1のPCがN64 Runtimeを実行します。User2のClientは映像と音声を
 コントローラー入力をUser1へ送信します。
 User2の映像はウィンドウに収まる最大サイズで、アスペクト比を保って表示します。
 
-N64 ROMとTransfer Pak用SAVは、User1のセッション用ディレクトリへ一時的に配置されます。
+Transfer Pak用の両者のGB SAV・RTCは、User1のメモリ上だけで扱い、匿名パイプでRuntimeへ渡します。
+GB SAVの一時ファイルは作りません。ROMの配置とN64本体SAVの一時保存は従来どおりです。
 N64 ROOMの実行結果は、どちらの利用者のサーバーSAVにも反映しません。
 
 ## ログ

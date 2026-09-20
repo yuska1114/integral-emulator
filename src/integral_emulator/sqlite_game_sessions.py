@@ -55,6 +55,8 @@ class SQLiteGameSessionAuthority:
                 now_ms=now_ms,
             )
         except RepositoryConflictError as error:
+            if str(error).startswith("SAV binding changed"):
+                raise ValidationError(str(error)) from error
             raise ValidationError("user already has an active game session") from error
         record = self.repository.get_lock(user_id)
         if record is None:
@@ -127,6 +129,8 @@ class SQLiteGameSessionAuthority:
                 now_ms=now_ms,
             )
         except RepositoryConflictError as error:
+            if str(error).startswith("SAV binding changed"):
+                raise ValidationError(str(error)) from error
             raise ValidationError("user already has an active game session") from error
         first = self.repository.get_lock(first_user_id)
         second = self.repository.get_lock(second_user_id)

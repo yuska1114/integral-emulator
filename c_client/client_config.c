@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -71,6 +72,7 @@ static int load_config_file(const char *path,
     if (local) {
         local->slot1_index = -1;
         local->slot2_index = -1;
+        local->ir_off_delay_ticks = 32;
     }
     if (window) {
         window->width = INTEGRAL_CONFIG_WINDOW_DEFAULT_WIDTH;
@@ -106,6 +108,16 @@ static int load_config_file(const char *path,
         }
         if (local) {
             int value = -1;
+            const char *prefix = "gb.ir_off_delay_ticks=";
+            if (strncmp(line, prefix, strlen(prefix)) == 0) {
+                char *end;
+                const char *start = line + strlen(prefix);
+                errno = 0;
+                unsigned long ticks = strtoul(start, &end, 10);
+                if (end != start && *end == '\0' && errno == 0 && ticks <= 256)
+                    local->ir_off_delay_ticks = (unsigned)ticks;
+                continue;
+            }
             if (sscanf(line, "local.slot1_index=%d", &value) == 1) {
                 local->slot1_index = value;
                 continue;
@@ -134,6 +146,18 @@ static int load_config_file(const char *path,
         }
         if (keys) {
             char value[2048];
+            if (strncmp(line, "keys.n64_p2=", 12) == 0) {
+                copy_text(keys->n64_p2, sizeof(keys->n64_p2), line + 12);
+                continue;
+            }
+            if (strncmp(line, "keys.n64_p3=", 12) == 0) {
+                copy_text(keys->n64_p3, sizeof(keys->n64_p3), line + 12);
+                continue;
+            }
+            if (strncmp(line, "keys.n64_p4=", 12) == 0) {
+                copy_text(keys->n64_p4, sizeof(keys->n64_p4), line + 12);
+                continue;
+            }
             if (sscanf(line, "keys.slot1=%2047[^\n]", value) == 1) {
                 copy_text(keys->slot1, sizeof(keys->slot1), value);
                 continue;
@@ -240,6 +264,7 @@ static int save_config_file(const char *path,
     if (local) {
         fprintf(file, "local.slot1_index=%d\n", local->slot1_index);
         fprintf(file, "local.slot2_index=%d\n", local->slot2_index);
+        fprintf(file, "gb.ir_off_delay_ticks=%u\n", local->ir_off_delay_ticks);
     }
     if (window) {
         fprintf(file, "window.width=%u\n", window->width);
@@ -249,6 +274,9 @@ static int save_config_file(const char *path,
         fprintf(file, "keys.slot1=%s\n", keys->slot1);
         fprintf(file, "keys.slot2=%s\n", keys->slot2);
         fprintf(file, "keys.n64_p1=%s\n", keys->n64_p1);
+        fprintf(file, "keys.n64_p2=%s\n", keys->n64_p2);
+        fprintf(file, "keys.n64_p3=%s\n", keys->n64_p3);
+        fprintf(file, "keys.n64_p4=%s\n", keys->n64_p4);
         fprintf(file, "keys.fast=%s\n", keys->fast);
         fprintf(file, "keys.screenshot=%s\n", keys->screenshot);
         fprintf(file, "keys.escape=%s\n", keys->escape);
@@ -305,6 +333,14 @@ int integral_config_save_local(const char *path, const IntegralConfigLocal *loca
     return save_config_file(path, &login, local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
 }
 
+unsigned integral_config_ir_off_delay(const char *path)
+{
+    IntegralConfigLocal local;
+    if (!path) return 32;
+    integral_config_load_local(path, &local);
+    return local.ir_off_delay_ticks;
+}
+
 int integral_config_load_window(const char *path, IntegralConfigWindow *window)
 {
     IntegralConfigWindow loaded;
@@ -355,4 +391,52 @@ int integral_config_save_rom_slots(const char *path, const IntegralConfigRomSlot
     IntegralConfigWindow window;
     (void)load_config_file(path, &login, &local, &window, &keys, NULL, 0);
     return save_config_file(path, &login, &local, &window, &keys, slots, slot_count);
+}
+
+void integral_keys_defaults(IntegralConfigKeys *keys)
+{
+    memset(keys, 0, sizeof(*keys));
+    integral_keys_reset_editable_defaults(keys);
+}
+
+void integral_keys_reset_editable_defaults(IntegralConfigKeys *keys)
+{
+    copy_text(keys->slot1, sizeof(keys->slot1), "RIGHT,LEFT,UP,DOWN,Z,X,RSHIFT,RETURN");
+    copy_text(keys->slot2, sizeof(keys->slot2), "D,A,W,S,G,H,R,T");
+    copy_text(keys->n64_p1, sizeof(keys->n64_p1), "D,A,W,S,RETURN,Z,LCTRL,LSHIFT,L,J,I,K,C,X,RIGHT,LEFT,UP,DOWN");
+    copy_text(keys->fast, sizeof(keys->fast), "F");
+    copy_text(keys->screenshot, sizeof(keys->screenshot), "P");
+    copy_text(keys->escape, sizeof(keys->escape), "ESCAPE");
+    copy_text(keys->turbo_hold, sizeof(keys->turbo_hold), "B");
+    copy_text(keys->reset, sizeof(keys->reset), "O");
+}
+
+void integral_keys_apply_defaults_for_missing(IntegralConfigKeys *keys)
+{
+    IntegralConfigKeys defaults;
+    integral_keys_defaults(&defaults);
+    if (keys->slot1[0] == '\0') {
+        copy_text(keys->slot1, sizeof(keys->slot1), defaults.slot1);
+    }
+    if (keys->slot2[0] == '\0') {
+        copy_text(keys->slot2, sizeof(keys->slot2), defaults.slot2);
+    }
+    if (keys->n64_p1[0] == '\0') {
+        copy_text(keys->n64_p1, sizeof(keys->n64_p1), defaults.n64_p1);
+    }
+    if (keys->fast[0] == '\0') {
+        copy_text(keys->fast, sizeof(keys->fast), defaults.fast);
+    }
+    if (keys->screenshot[0] == '\0') {
+        copy_text(keys->screenshot, sizeof(keys->screenshot), defaults.screenshot);
+    }
+    if (keys->escape[0] == '\0') {
+        copy_text(keys->escape, sizeof(keys->escape), defaults.escape);
+    }
+    if (keys->turbo_hold[0] == '\0') {
+        copy_text(keys->turbo_hold, sizeof(keys->turbo_hold), defaults.turbo_hold);
+    }
+    if (keys->reset[0] == '\0') {
+        copy_text(keys->reset, sizeof(keys->reset), defaults.reset);
+    }
 }

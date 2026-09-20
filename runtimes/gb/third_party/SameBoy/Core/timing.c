@@ -144,6 +144,7 @@ static void ir_run(GB_gameboy_t *gb, uint32_t cycles)
         }
         
         gb->effective_ir_input = gb->ir_sensor >=  IR_WARMUP + IR_THRESHOLD && gb->ir_sensor <= IR_WARMUP + IR_THRESHOLD + IR_DECAY;
+        gb->ir_off_delay_remaining = gb->effective_ir_input ? gb->ir_off_delay_ticks : 0;
     }
     else {
         unsigned target = is_sensing? IR_WARMUP : 0;
@@ -156,7 +157,17 @@ static void ir_run(GB_gameboy_t *gb, uint32_t cycles)
         else {
             gb->ir_sensor -= cycles;
         }
-        gb->effective_ir_input = false;
+        /* Integral experimental sensor release delay. No game-specific logic.
+         * Sensor decay and the transmitter's raw edges remain unchanged. */
+        if (!is_sensing) gb->ir_off_delay_remaining = 0;
+        if (gb->ir_off_delay_remaining > cycles) {
+            gb->ir_off_delay_remaining -= cycles;
+            gb->effective_ir_input = true;
+        }
+        else {
+            gb->ir_off_delay_remaining = 0;
+            gb->effective_ir_input = false;
+        }
     }
     
 }

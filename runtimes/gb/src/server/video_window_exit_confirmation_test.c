@@ -37,7 +37,8 @@ static int run_real_rom_capture(const char *rom_path,
                                 const char *output_path,
                                 unsigned frame_count,
                                 unsigned window_width,
-                                unsigned window_height)
+                                unsigned window_height,
+                                unsigned slot_count)
 {
     IntegralGBRuntimeRomProfile profile;
     IntegralGBRuntimeRomModelReason reason;
@@ -59,7 +60,7 @@ static int run_real_rom_capture(const char *rom_path,
 
     IntegralGBRuntimeVideoWindow *window = NULL;
     if (integral_gb_runtime_video_window_open_titled_unthrottled_sized(
-            &window, 1u, 1u, "GB real-ROM layout test",
+            &window, 1u, slot_count, "GB real-ROM layout test",
             window_width, window_height) != 0) {
         integral_gb_runtime_slot_free_without_save(&slot);
         return 1;
@@ -92,7 +93,8 @@ static int run_real_rom_capture(const char *rom_path,
     readback_pixels = capture;
     readback_pitch = output_width * (int)sizeof(*capture);
     readback_result = -1;
-    int result = integral_gb_runtime_video_window_render(window, &slot, NULL);
+    int result = integral_gb_runtime_video_window_render(window, &slot,
+                                                        slot_count == 2u ? &slot : NULL);
     readback_pixels = NULL;
     readback_pitch = 0;
     if (result == 0 && readback_result == 0) {
@@ -134,23 +136,28 @@ static IntegralGBRuntimeVideoWindowPollResult poll_window(
 
 int main(int argc, char **argv)
 {
-    if (argc == 4 || argc == 6) {
+    if (argc == 4 || argc == 6 || argc == 7) {
         char *end = NULL;
         unsigned long frames = strtoul(argv[3], &end, 10);
         if (!end || *end || frames == 0ul || frames > 10000ul) return 2;
         unsigned long width = 640ul;
         unsigned long height = 480ul;
-        if (argc == 6) {
+        if (argc >= 6) {
             width = strtoul(argv[4], &end, 10);
             if (!end || *end || width > 16384ul) return 2;
             height = strtoul(argv[5], &end, 10);
             if (!end || *end || height > 16384ul) return 2;
         }
+        unsigned slots = 1u;
+        if (argc == 7) {
+            if (strcmp(argv[6], "2") != 0) return 2;
+            slots = 2u;
+        }
         return run_real_rom_capture(argv[1], argv[2], (unsigned)frames,
-                                    (unsigned)width, (unsigned)height);
+                                    (unsigned)width, (unsigned)height, slots);
     }
     if (argc != 1) {
-        fprintf(stderr, "usage: %s [ROM OUTPUT_BMP FRAMES [WIDTH HEIGHT]]\n", argv[0]);
+        fprintf(stderr, "usage: %s [ROM OUTPUT_BMP FRAMES [WIDTH HEIGHT [2]]]\n", argv[0]);
         return 2;
     }
     if (!getenv("INTEGRAL_EMULATOR_REAL_VIDEO_DRIVER_TEST")) {
@@ -320,6 +327,39 @@ int main(int argc, char **argv)
     push_key(SDL_KEYDOWN, SDLK_RETURN);
     CHECK(poll_window(window, &input) == INTEGRAL_GB_RUNTIME_VIDEO_WINDOW_RETURN_MENU);
 
+    integral_gb_runtime_video_window_close(window);
+    CHECK(integral_gb_runtime_video_window_open_titled_unthrottled_sized(
+              &window, 1, 2, "SERVER2 resize test", 360u, 360u) == 0);
+    sdl_window = find_test_window();
+    CHECK(sdl_window != NULL);
+    renderer = SDL_GetRenderer(sdl_window);
+    const int pair_sizes[][2] = {{360, 360}, {944, 648}, {2240, 1100}, {360, 360}};
+    for (unsigned n = 0; n < sizeof(pair_sizes) / sizeof(pair_sizes[0]); n++) {
+        SDL_SetWindowSize(sdl_window, pair_sizes[n][0], pair_sizes[n][1]);
+        SDL_PumpEvents();
+        CHECK(SDL_GetRendererOutputSize(renderer, &output_width, &output_height) == 0);
+        capture = calloc((size_t)output_width * output_height, sizeof(*capture));
+        CHECK(capture != NULL);
+        readback_pixels = capture;
+        readback_pitch = output_width * (int)sizeof(*capture);
+        readback_result = -1;
+        CHECK(integral_gb_runtime_video_window_render(window, &slot, &slot) == 0);
+        CHECK(readback_result == 0);
+        SDL_RenderGetLogicalSize(renderer, &logical_width, &logical_height);
+        CHECK(logical_width == output_width && logical_height == output_height);
+        int scale = output_width / 320;
+        if (scale > output_height / 144) scale = output_height / 144;
+        CHECK(scale >= 1);
+        int left = (output_width - 320 * scale) / 2;
+        int top = (output_height - 144 * scale) / 2;
+        CHECK((capture[(size_t)top * output_width + left] & 0xFFFFFFu) == 0x12AB34u);
+        CHECK((capture[(size_t)(top + 144 * scale - 1) * output_width + left + 320 * scale - 1] & 0xFFFFFFu) == 0x12AB34u);
+        if (left > 0) CHECK((capture[(size_t)top * output_width + left - 1] & 0xFFFFFFu) == 0u);
+        if (top > 0) CHECK((capture[(size_t)(top - 1) * output_width + left] & 0xFFFFFFu) == 0u);
+        free(capture);
+        readback_pixels = NULL;
+        readback_pitch = 0;
+    }
     integral_gb_runtime_video_window_close(window);
     printf("PASS video window exit confirmation checks=%u\n", checks);
     return 0;

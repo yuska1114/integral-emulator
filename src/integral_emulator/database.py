@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 from pathlib import Path
 import sqlite3
@@ -480,6 +481,23 @@ class AuthorityDatabase:
         self.data_dir = self.storage_root / "data"
         self.path = self.data_dir / "integral_emulator.sqlite3"
         self.metrics = metrics
+        self._unit_connection = ContextVar("authority_unit_connection", default=None)
+
+    @contextmanager
+    def write_unit(self):
+        """Explicitly compose repository metadata writes in one transaction.
+
+        Filesystem commits must be completed separately before entering this
+        scope; a SQLite rollback cannot undo a file replacement.
+        """
+        if self._unit_connection.get() is not None:
+            raise RuntimeError("nested write unit")
+        with self.transaction(write=True) as connection:
+            token = self._unit_connection.set(connection)
+            try:
+                yield connection
+            finally:
+                self._unit_connection.reset(token)
 
     def initialize(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -541,6 +559,10 @@ class AuthorityDatabase:
 
     @contextmanager
     def transaction(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
+        shared = self._unit_connection.get()
+        if shared is not None:
+            yield shared
+            return
         started = time.perf_counter()
         try:
             with self.connect() as connection:

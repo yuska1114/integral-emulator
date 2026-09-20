@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "video_window.h"
+#include "../../../common/window_focus.h"
 
 #include <SDL.h>
 #include <stdio.h>
@@ -42,6 +43,12 @@ static void set_layout(IntegralGBRuntimeVideoWindow *window, int width, int heig
     window->canvas_height = height;
     window->scale = integral_display_scale_resolve(
         INTEGRAL_DISPLAY_SCALE_AUTO, width, height, content_width, content_height);
+    if (window->slot_count == 2u) {
+        int scale_x = width / content_width;
+        int scale_y = height / content_height;
+        int scale = scale_x < scale_y ? scale_x : scale_y;
+        window->scale = scale > 0 ? (unsigned)scale : 1u;
+    }
     window->content_x = (width - content_width * (int)window->scale) / 2;
     window->content_y = (height - content_height * (int)window->scale) / 2;
 }
@@ -50,7 +57,14 @@ static int update_layout(IntegralGBRuntimeVideoWindow *window)
 {
     int width = 0;
     int height = 0;
-    SDL_GetWindowSize(window->window, &width, &height);
+    if (window->slot_count == 2u) {
+        /* Fit the pair in physical pixels, including Retina/HiDPI output.
+         * Logical-point quantization otherwise leaves room for another scale. */
+        if (SDL_GetRendererOutputSize(window->renderer, &width, &height) != 0) return -1;
+    }
+    else {
+        SDL_GetWindowSize(window->window, &width, &height);
+    }
     if (width <= 0 || height <= 0) return -1;
     if (width == window->canvas_width && height == window->canvas_height) return 0;
     if (SDL_RenderSetLogicalSize(window->renderer, width, height) != 0) return -1;
@@ -155,8 +169,7 @@ static int open_titled(IntegralGBRuntimeVideoWindow **window_out,
         return -1;
     }
     SDL_SetWindowMinimumSize(window->window, content_width, content_height);
-    SDL_RaiseWindow(window->window);
-    (void)SDL_SetWindowInputFocus(window->window);
+    integral_focus_new_game_window(window->window);
 
     Uint32 renderer_flags = SDL_RENDERER_ACCELERATED;
     if (vsync) {
@@ -370,14 +383,13 @@ static void open_return_confirmation(IntegralGBRuntimeVideoWindow *window,
     integral_gb_runtime_input_router_release_all(input_router);
 }
 
-static bool event_requests_return(const IntegralGBRuntimeInputRouter *input_router,
+static bool event_requests_return(IntegralGBRuntimeInputRouter *input_router,
                                   const SDL_Event *event)
 {
-    bool binding_pressed = false;
     if (event->type == SDL_KEYDOWN && !event->key.repeat &&
         event->key.keysym.sym == SDLK_ESCAPE) return true;
-    return integral_gb_runtime_key_config_binding_matches_event(
-               input_router->escape_key, event, &binding_pressed) && binding_pressed;
+    return integral_gb_runtime_key_config_binding_rising(
+               input_router->escape_key, event, &input_router->escape_held);
 }
 
 IntegralGBRuntimeVideoWindowPollResult integral_gb_runtime_video_window_poll(IntegralGBRuntimeVideoWindow *window,
@@ -391,6 +403,8 @@ IntegralGBRuntimeVideoWindowPollResult integral_gb_runtime_video_window_poll(Int
         if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_JOYDEVICEADDED ||
             event.type == SDL_CONTROLLERDEVICEREMOVED || event.type == SDL_JOYDEVICEREMOVED) {
             integral_gb_runtime_key_config_handle_device_event(&event);
+            if (event.type == SDL_CONTROLLERDEVICEREMOVED || event.type == SDL_JOYDEVICEREMOVED)
+                integral_gb_runtime_input_router_release_all(input_router);
             continue;
         }
         if (event.type == SDL_QUIT ||

@@ -83,7 +83,7 @@ check-dependency: verify-dependency
 		-e "$(LIBMOBILE_BUILD)/libmobile.dll" || \
 		(echo "shared libmobile not found" >&2; exit 2)
 
-$(RUNTIME_BIN): $(RUNTIME_SOURCES) $(SAMEBOY_LIB) $(LIBMOBILE_STAMP)
+$(RUNTIME_BIN): ../common/utf8_file.h ../../../common/screenshot.h ../../../common/screenshot_path.h  $(RUNTIME_SOURCES) ../../../common/window_focus.h $(SAMEBOY_LIB) $(LIBMOBILE_STAMP)
 	mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) -DINTEGRAL_GB_RUNTIME_MOBILE_PRODUCT_BUILD=1 $(SDL2_CFLAGS) $(CFLAGS) $(RUNTIME_SOURCES) $(SAMEBOY_LIB) $(LIBMOBILE_LIBS) $(RPATH_FLAG) $(SDL2_LIBS) $(MOBILE_PLATFORM_LIBS) -lm -o $@
 

@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "file_util.h"
+#include "utf8_file.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -31,8 +32,7 @@ static int platform_mkdir(const char *path, mode_t mode)
 
 bool integral_gb_runtime_file_exists_regular(const char *path)
 {
-    struct stat st;
-    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+    return integral_file_regular(path);
 }
 
 bool integral_gb_runtime_paths_refer_to_same_regular_file(const char *a, const char *b)

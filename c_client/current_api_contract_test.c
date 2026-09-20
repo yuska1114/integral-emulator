@@ -96,7 +96,7 @@ int main(int argc, char **argv)
     char n64_ticket[64] = {0};
     unsigned n64_relay_port = 0u;
     if (integral_api_start_n64_room(
-            argv[1], "current-token", 65u,
+            argv[1], "current-token", 65u, NULL,
             n64_media_session, sizeof(n64_media_session),
             n64_relay_host, sizeof(n64_relay_host), &n64_relay_port,
             n64_relay_transport, sizeof(n64_relay_transport),
@@ -215,6 +215,7 @@ int main(int argc, char **argv)
             fixed_remote_header, sizeof(fixed_remote_header), fixed_runtime_build,
             sizeof(fixed_runtime_build), fixed_state, sizeof(fixed_state),
             &fixed_pause_remaining,
+            NULL, 0,
             error, sizeof(error)) != 0 || strcmp(fixed_role, "host") != 0 ||
         strcmp(fixed_digest,
                "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd") != 0 ||
@@ -256,7 +257,7 @@ int main(int argc, char **argv)
     char fixed_save_policy[32] = {0};
     unsigned fixed_relay_port = 0u;
     if (integral_api_gb_runtime_fixed_host_issue_relay_ticket(
-            argv[1], "current-token", "fixed-session",
+            argv[1], "current-token", "fixed-session", false,
             fixed_relay_host, sizeof(fixed_relay_host), &fixed_relay_port,
             fixed_relay_transport, sizeof(fixed_relay_transport),
             fixed_ticket_role, sizeof(fixed_ticket_role), fixed_scope,

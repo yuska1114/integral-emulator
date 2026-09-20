@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -75,16 +75,75 @@ class SQLiteRuntimeRepositories:
         return self._get_session("n64_runtime_media_sessions", session_id, self._n64_from_row)
 
     def insert_n64_runtime_media_session(self, record: dict[str, Any]) -> dict[str, Any]:
-        self._write_n64(record, None)
+        with self.database.write_unit() as connection:
+            room = connection.execute(
+                "SELECT room_code, room_code_created_at_ms FROM rooms WHERE server_id=? AND room_number=?",
+                (self.server_id, record["room_number"]),
+            ).fetchone()
+            self._write_n64({**record, "room_code": room[0] if room else None,
+                             "room_created_at_ms": room[1] if room else None}, None)
         return self.get_n64_runtime_media_session(str(record["id"]))  # type: ignore[return-value]
 
     def update_n64_runtime_media_session(self, record: dict[str, Any], row_version: int) -> dict[str, Any]:
         key = str(record["id"])
+        if record["status"] in {"EXPIRED", "COMPLETED", "CANCELLED"}:
+            return self._terminate_n64_room(record, row_version)
         self._write_n64(record, row_version)
         return self.get_n64_runtime_media_session(key)  # type: ignore[return-value]
 
+    def _terminate_n64_room(self, record: dict[str, Any], row_version: int) -> dict[str, Any]:
+        # The manager holds the media file lock before entering this write unit.
+        # Lazy expiry (get/ticket/Relay) and the sweeper share this boundary.
+        from .sqlite_repositories import SQLiteGameSessionRepository
+        from .sqlite_room import SQLiteRoomManager
+
+        key = str(record["id"])
+        unit = self.database._unit_connection.get()
+        with (nullcontext(unit) if unit is not None else self.database.write_unit()) as connection:
+            previous = self.get_n64_runtime_media_session(key)
+            if previous and previous["status"] in {"EXPIRED", "COMPLETED", "CANCELLED"}:
+                return previous
+            self._write_n64({**record, "recovery_deadline": None}, row_version)
+            SQLiteGameSessionRepository(self.database).release_run(
+                key, status=record["status"], reason=record["termination_reason"])
+            rooms = SQLiteRoomManager(self.database, self.server_id)
+            room = rooms._load_room(connection, int(record["room_number"]))
+            newer_session = connection.execute(
+                "SELECT 1 FROM n64_runtime_media_sessions WHERE server_id=? AND room_number=? "
+                "AND session_id != ? AND status IN ('CREATED','WAITING_PEER','READY','RUNNING','RECOVERING')",
+                (self.server_id, record["room_number"], key),
+            ).fetchone()
+            if (room is not None and previous and previous.get("room_code")
+                    and room["room_code"] == previous["room_code"]
+                    and room["room_code_created_at_ms"] == previous.get("room_created_at_ms")
+                    and newer_session is None
+                    and room["room_type"] == "n64"):
+                if record["termination_reason"] == "preflight_failed":
+                    # Same transaction as terminal media and lock release; retain
+                    # the fenced ROOM, but require explicit READY from both users.
+                    rooms.end_game_for_room(int(record["room_number"]))
+                else:
+                    rooms._close_room(connection, room, record["termination_reason"],
+                                      record["status"], rooms._now_ms())
+            return self.get_n64_runtime_media_session(key)  # type: ignore[return-value]
+
     def delete_n64_runtime_media_session(self, session_id: str, row_version: int) -> None:
         self._delete_row("n64_runtime_media_sessions", session_id, row_version)
+
+    def mark_n64_room_started(self, session_id: str):
+        from .sqlite_room import SQLiteRoomManager
+
+        with self.database.write_unit() as connection:
+            media = self.get_n64_runtime_media_session(session_id)
+            if not media or media["status"] not in {"CREATED", "WAITING_PEER", "READY", "RUNNING", "RECOVERING"}:
+                raise ValidationError("N64 media session is terminal")
+            rooms = SQLiteRoomManager(self.database, self.server_id)
+            room = rooms._load_room(connection, int(media["room_number"]))
+            if (not room or not media.get("room_code") or room["room_code"] != media["room_code"]
+                    or room["room_code_created_at_ms"] != media.get("room_created_at_ms")
+                    or {m["user_id"] for m in room["members"]} != {media["host_user_id"], media["remote_user_id"]}):
+                raise ValidationError("N64 media session ROOM binding changed")
+            return rooms.set_game_started(int(media["room_number"]), True)
 
     def load_host_processes(self) -> dict[str, Any]:
         return self._load("host_processes")

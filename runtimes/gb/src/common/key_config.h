@@ -56,6 +56,8 @@ void integral_gb_runtime_key_config_buttons_for_event(const IntegralGBRuntimeKey
                                             const SDL_Event *event,
                                             uint8_t *press_mask,
                                             uint8_t *release_mask);
+bool integral_gb_runtime_key_config_binding_rising(SDL_Keycode binding,
+                                                  const SDL_Event *event, bool *held);
 bool integral_gb_runtime_key_config_binding_matches_event(SDL_Keycode binding,
                                                 const SDL_Event *event,
                                                 bool *pressed);

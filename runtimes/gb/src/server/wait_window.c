@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "wait_window.h"
+#include "../../../common/window_focus.h"
 
 #include <SDL.h>
 #include <stdio.h>
@@ -69,8 +70,7 @@ int integral_gb_runtime_wait_window_open(IntegralGBRuntimeWaitWindow **window_ou
         integral_gb_runtime_wait_window_close(window);
         return -1;
     }
-    SDL_RaiseWindow(window->window);
-    (void)SDL_SetWindowInputFocus(window->window);
+    integral_focus_new_game_window(window->window);
 
     window->renderer = SDL_CreateRenderer(window->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!window->renderer) {

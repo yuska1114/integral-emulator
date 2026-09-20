@@ -9,6 +9,7 @@
 #include <time.h>
 
 #include "file_util.h"
+#include "utf8_file.h"
 #include "net_compat.h"
 #include "display.h"
 #include "memory.h"
@@ -205,7 +206,30 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     }
     GB_set_pixels_output(slot->gb, slot->pixels);
 
-    int load_result = GB_load_rom(slot->gb, slot->rom_path);
+    int load_result;
+#ifdef _WIN32
+    /* SameBoy's filename API uses the Windows code page. Keep its core intact. */
+    FILE *rom_file = integral_fopen(slot->rom_path, "rb");
+    load_result = rom_file ? 0 : errno;
+    if (rom_file) {
+        long size;
+        if (fseek(rom_file, 0, SEEK_END) || (size = ftell(rom_file)) <= 0 ||
+            size > 0x2000000 || fseek(rom_file, 0, SEEK_SET)) {
+            load_result = EINVAL;
+        } else {
+            uint8_t *bytes = malloc((size_t)size);
+            if (!bytes) load_result = ENOMEM;
+            else {
+                if (fread(bytes, 1, (size_t)size, rom_file) != (size_t)size) load_result = EIO;
+                else GB_load_rom_from_buffer(slot->gb, bytes, (size_t)size);
+                free(bytes);
+            }
+        }
+        fclose(rom_file);
+    }
+#else
+    load_result = GB_load_rom(slot->gb, slot->rom_path);
+#endif
     if (load_result != 0) {
         fprintf(stderr, "%s: failed to load ROM '%s': %s\n", slot->name, slot->rom_path, strerror(load_result));
         integral_gb_runtime_slot_free(slot);

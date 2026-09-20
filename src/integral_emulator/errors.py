@@ -15,6 +15,10 @@ class AuthenticationError(LeagueError):
     """Raised when login or token validation fails."""
 
 
+class ClientVersionNotAllowedError(LeagueError):
+    """Compatibility guidance, not an authentication/security boundary."""
+
+
 class RegistrationDisabledError(LeagueError):
     """Raised when public self-registration is disabled."""
 

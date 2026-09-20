@@ -33,6 +33,8 @@ typedef struct IntegralGBRuntimeInputRouter {
     bool screenshot_requested;
     bool escape_requested;
     bool reset_requested;
+    bool screenshot_held, escape_held, reset_held;
+    bool fast_held, turbo_key_held;
     bool turbo_hold_active;
     bool turbo_capture_active;
     bool turbo_phase_on;
@@ -56,6 +58,10 @@ void integral_gb_runtime_input_router_set_speed_multiplier(IntegralGBRuntimeInpu
 void integral_gb_runtime_input_router_disable_speed_controls(IntegralGBRuntimeInputRouter *router);
 bool integral_gb_runtime_input_router_handle_event(IntegralGBRuntimeInputRouter *router, const SDL_Event *event);
 void integral_gb_runtime_input_router_update_turbo(IntegralGBRuntimeInputRouter *router);
+void integral_gb_runtime_input_router_apply_auto_a(const IntegralGBRuntimeInputRouter *router,
+                                                   unsigned frame,
+                                                   unsigned auto_a_frames,
+                                                   unsigned auto_a_pulse);
 void integral_gb_runtime_input_router_release_all(IntegralGBRuntimeInputRouter *router);
 void integral_gb_runtime_input_router_set_turbo_macro_control(IntegralGBRuntimeInputRouter *router, bool enabled);
 bool integral_gb_runtime_input_router_take_turbo_macro_toggle(IntegralGBRuntimeInputRouter *router);

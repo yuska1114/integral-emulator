@@ -154,6 +154,19 @@ int main(int argc, char **argv)
     CHECK(integral_gb_runtime_key_config_code_from_event(&semantic_button) == SDLK_UNKNOWN,
           "semantic GameController face label cannot replace raw capture");
 
+    bool held = false;
+    SDL_Event util = {0};
+    util.type = SDL_KEYDOWN; util.key.keysym.sym = SDLK_p;
+    CHECK(integral_gb_runtime_key_config_binding_rising(SDLK_p, &util, &held), "util first press");
+    CHECK(!integral_gb_runtime_key_config_binding_rising(SDLK_p, &util, &held), "util held press suppressed");
+    util.type = SDL_KEYUP;
+    CHECK(!integral_gb_runtime_key_config_binding_rising(SDLK_p, &util, &held) && !held, "util release");
+    util.type = SDL_JOYBUTTONDOWN; util.jbutton.which = instance_a; util.jbutton.button = 2;
+    CHECK(integral_gb_runtime_key_config_binding_rising(a_button, &util, &held), "gamepad util first press");
+    CHECK(!integral_gb_runtime_key_config_binding_rising(a_button, &util, &held), "gamepad util duplicate event");
+    util.type = SDL_JOYBUTTONUP;
+    CHECK(!integral_gb_runtime_key_config_binding_rising(a_button, &util, &held) && !held, "gamepad util release");
+
 cleanup:
     integral_gb_runtime_key_config_close_game_controllers();
     if (virtual_b >= 0) (void)SDL_JoystickDetachVirtual(virtual_b);

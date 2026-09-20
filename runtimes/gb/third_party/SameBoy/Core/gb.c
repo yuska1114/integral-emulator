@@ -1374,6 +1374,12 @@ void GB_set_infrared_input(GB_gameboy_t *gb, bool state)
     gb->infrared_input = state;
 }
 
+void GB_set_infrared_off_delay(GB_gameboy_t *gb, unsigned ticks)
+{
+    gb->ir_off_delay_ticks = ticks <= 256 ? ticks : 0;
+    gb->ir_off_delay_remaining = 0;
+}
+
 void GB_set_rumble_callback(GB_gameboy_t *gb, GB_rumble_callback_t callback)
 {
     if (!callback) {

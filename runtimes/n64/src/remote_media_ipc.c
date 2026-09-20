@@ -23,11 +23,39 @@
 #endif
 
 #define INTEGRAL_N64_RUNTIME_MEDIA_IPC_MAGIC "S64IPC1"
-#define INTEGRAL_N64_RUNTIME_MEDIA_IPC_VERSION 3u
+#define INTEGRAL_N64_RUNTIME_MEDIA_IPC_VERSION 4u
+
+int integral_n64_runtime_scale_stream_frame(const uint8_t *source,
+    uint32_t width, uint32_t height, size_t pitch, uint8_t *destination)
+{
+    if (!source || !destination || !width || !height ||
+        width > 8192u || height > 8192u || pitch < (size_t)width * 3u ||
+        pitch > (size_t)width * 3u + 7u) return -1;
+    uint32_t w = INTEGRAL_N64_RUNTIME_STREAM_WIDTH;
+    uint32_t h = INTEGRAL_N64_RUNTIME_STREAM_HEIGHT;
+    if ((uint64_t)width * h > (uint64_t)height * w)
+        h = (uint32_t)((uint64_t)height * w / width);
+    else
+        w = (uint32_t)((uint64_t)width * h / height);
+    if (!w) w = 1;
+    if (!h) h = 1;
+    uint32_t left = (INTEGRAL_N64_RUNTIME_STREAM_WIDTH - w) / 2u;
+    uint32_t top = (INTEGRAL_N64_RUNTIME_STREAM_HEIGHT - h) / 2u;
+    memset(destination, 0, INTEGRAL_N64_RUNTIME_STREAM_BYTES);
+    for (uint32_t y = 0; y < h; ++y) {
+        const uint8_t *row = source + (size_t)((uint64_t)y * height / h) * pitch;
+        uint8_t *out = destination + ((size_t)(top + y) *
+            INTEGRAL_N64_RUNTIME_STREAM_WIDTH + left) * 3u;
+        for (uint32_t x = 0; x < w; ++x)
+            memcpy(out + x * 3u, row + (size_t)((uint64_t)x * width / w) * 3u, 3u);
+    }
+    return 0;
+}
 
 typedef struct IntegralN64RuntimeRemoteMediaShared {
     char magic[8];
     uint32_t version;
+    _Atomic int screenshot; /* 0 idle, 1 requested, 2 capturing, 3 saved, -1 failed */
     _Atomic uint32_t video_guard;
     uint32_t video_sequence;
     uint32_t video_width;
@@ -132,6 +160,36 @@ int integral_n64_runtime_remote_media_open_writer(const char *path)
 int integral_n64_runtime_remote_media_open_reader(const char *path)
 {
     return map_file(path, 0);
+}
+
+int integral_n64_runtime_remote_media_request_screenshot(void)
+{
+    int idle = 0;
+    return g_shared && atomic_compare_exchange_strong(&g_shared->screenshot, &idle, 1)
+        ? 0 : -1;
+}
+
+int integral_n64_runtime_remote_media_take_screenshot_request(void)
+{
+    int requested = 1;
+    return g_shared && atomic_compare_exchange_strong(&g_shared->screenshot, &requested, 2);
+}
+
+void integral_n64_runtime_remote_media_finish_screenshot(int saved)
+{
+    int capturing = 2;
+    if (g_shared)
+        (void)atomic_compare_exchange_strong(&g_shared->screenshot, &capturing, saved ? 3 : -1);
+}
+
+int integral_n64_runtime_remote_media_screenshot_result(void)
+{
+    if (!g_shared) return 0;
+    int result = atomic_load(&g_shared->screenshot);
+    if ((result == 3 || result == -1) &&
+        atomic_compare_exchange_strong(&g_shared->screenshot, &result, 0))
+        return result == 3 ? 1 : -1;
+    return 0;
 }
 
 void integral_n64_runtime_remote_media_close(void)

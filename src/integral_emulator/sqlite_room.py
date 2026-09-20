@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import secrets
+import logging
 import sqlite3
 from typing import Any
 
@@ -155,6 +156,7 @@ class SQLiteRoomManager:
                     (self.server_id, room_code),
                 ).fetchone()
                 if target is None:
+                    self._log_join_unavailable(connection, room_code)
                     raise RoomCodeUnavailableError("ROOM is not available")
                 current = self._member_room_number(connection, user_id)
                 room_number = int(target["room_number"])
@@ -173,6 +175,7 @@ class SQLiteRoomManager:
                     (self.server_id, room_number),
                 ).fetchall()
                 if len(members) != 1 or int(members[0]["seat"]) != 1:
+                    self._log_join_unavailable(connection, room_code)
                     raise RoomCodeUnavailableError("ROOM is not available")
                 connection.execute(
                     """
@@ -196,6 +199,20 @@ class SQLiteRoomManager:
         except sqlite3.IntegrityError as error:
             raise AlreadyInRoomError("already in a ROOM") from error
         return self._room_from_record(room_number, record)
+
+    def _log_join_unavailable(self, connection, room_code: str) -> None:
+        row = connection.execute(
+            "SELECT room_number, game_started, link_session_id FROM rooms WHERE server_id=? AND room_code=?",
+            (self.server_id, room_code),
+        ).fetchone()
+        seats = [] if row is None else [int(r[0]) for r in connection.execute(
+            "SELECT seat FROM room_members WHERE server_id=? AND room_number=? ORDER BY seat",
+            (self.server_id, row["room_number"]),
+        )]
+        logging.getLogger(__name__).info(
+            "room_join_unavailable server=%s exists=%s room=%s game_started=%s session_ref=%s seats=%s",
+            self.server_id, row is not None, row["room_number"] if row else None,
+            row["game_started"] if row else None, bool(row["link_session_id"]) if row else False, seats)
 
     def current_room(self, user_id: str) -> Room | None:
         with self.database.transaction() as connection:
@@ -345,15 +362,18 @@ class SQLiteRoomManager:
             return None
         return self._set_game(room_number, None, False, self._now_ms())
 
-    def leave_room(self, user_id: str) -> None:
+    def leave_room(self, user_id: str, reason: str = "room_closed_by_creator", *, expected_room_code: str | None = None, close_link_game: bool = False) -> None:
         now_ms = self._now_ms()
         with self.database.transaction(write=True) as connection:
             room_number = self._member_room_number(connection, user_id)
             if room_number is None:
                 return
             room = self._load_room(connection, room_number)
-            if room.get("room_code") and room["creator_user_id"] == user_id:
-                self._close_room(connection, room, "room_closed_by_creator", "CLOSED", now_ms)
+            if expected_room_code is not None and room["room_code"] != expected_room_code:
+                return
+            if room.get("room_code") and (room["creator_user_id"] == user_id or
+                    (close_link_game and room["room_type"] == "link_cable")):
+                self._close_room(connection, room, reason, "CLOSED", now_ms)
                 return
             connection.execute(
                 "DELETE FROM room_members WHERE server_id = ? AND room_number = ? AND user_id = ?",
@@ -369,9 +389,10 @@ class SQLiteRoomManager:
             connection.execute(
                 """
                 UPDATE rooms SET link_session_id = NULL, game_started = 0,
-                    updated_at_ms = ? WHERE server_id = ? AND room_number = ?
+                    updated_at_ms = ?, post_game_at_ms = ?
+                WHERE server_id = ? AND room_number = ?
                 """,
-                (now_ms, self.server_id, room_number),
+                (now_ms, now_ms, self.server_id, room_number),
             )
             remaining = connection.execute(
                 "SELECT COUNT(*) FROM room_members WHERE server_id = ? AND room_number = ?",

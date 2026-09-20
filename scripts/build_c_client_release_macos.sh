@@ -33,7 +33,7 @@ RELEASE_ROOT="${INTEGRAL_EMULATOR_RELEASE_ROOT}"
 mkdir -p "${RELEASE_ROOT}"
 APP_NAME="${INTEGRAL_EMULATOR_RELEASE_APP_NAME}"
 VERSION="$(
-  sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "${PROJECT_ROOT}/c_client/login_client.c" | head -n 1
+  sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "${PROJECT_ROOT}/c_client/client_version.h" | head -n 1
 )"
 if [[ -z "${VERSION}" ]]; then
   VERSION="0.0"

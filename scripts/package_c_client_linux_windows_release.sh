@@ -15,7 +15,7 @@ formal_args=()
 if [ "$output_root" = "$project_root/dist/releases" ]; then python3 "$project_root/scripts/write_release_manifest.py" --preflight-formal; formal_args=(--formal); fi
 release_date=${INTEGRAL_CLIENT_RELEASE_DATE:-$(date +%Y%m%d)}
 case "$release_date" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;; *) echo "Release date must be YYYYMMDD." >&2; exit 1;; esac
-version=$(sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "$project_root/c_client/login_client.c" | head -n 1)
+version=$(sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "$project_root/c_client/client_version.h" | head -n 1)
 [ -n "$version" ] || { echo "Could not read client version." >&2; exit 1; }; version_tag=$(printf '%s' "$version" | tr -cd 'A-Za-z0-9._-')
 linux_name="INTEGRAL_EMULATOR_C_CLIENT_${version_tag}_LINUX_X86_64_${release_date}"; windows_name="INTEGRAL_EMULATOR_C_CLIENT_${version_tag}_WINDOWS_X86_64_${release_date}"
 linux_package="$output_root/$linux_name"; windows_package="$output_root/$windows_name"; linux_archive="$output_root/$linux_name.tar.gz"; windows_archive="$output_root/$windows_name.zip"

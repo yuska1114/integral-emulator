@@ -773,7 +773,7 @@ SDL_Keycode integral_gb_runtime_key_config_turbo_hold_default(void)
 
 SDL_Keycode integral_gb_runtime_key_config_reset_default(void)
 {
-    return SDLK_i;
+    return SDLK_o;
 }
 
 void integral_gb_runtime_key_config_slot1_default(IntegralGBRuntimeKeyConfig *config)
@@ -941,6 +941,16 @@ static bool event_matches_scoped_device(int device_slot, SDL_JoystickID instance
 {
     OpenInputDevice *device = open_device_for_instance(instance_id);
     return device && strcmp(device->stable_id, binding_devices[device_slot].stable_id) == 0;
+}
+
+bool integral_gb_runtime_key_config_binding_rising(SDL_Keycode binding,
+                                                  const SDL_Event *event, bool *held)
+{
+    bool pressed = false;
+    if (!held || !integral_gb_runtime_key_config_binding_matches_event(binding, event, &pressed)) return false;
+    bool rising = pressed && !*held;
+    *held = pressed;
+    return rising;
 }
 
 bool integral_gb_runtime_key_config_binding_matches_event(SDL_Keycode binding,

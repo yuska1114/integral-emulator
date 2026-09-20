@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import math
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -26,9 +27,9 @@ from .storage import LeagueStorage
 
 
 GB_RUNTIME_FIXED_HOST_SESSION_LOCK = "gb-runtime-fixed-host-session"
-GB_RUNTIME_FIXED_HOST_REMOTE_RESUME_SECONDS = 20
+GB_RUNTIME_FIXED_HOST_REMOTE_RESUME_SECONDS = 25
 GB_RUNTIME_FIXED_HOST_ACTIVE_STATES = {
-    "PREFLIGHT", "READY", "WAITING_PEER", "RUNNING", "PAUSED_REMOTE", "FINALIZING"
+    "PREFLIGHT", "READY", "BLOCKED", "WAITING_PEER", "RUNNING", "PAUSED_REMOTE", "FINALIZING"
 }
 
 
@@ -51,6 +52,7 @@ class GBRuntimeFixedHostSession:
     pause_expires_at: str | None = None
     remote_disconnect_count: int = 0
     termination_reason: str | None = None
+    blocked_reason: str | None = None
     host_finish: dict[str, Any] | None = None
     remote_receipt: dict[str, Any] | None = None
     commit_result: dict[str, Any] | None = None
@@ -100,6 +102,7 @@ class GBRuntimeFixedHostSession:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "termination_reason": self.termination_reason,
+            "blocked_reason": self.blocked_reason,
             "pause_expires_at": self.pause_expires_at,
             "pause_remaining_seconds": pause_remaining_seconds,
             "remote_disconnect_count": self.remote_disconnect_count,
@@ -151,6 +154,8 @@ class GBRuntimeFixedHostSessionManager:
         session.manifest_object()
         if not hmac.compare_digest(session.manifest_digest, session.manifest_object().digest):
             raise ValidationError("fixed Host stored manifest digest mismatch")
+        if session.state == "PAUSED_REMOTE" and self._pause_expired(session):
+            return self.expire_remote_pause(session_id)
         return session
 
     def active_for_user(self, user_id: str) -> list[GBRuntimeFixedHostSession]:
@@ -164,6 +169,25 @@ class GBRuntimeFixedHostSessionManager:
             }:
                 sessions.append(session)
         return sessions
+
+    def block_preflight(self, session_id: str, user_id: str, reason: str) -> GBRuntimeFixedHostSession:
+        if reason not in {"rtc_save_required", "rom_unreadable"}:
+            raise ValidationError("invalid fixed Host blocked reason")
+        with self.storage.exclusive_lock(GB_RUNTIME_FIXED_HOST_SESSION_LOCK):
+            records = self.storage.load_gb_runtime_fixed_host_sessions()
+            session = self._get_locked(records, session_id)
+            if session.manifest_object().role_for(user_id) != "host":
+                raise ValidationError("only Host can report SAV preflight")
+            if session.state not in {"PREFLIGHT", "READY", "BLOCKED"}:
+                raise ValidationError("fixed Host preflight is closed")
+            previous_state = session.state
+            session = replace(session, state="BLOCKED", blocked_reason=reason, updated_at=now_iso())
+            self._save_locked(records, session)
+            logging.getLogger(__name__).info(
+                "fixed_host_lifecycle session=%s role=host from=%s to=BLOCKED blocked_reason=%s",
+                session.id, previous_state, reason,
+            )
+            return session
 
     def submit_preflight(
         self,
@@ -256,7 +280,7 @@ class GBRuntimeFixedHostSessionManager:
             return self.get(session_id)
 
     def issue_ticket(
-        self, session_id: str, user_id: str, ttl_seconds: int = 30
+        self, session_id: str, user_id: str, ttl_seconds: int = 30, *, resume: bool = False
     ) -> tuple[GBRuntimeFixedHostSession, str, str]:
         if not 1 <= ttl_seconds <= GB_RUNTIME_FIXED_HOST_RELAY_TICKET_MAX_SECONDS:
             raise ValidationError("invalid fixed Host relay ticket lifetime")
@@ -273,10 +297,14 @@ class GBRuntimeFixedHostSessionManager:
                 )
                 self._save_locked(records, session)
                 raise ValidationError("fixed Host remote resume timed out")
+            role = session.manifest_object().role_for(user_id)
+            if resume and session.state in {"RUNNING", "WAITING_PEER", "PAUSED_REMOTE"}:
+                session = replace(session, state="PAUSED_REMOTE", pause_expires_at=(
+                    session.pause_expires_at or (datetime.now(timezone.utc) + timedelta(
+                        seconds=GB_RUNTIME_FIXED_HOST_REMOTE_RESUME_SECONDS)).isoformat()))
             if session.state not in {"READY", "WAITING_PEER", "PAUSED_REMOTE"}:
                 raise ValidationError("fixed Host session is not ready")
-            role = session.manifest_object().role_for(user_id)
-            resuming_remote = session.state == "PAUSED_REMOTE" and role == "remote"
+            resuming_remote = session.state == "PAUSED_REMOTE" and (role == "remote" or resume)
             if session.state == "PAUSED_REMOTE" and not resuming_remote:
                 raise ValidationError("only the Remote may resume a paused fixed Host session")
             if getattr(session, f"{role}_ticket_sha256") is not None and not resuming_remote:
@@ -309,6 +337,8 @@ class GBRuntimeFixedHostSessionManager:
                 return False
             if session.state not in GB_RUNTIME_FIXED_HOST_ACTIVE_STATES:
                 return False
+            if session.pause_expires_at and self._pause_expired(session):
+                return False
             expected = getattr(session, f"{role}_ticket_sha256")
             expires_text = getattr(session, f"{role}_ticket_expires_at")
             used = getattr(session, f"{role}_ticket_used")
@@ -328,7 +358,9 @@ class GBRuntimeFixedHostSessionManager:
                     session,
                     **{
                         f"{role}_ticket_used": True,
-                        "state": "RUNNING" if host_used and remote_used else "WAITING_PEER",
+                        "state": "RUNNING" if host_used and remote_used else (
+                            "PAUSED_REMOTE" if session.pause_expires_at else "WAITING_PEER"
+                        ),
                         "pause_expires_at": None if host_used and remote_used else session.pause_expires_at,
                         "updated_at": now_iso(),
                     },
@@ -395,7 +427,24 @@ class GBRuntimeFixedHostSessionManager:
             return self.remote_disconnected(session_id)
         if role != "host":
             raise ValidationError("invalid fixed Host disconnect role")
-        return self.cancel(session_id, "host disconnected")
+        with self.storage.exclusive_lock(GB_RUNTIME_FIXED_HOST_SESSION_LOCK):
+            records = self.storage.load_gb_runtime_fixed_host_sessions()
+            session = self._get_locked(records, session_id)
+            if session.state not in {"READY", "WAITING_PEER", "RUNNING", "PAUSED_REMOTE"}:
+                return session
+            session = self._pause_transport(session)
+            self._save_locked(records, session)
+            return session
+
+    @staticmethod
+    def _pause_transport(session: GBRuntimeFixedHostSession) -> GBRuntimeFixedHostSession:
+        return replace(session, state="PAUSED_REMOTE",
+                       pause_expires_at=session.pause_expires_at or (
+                           datetime.now(timezone.utc) + timedelta(
+                               seconds=GB_RUNTIME_FIXED_HOST_REMOTE_RESUME_SECONDS)).isoformat(),
+                       host_ticket_sha256=None, remote_ticket_sha256=None,
+                       host_ticket_expires_at=None, remote_ticket_expires_at=None,
+                       host_ticket_used=False, remote_ticket_used=False, updated_at=now_iso())
 
     def cancel(self, session_id: str, reason: str) -> GBRuntimeFixedHostSession:
         with self.storage.exclusive_lock(GB_RUNTIME_FIXED_HOST_SESSION_LOCK):
@@ -542,12 +591,12 @@ class GBRuntimeFixedHostSessionManager:
 
     def session_is_active(self, session_id: str) -> bool:
         try:
-            return self.get(session_id).state in GB_RUNTIME_FIXED_HOST_ACTIVE_STATES
+            return self.expire_remote_pause(session_id).state in GB_RUNTIME_FIXED_HOST_ACTIVE_STATES
         except (NotFoundError, ValidationError):
             return False
 
-    def abort_relay_orphans(self) -> list[str]:
-        """Abort sessions whose live transport cannot survive a Relay restart."""
+    def pause_relay_orphans(self) -> list[str]:
+        """Give existing processes one bounded recovery window after restart."""
         aborted: list[str] = []
         with self.storage.exclusive_lock(GB_RUNTIME_FIXED_HOST_SESSION_LOCK):
             records = self.storage.load_gb_runtime_fixed_host_sessions()
@@ -559,13 +608,7 @@ class GBRuntimeFixedHostSessionManager:
                 )
                 if not transport_started:
                     continue
-                session = replace(
-                    session,
-                    state="ABORTED",
-                    termination_reason="media relay restarted",
-                    pause_expires_at=None,
-                    updated_at=now_iso(),
-                )
+                session = self._pause_transport(session)
                 self._save_locked(records, session)
                 aborted.append(session_id)
         return aborted

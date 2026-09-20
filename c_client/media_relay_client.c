@@ -155,20 +155,20 @@ static bool field_is_safe(const char *value)
 }
 
 #ifdef INTEGRAL_USE_OPENSSL
-static void set_socket_timeouts(IntegralMediaSocket sock)
+static void set_socket_timeouts(IntegralMediaSocket sock, unsigned seconds)
 {
 #ifdef _WIN32
-    DWORD timeout_ms = INTEGRAL_MEDIA_TIMEOUT_SECONDS * 1000u;
+    DWORD timeout_ms = seconds * 1000u;
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms));
 #else
-    struct timeval timeout = {.tv_sec = INTEGRAL_MEDIA_TIMEOUT_SECONDS, .tv_usec = 0};
+    struct timeval timeout = {.tv_sec = seconds, .tv_usec = 0};
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 #endif
 }
 
-static IntegralMediaSocket connect_tcp(const char *host, unsigned port)
+static IntegralMediaSocket connect_tcp(const char *host, unsigned port, unsigned seconds)
 {
     if (ensure_sockets() != 0) return INTEGRAL_MEDIA_INVALID_SOCKET;
     char port_text[16];
@@ -183,12 +183,38 @@ static IntegralMediaSocket connect_tcp(const char *host, unsigned port)
     for (struct addrinfo *item = results; item; item = item->ai_next) {
         sock = socket(item->ai_family, item->ai_socktype, item->ai_protocol);
         if (sock == INTEGRAL_MEDIA_INVALID_SOCKET) continue;
-        if (connect(sock, item->ai_addr, item->ai_addrlen) == 0) break;
+#ifdef _WIN32
+        u_long nonblocking = 1;
+        ioctlsocket(sock, FIONBIO, &nonblocking);
+#else
+        int flags = fcntl(sock, F_GETFL, 0);
+        fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+#endif
+        int connected = connect(sock, item->ai_addr, (int)item->ai_addrlen);
+        if (connected != 0) {
+            fd_set writes; FD_ZERO(&writes); FD_SET(sock, &writes);
+            struct timeval timeout = {.tv_sec = seconds, .tv_usec = 0};
+            int socket_error = 0;
+#ifdef _WIN32
+            int size = sizeof(socket_error);
+#else
+            socklen_t size = sizeof(socket_error);
+#endif
+            connected = select((int)sock + 1, NULL, &writes, NULL, &timeout) > 0 &&
+                getsockopt(sock, SOL_SOCKET, SO_ERROR, (void *)&socket_error, &size) == 0 &&
+                socket_error == 0 ? 0 : -1;
+        }
+#ifdef _WIN32
+        nonblocking = 0; ioctlsocket(sock, FIONBIO, &nonblocking);
+#else
+        fcntl(sock, F_SETFL, flags);
+#endif
+        if (connected == 0) break;
         close_socket(sock);
         sock = INTEGRAL_MEDIA_INVALID_SOCKET;
     }
     freeaddrinfo(results);
-    if (sock != INTEGRAL_MEDIA_INVALID_SOCKET) set_socket_timeouts(sock);
+    if (sock != INTEGRAL_MEDIA_INVALID_SOCKET) set_socket_timeouts(sock, seconds);
     return sock;
 }
 #endif
@@ -369,8 +395,19 @@ int integral_media_relay_connect(const char *host,
                             char *error_out,
                             size_t error_out_size)
 {
+    return integral_media_relay_connect_timeout(host, port, transport, session_id, role,
+        scope, ticket, ca_file, connection_out, error_out, error_out_size,
+        INTEGRAL_MEDIA_TIMEOUT_SECONDS);
+}
+
+int integral_media_relay_connect_timeout(const char *host, unsigned port,
+    const char *transport, const char *session_id, const char *role, const char *scope,
+    const char *ticket, const char *ca_file, IntegralMediaRelayConnection **connection_out,
+    char *error_out, size_t error_out_size, unsigned timeout_seconds)
+{
     if (connection_out) *connection_out = NULL;
-    if (!connection_out || !field_is_safe(host) || port == 0 || port > 65535 ||
+    if (!connection_out || timeout_seconds < 1 || timeout_seconds > 10 ||
+        !field_is_safe(host) || port == 0 || port > 65535 ||
         (!transport || (strcmp(transport, "tls") != 0 && strcmp(transport, "plain") != 0)) ||
         !field_is_safe(session_id) || !field_is_safe(role) || !field_is_safe(scope) ||
         !field_is_safe(ticket)) {
@@ -396,7 +433,7 @@ int integral_media_relay_connect(const char *host,
         integral_media_relay_close(connection);
         return -1;
     }
-    connection->sock = connect_tcp(host, port);
+    connection->sock = connect_tcp(host, port, timeout_seconds);
     if (connection->sock == INTEGRAL_MEDIA_INVALID_SOCKET) {
         copy_error(error_out, error_out_size, "MEDIA RELAY TCP FAILED");
         integral_media_relay_close(connection);

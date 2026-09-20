@@ -3,6 +3,7 @@
 #include "remote_media_ipc.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -154,12 +155,52 @@ static int inspect_runtime(const char *path)
     return 0;
 }
 
+static void test_fixed_stream_size(void)
+{
+    const unsigned sizes[][2] = {{640,480},{1280,960},{1920,1080},{300,600},{641,479},{3840,2160}};
+    uint8_t *out = malloc(INTEGRAL_N64_RUNTIME_STREAM_BYTES);
+    assert(out);
+    for (unsigned i = 0; i < sizeof(sizes)/sizeof(sizes[0]); ++i) {
+        unsigned w = sizes[i][0], h = sizes[i][1];
+        size_t pitch = ((size_t)w * 3u + 3u) & ~(size_t)3u;
+        uint8_t *in = malloc(pitch * h);
+        assert(in);
+        memset(in, 231, pitch * h); /* Padding must never become a pixel. */
+        for (unsigned y = 0; y < h; ++y)
+            for (unsigned x = 0; x < w; ++x) {
+                in[y*pitch+x*3] = (uint8_t)(x%251);
+                in[y*pitch+x*3+1] = (uint8_t)(y%251);
+                in[y*pitch+x*3+2] = 127;
+            }
+        assert(integral_n64_runtime_scale_stream_frame(in, w, h, pitch, out) == 0);
+        unsigned fitted_w = 640, fitted_h = 480;
+        if (w * 480u > h * 640u) fitted_h = h * 640u / w;
+        else fitted_w = w * 480u / h;
+        for (unsigned y = 0; y < 480; ++y)
+            for (unsigned x = 0; x < 640; ++x) {
+                bool inside = x >= (640-fitted_w)/2 && x < (640-fitted_w)/2+fitted_w &&
+                              y >= (480-fitted_h)/2 && y < (480-fitted_h)/2+fitted_h;
+                unsigned sx = inside ? (x-(640-fitted_w)/2)*w/fitted_w : 0;
+                unsigned sy = inside ? (y-(480-fitted_h)/2)*h/fitted_h : 0;
+                assert(out[(y*640+x)*3] == (inside ? sx%251 : 0));
+                assert(out[(y*640+x)*3+1] == (inside ? sy%251 : 0));
+                assert(out[(y*640+x)*3+2] == (inside ? 127 : 0));
+            }
+        free(in);
+    }
+    assert(integral_n64_runtime_scale_stream_frame(out, 0, 480, 1920, out) == -1);
+    assert(integral_n64_runtime_scale_stream_frame(out, 640, 480, 1, out) == -1);
+    free(out);
+    puts("Fixed 640x480 stream: repeated resize, aspect bars, HiDPI and padded rows PASS");
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--inspect-producer") == 0)
         return print_producer_metrics(argv[2]);
     if (argc == 3 && strcmp(argv[1], "--inspect") == 0) return inspect_runtime(argv[2]);
     if (argc != 2) return 2;
+    test_fixed_stream_size();
     uint8_t video[4 * 3 * 3];
     int16_t audio[8];
     for (unsigned index = 0; index < sizeof(video); index++) video[index] = (uint8_t)index;
@@ -195,6 +236,18 @@ int main(int argc, char **argv)
     uint32_t bytes = 0;
     uint64_t capture_age_us = 0;
     assert(integral_n64_runtime_remote_media_open_reader(argv[1]) == 0);
+    assert(integral_n64_runtime_remote_media_request_screenshot() == 0);
+    assert(integral_n64_runtime_remote_media_request_screenshot() == -1);
+    assert(integral_n64_runtime_remote_media_take_screenshot_request() == 1);
+    assert(integral_n64_runtime_remote_media_take_screenshot_request() == 0);
+    assert(integral_n64_runtime_remote_media_screenshot_result() == 0);
+    integral_n64_runtime_remote_media_finish_screenshot(1);
+    assert(integral_n64_runtime_remote_media_screenshot_result() == 1);
+    assert(integral_n64_runtime_remote_media_screenshot_result() == 0);
+    assert(integral_n64_runtime_remote_media_request_screenshot() == 0);
+    assert(integral_n64_runtime_remote_media_take_screenshot_request() == 1);
+    integral_n64_runtime_remote_media_finish_screenshot(0);
+    assert(integral_n64_runtime_remote_media_screenshot_result() == -1);
     assert(integral_n64_runtime_remote_media_read_video(&video_sequence, read_video, sizeof(read_video),
                                               &width, &height, &flags, &bytes,
                                               &capture_age_us) == 1);

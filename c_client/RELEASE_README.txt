@@ -48,7 +48,7 @@ Linux x86-64
   sudo apt update
   sudo apt install -y libsdl2-2.0-0 libsdl2-ttf-2.0-0 libssl3 ca-certificates \
     libfreetype6 libgl1 libglu1-mesa libpng16-16 zlib1g libsamplerate0 \
-    libspeexdsp1 libvulkan1
+    libspeexdsp1 libvulkan1 fonts-noto-cjk
 
 tar.gzファイルを展開し、展開先フォルダをターミナルで開いて、次のコマンドを
 実行します。

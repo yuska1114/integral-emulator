@@ -21,6 +21,9 @@ typedef struct IntegralConfigKeys {
     char slot1[INTEGRAL_CONFIG_KEY_SPEC_MAX];
     char slot2[INTEGRAL_CONFIG_KEY_SPEC_MAX];
     char n64_p1[INTEGRAL_CONFIG_KEY_SPEC_MAX];
+    char n64_p2[INTEGRAL_CONFIG_KEY_SPEC_MAX];
+    char n64_p3[INTEGRAL_CONFIG_KEY_SPEC_MAX];
+    char n64_p4[INTEGRAL_CONFIG_KEY_SPEC_MAX];
     char fast[INTEGRAL_CONFIG_KEY_NAME_MAX];
     char screenshot[INTEGRAL_CONFIG_KEY_NAME_MAX];
     char escape[INTEGRAL_CONFIG_KEY_NAME_MAX];
@@ -38,6 +41,7 @@ typedef struct IntegralConfigLogin {
 typedef struct IntegralConfigLocal {
     int slot1_index;
     int slot2_index;
+    unsigned ir_off_delay_ticks;
 } IntegralConfigLocal;
 
 typedef struct IntegralConfigWindow {
@@ -54,10 +58,14 @@ typedef struct IntegralConfigRomSlot {
 int integral_config_load_login(const char *path, IntegralConfigLogin *login);
 int integral_config_save_login(const char *path, const IntegralConfigLogin *login);
 int integral_config_load_local(const char *path, IntegralConfigLocal *local);
+unsigned integral_config_ir_off_delay(const char *path);
 int integral_config_save_local(const char *path, const IntegralConfigLocal *local);
 int integral_config_load_window(const char *path, IntegralConfigWindow *window);
 int integral_config_save_window(const char *path, const IntegralConfigWindow *window);
 int integral_config_load_keys(const char *path, IntegralConfigKeys *keys);
+void integral_keys_defaults(IntegralConfigKeys *keys);
+void integral_keys_reset_editable_defaults(IntegralConfigKeys *keys);
+void integral_keys_apply_defaults_for_missing(IntegralConfigKeys *keys);
 int integral_config_save_keys(const char *path, const IntegralConfigKeys *keys);
 int integral_config_load_rom_slots(const char *path, IntegralConfigRomSlot *slots, size_t slot_count);
 int integral_config_save_rom_slots(const char *path, const IntegralConfigRomSlot *slots, size_t slot_count);

@@ -18,6 +18,9 @@ static ptrdiff_t get(void *ctx, uint8_t *dst, size_t size) {
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 int main(void) {
     Buffer b = {0}; IntegralGBRuntimeFixedHostResult in = {0}, out = {0};
+    CHECK(integral_gb_runtime_fixed_host_ipc_request_ticket(put, &b));
+    CHECK(integral_gb_runtime_fixed_host_ipc_receive_event(get, &b, &out) == 2);
+    CHECK(!out.host && !out.candidates.host_data && !out.candidates.remote_data);
     in.host = true; in.final_frame = 77u; memset(in.terminal_digest, 0x42, 32u);
     in.candidates.host_size = 3u; in.candidates.remote_size = 4u;
     in.candidates.host_data = malloc(3u); in.candidates.remote_data = malloc(4u);

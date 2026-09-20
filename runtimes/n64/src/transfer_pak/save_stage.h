@@ -18,6 +18,8 @@ typedef struct TransferPakSaveStage {
 } TransferPakSaveStage;
 
 uint32_t transfer_pak_gb_ram_size(const char *rom_path);
+int transfer_pak_memory_rtc(int has_rtc, size_t ram, const unsigned char *save,
+                           size_t size, unsigned char rtc[48]);
 int transfer_pak_save_stage_prepare(TransferPakSaveStage *stage, const char *rom_path,
                              const char *save_path, char *mupen_path,
                              size_t mupen_path_capacity);
@@ -25,4 +27,3 @@ int transfer_pak_save_stage_finalize(TransferPakSaveStage *stage);
 void transfer_pak_save_stage_discard(TransferPakSaveStage *stage);
 
 #endif
-

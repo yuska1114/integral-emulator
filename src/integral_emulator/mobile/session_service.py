@@ -135,6 +135,8 @@ class MobileSessionManager:
         )
 
     def _create_sqlite(self, *, identity, journal_key, user_id, auth_session_id_digest, save_id, rom_id, rom_header_title, package, lease_expires_at):
+        # A replaced slot must not recreate a retired Mobile request/session.
+        self.saves.get_save(save_id, user_id)
         timestamp_ms = self._now_ms()
         try:
             journal, _is_new = self.session_repository.prepare_mobile_create(

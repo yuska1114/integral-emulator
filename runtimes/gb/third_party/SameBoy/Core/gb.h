@@ -395,6 +395,8 @@ struct GB_gameboy_internal_s {
         uint16_t address_bus;
         uint8_t data_bus; // cart data bus (MAIN)
         uint32_t data_bus_decay_countdown;
+        /* Integral: emulated IR release countdown (8 MHz ticks). */
+        unsigned ir_off_delay_remaining;
     )
 
     /* DMA and HDMA */
@@ -837,6 +839,7 @@ struct GB_gameboy_internal_s {
         uint8_t boot_rom[0x900];
         bool vblank_just_occured; // For slow operations involving syscalls; these should only run once per vblank
         unsigned cycles_since_run; // How many cycles have passed since the last call to GB_run(), in 8MHz units
+        unsigned ir_off_delay_ticks; /* Integral opt-in IR release delay, not battery data. */
         double clock_multiplier;
         GB_rumble_mode_t rumble_mode;
         uint32_t rumble_on_cycles;
@@ -964,6 +967,8 @@ uint32_t *GB_get_pixels_output(GB_gameboy_t *gb);
 void GB_set_border_mode(GB_gameboy_t *gb, GB_border_mode_t border_mode);
     
 void GB_set_infrared_input(GB_gameboy_t *gb, bool state);
+/* Integral extension. Zero retains upstream behavior; range 0..256 ticks. */
+void GB_set_infrared_off_delay(GB_gameboy_t *gb, unsigned ticks);
     
 void GB_set_log_callback(GB_gameboy_t *gb, GB_log_callback_t callback);
 void GB_set_input_callback(GB_gameboy_t *gb, GB_input_callback_t callback);

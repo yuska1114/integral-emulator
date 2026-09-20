@@ -14,13 +14,13 @@ from integral_emulator.gb_runtime_link_modes import GB_RUNTIME_LINK_RUNTIME
 from integral_emulator.n64_runtime_media_sessions import MEDIA_TICKET_SCOPE
 from integral_emulator.n64_runtime_media_relay import CONTROL_MAGIC, HANDSHAKE_MAGIC as MEDIA_HANDSHAKE_MAGIC
 from integral_emulator.sessions import LinkSessionStatus
-from integral_emulator.ui import ADMIN_HTML, DASHBOARD_HTML
+from integral_emulator.ui import ADMIN_HTML, ADMIN_LOGIN_HTML
 
 
 class NamingContractTests(unittest.TestCase):
     def test_public_product_and_server_names(self) -> None:
         self.assertIn("INTEGRAL EMULATOR", ADMIN_HTML)
-        self.assertIn("INTEGRAL EMULATOR", DASHBOARD_HTML)
+        self.assertIn("INTEGRAL EMULATOR", ADMIN_LOGIN_HTML)
         with tempfile.TemporaryDirectory() as directory:
             app = LeagueApplication(Path(directory))
             self.assertEqual(app.environments["primary"].name, "PRIMARY")
@@ -29,13 +29,16 @@ class NamingContractTests(unittest.TestCase):
     def test_server_environment_contract_is_static(self) -> None:
         root = Path(__file__).resolve().parents[1]
         client = (root / "c_client" / "login_client.c").read_text(encoding="utf-8")
+        account_header = (root / "c_client" / "client_account.h").read_text(encoding="utf-8")
+        login_ui = (root / "c_client" / "client_ui_account.c").read_text(encoding="utf-8")
         http_header = (root / "c_client" / "http_client.h").read_text(encoding="utf-8")
-        http_source = (root / "c_client" / "http_client.c").read_text(encoding="utf-8")
-        self.assertIn('#define INTEGRAL_PRIMARY_SERVER_ID "primary"', client)
-        self.assertIn('#define INTEGRAL_SECONDARY_SERVER_ID "secondary"', client)
-        self.assertIn('draw_field(renderer, 88, "SERVER", mutable_state.server', client)
-        self.assertIn('draw_field(renderer, 142, "ENV", login_server_label(state)', client)
-        self.assertIn("save_login_form_config(&state)", client)
+        http_source = "\n".join(path.read_text(encoding="utf-8") for path in [root / "c_client/http_client.c", *sorted((root / "c_client").glob("api_*.c"))])
+        self.assertIn('#define INTEGRAL_PRIMARY_SERVER_ID "primary"', account_header)
+        self.assertIn('#define INTEGRAL_SECONDARY_SERVER_ID "secondary"', account_header)
+        self.assertIn('.server_label = login_server_label(state)', (root / "c_client/client_view.c").read_text(encoding="utf-8"))
+        self.assertIn('integral_client_ui_draw_field(renderer, 88, "SERVER", view->server', login_ui)
+        self.assertIn('integral_client_ui_draw_field(renderer, 142, "ENV", view->server_label', login_ui)
+        self.assertIn("save_login_form_config(&state.login, state.base_config_path)", client)
         self.assertNotIn("integral_api_get_servers", http_header)
         self.assertNotIn("integral_api_get_servers", http_source)
         self.assertNotIn('"/servers"', http_source)
@@ -123,7 +126,7 @@ class NamingContractTests(unittest.TestCase):
         client = (root / "c_client" / "login_client.c").read_text(encoding="utf-8")
         self.assertIn("TARGET := $(BUILD_DIR)/integral_client$(EXEEXT)", makefile)
         self.assertNotIn("gsc_login_client", makefile)
-        self.assertIn('"integral_client.log"', client)
+        self.assertIn('"integral_client.log"', (root / "c_client/client_log.c").read_text(encoding="utf-8"))
         self.assertNotIn('"' + "gsc" + '_client.log"', client)
         self.assertNotIn("UPLOADING" + " ROM", client)
 
@@ -190,8 +193,8 @@ class NamingContractTests(unittest.TestCase):
 
     def test_room_protocol_is_checked_directly_and_fails_closed(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        client = (root / "c_client" / "login_client.c").read_text(encoding="utf-8")
-        http_client = (root / "c_client" / "http_client.c").read_text(encoding="utf-8")
+        client = (root / "c_client" / "client_room_link.c").read_text(encoding="utf-8")
+        http_client = "\n".join(path.read_text(encoding="utf-8") for path in [root / "c_client/http_client.c", *sorted((root / "c_client").glob("api_*.c"))])
         makefile = (root / "c_client" / "Makefile").read_text(encoding="utf-8")
         self.assertIn('strcmp(protocol_id, "gb_runtime_fixed_host_v1") != 0', client)
         self.assertIn('"CLIENT CAPABILITY MISMATCH"', client)
@@ -430,9 +433,10 @@ class NamingContractTests(unittest.TestCase):
         self.assertNotIn("SERVER_BIN := $(BUILD_DIR)/gb_runtime_", gb_makefile)
         self.assertNotIn("$(BUILD_DIR)/remote_dual_", gb_makefile)
         self.assertIn("frontend: build/integral_n64_runtime_frontend$(EXEEXT)", n64_makefile)
-        self.assertIn(
-            "src/platform/thread.h | source-stack", n64_makefile
-        )
+        frontend_rule = next(line for line in n64_makefile.splitlines()
+                             if line.startswith("build/integral_n64_runtime_frontend$(EXEEXT):"))
+        self.assertIn("src/platform/thread.h", frontend_rule)
+        self.assertIn("| source-stack", frontend_rule)
         self.assertNotIn("build/N64 Runtime", n64_makefile)
         client_makefile = (root / "c_client" / "Makefile").read_text(encoding="utf-8")
         self.assertIn("../runtimes/n64/src/remote_media_ipc.c", client_makefile)

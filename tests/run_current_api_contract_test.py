@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import ssl
 import subprocess
 import sys
@@ -336,10 +337,15 @@ def run_case(
     certificate_dir = Path(certificate_temp.name)
     cert = certificate_dir / "api.crt"
     key = certificate_dir / "api.key"
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    host = "localhost" if api_tls else "127.0.0.1"
+    family, _, _, _, address = socket.getaddrinfo(host, 0, type=socket.SOCK_STREAM)[0]
+
+    class ContractHTTPServer(ThreadingHTTPServer):
+        address_family = family
+
+    server = ContractHTTPServer(address, Handler)
     environment = os.environ.copy()
     scheme = "http"
-    host = "127.0.0.1"
     if api_tls:
         subprocess.run(
             [
@@ -356,7 +362,6 @@ def run_case(
         server.socket = context.wrap_socket(server.socket, server_side=True)
         environment["SSL_CERT_FILE"] = str(cert)
         scheme = "https"
-        host = "localhost"
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

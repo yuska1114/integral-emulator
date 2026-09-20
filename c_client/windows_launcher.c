@@ -73,17 +73,14 @@ static bool set_packaged_environment(const wchar_t *release_dir)
     wchar_t path[MAX_PATH];
     if (!prepend_runtime_path()) return false;
 
-    if (join_path(path, MAX_PATH, release_dir, L"runtimes\\gb\\integral_gb_runtime_dual_server.exe")) {
-        SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_DUAL_SERVER", path);
-    }
-    if (join_path(path, MAX_PATH, release_dir, L"runtimes\\gb\\integral_gb_runtime_fixed_host.exe")) {
-        SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RUNTIME", path);
-    }
-    if (join_path(path, MAX_PATH, release_dir, L"runtimes\\gb\\integral_gb_runtime_mobile_runtime.exe")) {
-        SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_MOBILE_RUNTIME", path);
-    }
+    SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_DUAL_SERVER",
+                            L"runtimes\\gb\\integral_gb_runtime_dual_server.exe");
+    SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RUNTIME",
+                            L"runtimes\\gb\\integral_gb_runtime_fixed_host.exe");
+    SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_GB_RUNTIME_MOBILE_RUNTIME",
+                            L"runtimes\\gb\\integral_gb_runtime_mobile_runtime.exe");
     /*
-     * The child starts in release_dir. Keep N64 and DLL lookup paths relative
+     * The child starts in release_dir. Keep GB, N64 and DLL lookup paths relative
      * so ANSI runtime APIs never have to round-trip a non-ASCII package path.
      */
     SetEnvironmentVariableW(L"INTEGRAL_EMULATOR_N64_RUNTIME_HOME", L"runtimes\\n64");

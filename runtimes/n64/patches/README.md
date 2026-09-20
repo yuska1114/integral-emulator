@@ -11,6 +11,10 @@
 - `mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch`: Transfer Pak用MBC3 RTC sidecar
 - `mupen64plus-core-homebrew-transferpak.patch`: media loader使用時のTransfer Pak有効化
 - `mupen64plus-core-current-rdram.patch`: 現行RDRAM処理のbackport
+- `mupen64plus-core-startup-focus.patch`: 共通SDL処理によるゲーム開始時1回だけの前面化
+
+- `mupen64plus-core-util-keys.patch`: 設定STOPの確認、共通の撮影名、撮影結果通知
+- `mupen64plus-core-transferpak-memory.patch`: ROOM専用のGB RAM・RTCメモリ保存層（LOCALのファイル保存は維持）
 
 ## mupen64plus-input-sdl
 

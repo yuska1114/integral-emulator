@@ -7,6 +7,10 @@
 #include <stdint.h>
 
 typedef struct IntegralMediaRelayConnection IntegralMediaRelayConnection;
+int integral_media_relay_connect_timeout(const char *host, unsigned port,
+    const char *transport, const char *session_id, const char *role, const char *scope,
+    const char *ticket, const char *ca_file, IntegralMediaRelayConnection **connection_out,
+    char *error_out, size_t error_out_size, unsigned timeout_seconds);
 
 #define INTEGRAL_MEDIA_MESSAGE_CONTROLLER_INPUT 1u
 #define INTEGRAL_MEDIA_MESSAGE_H264_CONFIG 2u

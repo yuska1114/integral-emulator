@@ -1,6 +1,8 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "media_relay_client.h"
+#include "../runtimes/common/screenshot.h"
+#include "../runtimes/common/window_focus.h"
 #include "n64_runtime_media_stream.h"
 #include "sdl_text.h"
 #include "gb_runtime_fixed_host_runtime.h"
@@ -27,6 +29,7 @@
 #include <io.h>
 #else
 #include <signal.h>
+#include <sys/select.h>
 #include <unistd.h>
 #endif
 
@@ -48,6 +51,7 @@ typedef struct Options {
     const char *rom2;
     const char *ca_file;
     uint64_t rtc_target_unix;
+    unsigned ir_off_delay_ticks;
     const char *test_macro_host;
     const char *test_macro_remote;
     unsigned test_macro_press_frames;
@@ -55,6 +59,7 @@ typedef struct Options {
     unsigned window_width;
     unsigned window_height;
     IntegralGBRuntimeKeyConfig keys;
+    SDL_Keycode screenshot_key, escape_key;
     bool snapshot_stdin;
     IntegralGBRuntimeFixedHostSnapshotPair snapshots;
     intptr_t result_handle;
@@ -63,6 +68,8 @@ typedef struct Options {
 } Options;
 
 typedef struct HostVideo {
+    char notice[32];
+    Uint64 notice_until;
     SDL_Window *window;
     SDL_Renderer *renderer;
     SDL_Texture *texture;
@@ -196,6 +203,9 @@ static int parse_options(int argc, char **argv, Options *options)
 {
     memset(options, 0, sizeof(*options));
     options->relay_port = 25164u;
+    options->ir_off_delay_ticks = 32;
+    options->screenshot_key = SDLK_p;
+    options->escape_key = SDLK_ESCAPE;
     options->test_macro_host = "A|A";
     options->test_macro_remote = "A|A";
     options->test_macro_press_frames = 8u;
@@ -229,6 +239,12 @@ static int parse_options(int argc, char **argv, Options *options)
     }
     {
         const char *value;
+        if ((value = getenv("INTEGRAL_EMULATOR_GB_IR_OFF_DELAY_TICKS"))) {
+            char *end;
+            unsigned long ticks = strtoul(value, &end, 10);
+            if (end == value || *end || ticks > 256) return -1;
+            options->ir_off_delay_ticks = (unsigned)ticks;
+        }
         if (!options->role && (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE")))
             options->role = value;
         if (!options->relay_host && (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST")))
@@ -278,6 +294,12 @@ static int parse_options(int argc, char **argv, Options *options)
         if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_KEYS")) &&
             integral_gb_runtime_key_config_parse(&options->keys, value) != 0) return -1;
     }
+    const char *screenshot = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SCREENSHOT_KEY");
+    const char *escape = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ESCAPE_KEY");
+    if (screenshot && (options->screenshot_key =
+        integral_gb_runtime_key_config_key_from_name(screenshot)) == SDLK_UNKNOWN) return -1;
+    if (escape && (options->escape_key =
+        integral_gb_runtime_key_config_key_from_name(escape)) == SDLK_UNKNOWN) return -1;
     if ((options->window_width == 0u) != (options->window_height == 0u)) return -1;
     if (!options->role || !options->relay_host || !options->session_id ||
         !options->relay_transport ||
@@ -359,7 +381,7 @@ static ptrdiff_t file_read_callback(void *context, uint8_t *data, size_t size)
 static IntegralGBRuntimeFixedHostExitSelection poll_input(
                        IntegralGBRuntimeFixedHostProductRuntime *product,
                        IntegralN64RuntimeMediaStream *stream,
-                       const Options *options)
+                       const Options *options, bool *screenshot_requested)
 {
     SDL_Event event;
     bool headless_smoke =
@@ -368,6 +390,11 @@ static IntegralGBRuntimeFixedHostExitSelection poll_input(
         if (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_JOYDEVICEADDED ||
             event.type == SDL_CONTROLLERDEVICEREMOVED || event.type == SDL_JOYDEVICEREMOVED) {
             integral_gb_runtime_key_config_handle_device_event(&event);
+            if (event.type == SDL_CONTROLLERDEVICEREMOVED || event.type == SDL_JOYDEVICEREMOVED) {
+                product->escape_held = product->screenshot_held = false;
+                product->buttons = 0u;
+                product->neutral_pending = true;
+            }
             continue;
         }
         bool close_requested = event.type == SDL_QUIT && !headless_smoke;
@@ -384,6 +411,7 @@ static IntegralGBRuntimeFixedHostExitSelection poll_input(
         }
         if (event.type == SDL_WINDOWEVENT &&
             event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+            product->escape_held = product->screenshot_held = false;
             integral_gb_runtime_fixed_host_product_runtime_focus_lost(product);
             continue;
         }
@@ -395,8 +423,10 @@ static IntegralGBRuntimeFixedHostExitSelection poll_input(
         uint8_t press_mask = 0u, release_mask = 0u;
         integral_gb_runtime_key_config_buttons_for_event(
             &options->keys, &event, &press_mask, &release_mask);
-        bool escape_pressed = !headless_smoke && event.type == SDL_KEYDOWN && !event.key.repeat &&
-                              event.key.keysym.sym == SDLK_ESCAPE;
+        bool escape_pressed = !headless_smoke && integral_gb_runtime_key_config_binding_rising(
+            options->escape_key, &event, &product->escape_held);
+        bool screenshot_pressed = integral_gb_runtime_key_config_binding_rising(
+            options->screenshot_key, &event, &product->screenshot_held);
         bool enter_pressed = event.type == SDL_KEYDOWN && !event.key.repeat &&
                              (event.key.keysym.sym == SDLK_RETURN ||
                               event.key.keysym.sym == SDLK_KP_ENTER);
@@ -429,6 +459,10 @@ static IntegralGBRuntimeFixedHostExitSelection poll_input(
             integral_gb_runtime_fixed_host_product_runtime_request_exit(product);
             integral_n64_runtime_media_stream_set_exit_confirmation(
                 stream, true, product->exit_confirm_yes);
+            continue;
+        }
+        if (screenshot_pressed) {
+            *screenshot_requested = true;
             continue;
         }
         if (press_mask) integral_gb_runtime_fixed_host_product_runtime_set_button(
@@ -467,6 +501,7 @@ static int host_video_open(HostVideo *video, const Options *options)
                                      SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI |
                                          SDL_WINDOW_RESIZABLE);
     if (!video->window) return -1;
+    integral_focus_new_game_window(video->window);
     SDL_SetWindowMinimumSize(video->window, GB_WIDTH, GB_HEIGHT);
     video->renderer = SDL_CreateRenderer(video->window, -1,
                                           SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
@@ -487,6 +522,20 @@ static int host_video_open(HostVideo *video, const Options *options)
     return 0;
 }
 
+static void host_video_capture(HostVideo *video, const IntegralGBRuntimeLinkEngine *engine)
+{
+            SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(
+                (void *)integral_gb_runtime_slot_presented_pixels(&engine->a),
+                GB_WIDTH, GB_HEIGHT, 32, GB_WIDTH * 4, SDL_PIXELFORMAT_ARGB8888);
+            char path[1024];
+            bool saved = surface && integral_screenshot_save_surface(
+                surface, "link_cable", "host", path, sizeof(path)) == 0;
+            SDL_FreeSurface(surface);
+            snprintf(video->notice, sizeof(video->notice), "%s",
+                     saved ? "SCREENSHOT SAVED" : "SCREENSHOT FAILED");
+            video->notice_until = SDL_GetTicks64() + 2000;
+}
+
 static void host_video_render(HostVideo *video,
                               const IntegralGBRuntimeLinkEngine *engine,
                               const IntegralGBRuntimeFixedHostProductRuntime *product)
@@ -504,6 +553,9 @@ static void host_video_render(HostVideo *video,
         .h = (int)(GB_HEIGHT * video->scale),
     };
     SDL_RenderCopy(video->renderer, video->texture, NULL, &content);
+    if (SDL_GetTicks64() < video->notice_until)
+        integral_sdl_draw_text(video->renderer, 8, 8, video->notice, 1,
+                               (SDL_Color){255, 255, 255, 255});
     if (product->exit_confirming) {
         int width = (int)(GB_WIDTH * video->scale);
         int height = (int)(GB_HEIGHT * video->scale);
@@ -637,8 +689,85 @@ static int wait_paired(IntegralMediaRelayConnection *connection)
     }
 }
 
-static int run_host(const Options *options, IntegralMediaRelayConnection *connection)
+static bool recover_transport(const Options *options, IntegralMediaRelayConnection **connection,
+                              IntegralN64RuntimeMediaStream *media,
+                              IntegralGBRuntimeFixedHostProductRuntime *product,
+                              HostVideo *video, IntegralGBRuntimeLinkEngine *engine,
+                              Uint64 existing_deadline)
 {
+    if (options->result_handle <= 0) return false;
+    integral_media_relay_close(*connection);
+    *connection = NULL;
+    integral_n64_runtime_media_stream_transport_lost(media);
+    product->buttons = 0;
+    Uint64 deadline = existing_deadline ? existing_deadline : SDL_GetTicks64() + 25000u;
+    Uint64 retry_at = 0;
+    bool requested = false;
+    char ticket[INTEGRAL_GB_RECONNECT_TICKET_BYTES] = {0}, error[192] = {0};
+    size_t received = 0;
+    printf("GB_FIXED_RECONNECT_BEGIN role=%s session=%s\n", options->role, options->session_id);
+    while (SDL_GetTicks64() < deadline) {
+        bool capture = false;
+        if (poll_input(product, video ? NULL : media, options, &capture) !=
+            INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_CONTINUE) break;
+        if (video) host_video_render(video, engine, product);
+        else integral_n64_runtime_media_stream_render(media, NULL, NULL);
+        if (*connection) {
+            int paired = integral_media_relay_poll(*connection, error, sizeof(error));
+            if (paired > 0) {
+                integral_gb_runtime_secure_zero(ticket, sizeof(ticket));
+                product->buttons = 0;
+                printf("GB_FIXED_RECONNECT_OK role=%s session=%s\n", options->role, options->session_id);
+                return true;
+            }
+            if (paired < 0) {
+                integral_media_relay_close(*connection); *connection = NULL;
+                requested = false; retry_at = SDL_GetTicks64() + 500u;
+            }
+        }
+        else if (!requested && SDL_GetTicks64() >= retry_at) {
+            if (!integral_gb_runtime_fixed_host_ipc_request_ticket(
+                result_write_callback, (void *)options->result_handle)) break;
+            requested = true; received = 0;
+            memset(ticket, 0, sizeof(ticket));
+        }
+        else if (requested) {
+            int amount = 0;
+#ifdef _WIN32
+            HANDLE input = (HANDLE)_get_osfhandle(_fileno(stdin));
+            DWORD available = 0, count = 0;
+            if (!PeekNamedPipe(input, NULL, 0, NULL, &available, NULL)) break;
+            if (available && !ReadFile(input, ticket + received,
+                (DWORD)(sizeof(ticket) - received), &count, NULL)) break;
+            amount = (int)count;
+#else
+            fd_set reads; FD_ZERO(&reads); FD_SET(STDIN_FILENO, &reads);
+            struct timeval immediate = {0, 0};
+            if (select(STDIN_FILENO + 1, &reads, NULL, NULL, &immediate) > 0) {
+                amount = (int)read(STDIN_FILENO, ticket + received, sizeof(ticket) - received);
+                if (amount <= 0) break;
+            }
+#endif
+            received += (size_t)amount;
+            if (received == sizeof(ticket)) {
+                if (ticket[sizeof(ticket) - 1] == '\0' && strlen(ticket) >= 24u)
+                    (void)integral_media_relay_connect_timeout(options->relay_host, options->relay_port,
+                        options->relay_transport, options->session_id, options->role, GB_FIXED_SCOPE,
+                        ticket, options->ca_file, connection, error, sizeof(error), 2);
+                integral_gb_runtime_secure_zero(ticket, sizeof(ticket));
+                requested = false; retry_at = SDL_GetTicks64() + 500u;
+            }
+        }
+        SDL_Delay(10);
+    }
+    integral_gb_runtime_secure_zero(ticket, sizeof(ticket));
+    fprintf(stderr, "GB_FIXED_RECONNECT_ENDED role=%s session=%s\n", options->role, options->session_id);
+    return false;
+}
+
+static int run_host(const Options *options, IntegralMediaRelayConnection **connection_owner)
+{
+    IntegralMediaRelayConnection *connection = *connection_owner;
     uint8_t *save1 = NULL, *save2 = NULL;
     size_t save1_size = 0, save2_size = 0;
     IntegralGBRuntimeFixedHostSnapshotPair snapshots = options->snapshots;
@@ -657,6 +786,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
         .remote_save = save2,
         .remote_save_size = save2_size,
         .rtc_target_unix = options->rtc_target_unix,
+        .ir_off_delay_ticks = options->ir_off_delay_ticks,
         .preserve_both_audio = true,
     };
     if (integral_gb_runtime_fixed_host_runtime_init(&runtime, &config) != 0) {
@@ -715,24 +845,28 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
     printf("GB_RUNTIME_FIXED_HOST paired session=%s role=host sav_writeback=disabled rom_transfer=disabled\n",
            options->session_id);
     bool normal_exit = false;
+    Uint64 recovery_deadline = 0;
     uint64_t headless_finish_frame = 0u;
     if (getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_HEADLESS_FINISH_FRAME"))
         headless_finish_frame = strtoull(
             getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_HEADLESS_FINISH_FRAME"), NULL, 10);
     while (true) {
-        if (poll_input(&product, NULL, options) ==
+        if (recovery_deadline && SDL_GetTicks64() >= recovery_deadline) break;
+        bool capture = false;
+        if (poll_input(&product, NULL, options, &capture) ==
             INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_HOST_FINISH) {
             fprintf(stderr, "GB fixed host local UI requested exit\n");
             normal_exit = true;
             break;
         }
+        if (capture) host_video_capture(&video, &runtime.engine);
         for (unsigned count = 0; count < 16u; count++) {
             uint8_t type = 0, payload[INTEGRAL_MEDIA_GB_INPUT_ACK_BYTES];
             uint32_t sequence = 0, size = 0;
             int got = integral_media_relay_poll_control(connection, &type, &sequence,
                                                          payload, sizeof(payload), &size,
                                                          error, sizeof(error));
-            if (got < 0) { fprintf(stderr, "%s\n", error); goto done; }
+            if (got < 0) { fprintf(stderr, "%s\n", error); goto reconnect; }
             if (!got) break;
             if (type == INTEGRAL_MEDIA_MESSAGE_GB_INPUT) {
                 remote_buttons = (uint8_t)get_be64(payload);
@@ -750,6 +884,13 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
             else if (type == INTEGRAL_MEDIA_MESSAGE_GB_SESSION_STATE &&
                      size == INTEGRAL_MEDIA_GB_SESSION_STATE_BYTES) {
                 uint32_t session_state = get_be32(payload);
+                if (session_state == 3u) {
+                    printf("GB_FIXED_SESSION_TERMINATED role=host\n");
+                    goto host_stopped;
+                }
+                if (session_state == 1u && !recovery_deadline)
+                    recovery_deadline = SDL_GetTicks64() + get_be32(payload + 4u);
+                else if (session_state == 2u) recovery_deadline = 0;
                 printf("GB_FIXED_SESSION_STATE role=host state=%u remaining_ms=%u\n",
                        session_state, get_be32(payload + 4u));
                 integral_gb_runtime_fixed_host_scheduler_set_paused(
@@ -760,7 +901,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
                     if (integral_n64_runtime_media_stream_prepare_video_resume(
                             media, connection, error, sizeof(error)) < 0) {
                         fprintf(stderr, "%s\n", error);
-                        goto done;
+                        goto reconnect;
                     }
                 }
             }
@@ -769,7 +910,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
         if (integral_n64_runtime_media_stream_pump_host_video_output(
                 media, connection, current, error, sizeof(error)) < 0) {
             fprintf(stderr, "GB fixed host async video send failed: %s\n", error);
-            goto done;
+            goto reconnect;
         }
         if (current < next_frame) {
             SDL_Delay((Uint32)((next_frame - current) / 1000u));
@@ -803,6 +944,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
                                                           INTEGRAL_MEDIA_MESSAGE_GB_INPUT_ACK,
                                                           output_sequence++, payload, sizeof(payload),
                                                           error, sizeof(error));
+            if (sent < 0) goto reconnect;
             if (sent > 0) {
                 printf("GB_FIXED_INPUT_APPLIED sequence=%u frame=%llu receive_to_apply_us=%llu\n",
                        pending_input_sequence,
@@ -827,7 +969,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
                                                                     (uint16_t)remote_audio,
                                                                     INTEGRAL_GB_RUNTIME_AUDIO_SAMPLE_RATE,
                                                                     current, error, sizeof(error)) < 0) {
-            fprintf(stderr, "%s\n", error); break;
+            fprintf(stderr, "%s\n", error); goto reconnect;
         }
         unsigned local_frames = integral_gb_runtime_slot_drain_audio(
             &runtime.engine.a, pcm, INTEGRAL_GB_RUNTIME_AUDIO_MAX_FRAMES);
@@ -836,8 +978,17 @@ static int run_host(const Options *options, IntegralMediaRelayConnection *connec
             SDL_ClearQueuedAudio(local_audio);
         }
         log_media_metrics("host", media, current);
+        continue;
+reconnect:
+        integral_gb_runtime_fixed_host_scheduler_set_paused(&scheduler, true);
+        if (local_audio) SDL_ClearQueuedAudio(local_audio);
+        if (!recover_transport(options, &connection, media, &product, &video, &runtime.engine, recovery_deadline)) break;
+        recovery_deadline = 0;
+        integral_gb_runtime_fixed_host_scheduler_set_paused(&scheduler, false);
+        remote_buttons = 0; pending_ack = false; next_frame = now_us();
     }
-done:
+host_stopped:
+    *connection_owner = connection;
     {
         const char *screenshot_a = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SCREENSHOT_A");
         const char *screenshot_b = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SCREENSHOT_B");
@@ -870,8 +1021,9 @@ done:
     return normal_exit ? 0 : 1;
 }
 
-static int run_remote(const Options *options, IntegralMediaRelayConnection *connection)
+static int run_remote(const Options *options, IntegralMediaRelayConnection **connection_owner)
 {
+    IntegralMediaRelayConnection *connection = *connection_owner;
     IntegralN64RuntimeMediaStream *media = integral_n64_runtime_media_stream_create(NULL, NULL);
     if (!media) return 1;
     integral_n64_runtime_media_stream_set_exit_discard_warning(
@@ -903,12 +1055,14 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
     bool terminal_received = false;
     bool local_leave = false;
     while (true) {
-        if (poll_input(&product, media, options) ==
+        bool capture = false;
+        if (poll_input(&product, media, options, &capture) ==
             INTEGRAL_GB_RUNTIME_FIXED_HOST_EXIT_REMOTE_LEAVE) {
             fprintf(stderr, "GB fixed host Remote UI requested leave\n");
             local_leave = true;
             break;
         }
+        if (capture) integral_n64_runtime_media_stream_save_screenshot(media, "link_cable");
         buttons = product.buttons;
         if (integral_gb_runtime_fixed_host_product_runtime_take_neutral(&product))
             last_sent_buttons = 0xffu;
@@ -921,7 +1075,7 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
                                                           INTEGRAL_MEDIA_MESSAGE_GB_INPUT,
                                                           sequence++, payload, sizeof(payload),
                                                           error, sizeof(error));
-            if (sent < 0) { fprintf(stderr, "%s\n", error); break; }
+            if (sent < 0) { fprintf(stderr, "%s\n", error); goto reconnect; }
             if (sent > 0) {
                 last_sent_buttons = buttons;
                 last_input_sent = current;
@@ -934,12 +1088,12 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
                                                           INTEGRAL_MEDIA_MESSAGE_GB_PING,
                                                           sequence++, payload, sizeof(payload),
                                                           error, sizeof(error));
-            if (sent < 0) { fprintf(stderr, "%s\n", error); break; }
+            if (sent < 0) { fprintf(stderr, "%s\n", error); goto reconnect; }
             if (sent > 0) last_ping_sent = current;
         }
         if (integral_n64_runtime_media_stream_pump_remote(media, connection, current,
                                                    error, sizeof(error)) < 0) {
-            fprintf(stderr, "%s\n", error); break;
+            fprintf(stderr, "%s\n", error); goto reconnect;
         }
         integral_n64_runtime_media_stream_render(media, NULL, NULL);
         uint8_t type = 0, payload[INTEGRAL_MEDIA_GB_TERMINAL_BYTES];
@@ -968,6 +1122,10 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
                      size == INTEGRAL_MEDIA_GB_SESSION_STATE_BYTES) {
                 printf("GB_FIXED_SESSION_STATE state=%u remaining_ms=%u\n",
                        get_be32(payload), get_be32(payload + 4u));
+                if (get_be32(payload) == 3u) {
+                    printf("GB_FIXED_SESSION_TERMINATED role=remote\n");
+                    break;
+                }
             }
             else if (type == INTEGRAL_MEDIA_MESSAGE_GB_TERMINAL &&
                      size == INTEGRAL_MEDIA_GB_TERMINAL_BYTES) {
@@ -1015,7 +1173,12 @@ static int run_remote(const Options *options, IntegralMediaRelayConnection *conn
             rtt_total = input_total = 0; rtt_samples = input_samples = 0;
         }
         SDL_Delay(integral_n64_runtime_media_stream_is_video_vsync_paced(media) ? 1u : 8u);
+        continue;
+reconnect:
+        if (!recover_transport(options, &connection, media, &product, NULL, NULL, 0)) break;
+        last_sent_buttons = 0xffu; last_input_sent = last_ping_sent = 0;
     }
+    *connection_owner = connection;
     integral_gb_runtime_fixed_host_product_runtime_stop(&product);
     integral_n64_runtime_media_stream_destroy(media);
     if (terminal_received) return 0;
@@ -1029,17 +1192,23 @@ int main(int argc, char **argv)
      * evidence is not lost when stdout is redirected by the parent client. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
+    setvbuf(stdin, NULL, _IONBF, 0);
 #ifndef _WIN32
     /* A WAN relay may close while OpenSSL is writing. Surface that as a
      * normal transport error instead of letting SIGPIPE terminate the host. */
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGTERM, SIG_DFL);
+    sigset_t termination_mask;
+    sigemptyset(&termination_mask);
+    sigaddset(&termination_mask, SIGTERM);
+    sigprocmask(SIG_UNBLOCK, &termination_mask, NULL);
 #endif
     Options options;
     if (parse_options(argc, argv, &options) != 0) {
         usage(argv[0]); return 2;
     }
 #ifdef _WIN32
-    if (options.snapshot_stdin && _setmode(_fileno(stdin), _O_BINARY) == -1) {
+    if ((options.snapshot_stdin || options.result_handle > 0) && _setmode(_fileno(stdin), _O_BINARY) == -1) {
         fprintf(stderr, "GB fixed host snapshot IPC could not set binary stdin\n");
         return 1;
     }
@@ -1063,6 +1232,12 @@ int main(int argc, char **argv)
         return 1;
     }
     (void)integral_gb_runtime_key_config_open_game_controllers();
+#ifndef _WIN32
+    /* Parent cancellation is an abort, not a game-window save confirmation.
+     * SDL may install a SIGTERM->QUIT handler; do not defer parent termination
+     * behind a modal dialog or network operation. */
+    signal(SIGTERM, SIG_DFL);
+#endif
     IntegralMediaRelayConnection *connection = NULL;
     char error[192] = {0};
     if (integral_media_relay_connect(options.relay_host, options.relay_port,
@@ -1075,8 +1250,8 @@ int main(int argc, char **argv)
         integral_media_relay_close(connection); SDL_Quit(); return 1;
     }
     int result = strcmp(options.role, "host") == 0
-                     ? run_host(&options, connection)
-                     : run_remote(&options, connection);
+                     ? run_host(&options, &connection)
+                     : run_remote(&options, &connection);
     integral_media_relay_close(connection);
     SDL_Quit();
     return result;

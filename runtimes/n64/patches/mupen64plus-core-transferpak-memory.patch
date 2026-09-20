@@ -1,0 +1,169 @@
+--- a/src/api/api_export.ver
++++ b/src/api/api_export.ver
+@@ -1,2 +1,3 @@
+ { global:
++IntegralSetTransferPakMemory;
+ ConfigExternalGetParameter;
+--- a/src/main/main.c
++++ b/src/main/main.c
+@@ -50,6 +50,7 @@
+ #include "backends/api/joybus.h"
+ #include "backends/api/rumble_backend.h"
+ #include "backends/api/storage_backend.h"
++#include "backends/integral_transfer_memory.h"
+ #include "backends/api/video_capture_backend.h"
+ #include "backends/plugins_compat/plugins_compat.h"
+ #include "backends/clock_ctime_plus_delta.h"
+@@ -1452,7 +1453,21 @@
+ };
+ 
+ static struct gb_cart_data l_gb_carts_data[GAME_CONTROLLERS_COUNT];
++
++static IntegralTransferMemory* l_transfer_memory;
++const struct storage_backend_interface g_itransfer_memory = {
++    integral_transfer_memory_data, integral_transfer_memory_size, integral_transfer_memory_save
++};
+ 
++EXPORT m64p_error CALL IntegralSetTransferPakMemory(unsigned int version,
++        IntegralTransferMemory* slots, unsigned int count)
++{
++    if (version != INTEGRAL_TRANSFER_MEMORY_VERSION || slots == NULL || count != 2)
++        return M64ERR_INPUT_INVALID;
++    l_transfer_memory = slots;
++    return M64ERR_SUCCESS;
++}
++
+ static void init_gb_rom(void* opaque, void** storage, const struct storage_backend_interface** istorage)
+ {
+     struct gb_cart_data* data = (struct gb_cart_data*)opaque;
+@@ -1500,6 +1515,18 @@
+ static void init_gb_ram(void* opaque, size_t ram_size, void** storage, const struct storage_backend_interface** istorage)
+ {
+     struct gb_cart_data* data = (struct gb_cart_data*)opaque;
++
++    if (l_transfer_memory != NULL) {
++        *storage = NULL;
++        *istorage = NULL;
++        if (data->control_id >= 0 && data->control_id < 2 &&
++                l_transfer_memory[data->control_id].size == ram_size) {
++            *storage = &l_transfer_memory[data->control_id];
++            *istorage = &g_itransfer_memory;
++            DebugMessage(M64MSG_INFO, "GB Loader RAM: memory port=%d", data->control_id + 1);
++        }
++        return; /* Never derive a filename or open file storage in ROOM. */
++    }
+ 
+     /* Ask the core loader for ram filename */
+     char* ram_filename = (g_media_loader.get_gb_cart_ram == NULL)
+@@ -1538,6 +1565,13 @@
+ {
+     struct gb_cart_data* data = (struct gb_cart_data*)opaque;
+ 
++    if (l_transfer_memory != NULL) {
++        volatile unsigned char* p = (volatile unsigned char*)&g_dev.gb_carts[data->control_id].rtc;
++        size_t n = sizeof(g_dev.gb_carts[data->control_id].rtc);
++        while (n--) *p++ = 0;
++        return; /* Frontend wipes/frees RAM after Core shutdown. */
++    }
++
+     close_file_storage(&data->ram_fstorage);
+ 
+     memset(&data->ram_fstorage, 0, sizeof(data->ram_fstorage));
+--- a/src/device/gb/gb_cart.c
++++ b/src/device/gb/gb_cart.c
+@@ -31,6 +31,8 @@
+ #include "backends/api/storage_backend.h"
+ #include "backends/api/video_capture_backend.h"
+ #include "backends/file_storage.h"
++#include "backends/integral_transfer_memory.h"
++extern const struct storage_backend_interface g_itransfer_memory;
+ #if 0
+ void cv_imshow(const char* name, unsigned int width, unsigned int height, int channels, void* data);
+ #else
+@@ -104,26 +106,8 @@
+     return rtc_filename;
+ }
+ 
+-static int load_mbc3_rtc_sidecar(struct gb_cart* gb_cart)
++static void load_mbc3_rtc_data(struct gb_cart* gb_cart, const uint8_t data[48])
+ {
+-    uint8_t data[48];
+-    size_t read_count;
+-    FILE* file;
+-
+-    if (gb_cart->rtc_filename == NULL) {
+-        return -1;
+-    }
+-
+-    file = fopen(gb_cart->rtc_filename, "rb");
+-    if (file == NULL) {
+-        return -1;
+-    }
+-
+-    read_count = fread(data, 1, sizeof(data), file);
+-    if (fclose(file) != 0 || read_count != sizeof(data)) {
+-        return -1;
+-    }
+-
+     gb_cart->rtc.regs[MBC3_RTC_SECONDS] = (uint8_t)read_le32(data + 0);
+     gb_cart->rtc.regs[MBC3_RTC_MINUTES] = (uint8_t)read_le32(data + 4);
+     gb_cart->rtc.regs[MBC3_RTC_HOURS] = (uint8_t)read_le32(data + 8);
+@@ -139,7 +123,18 @@
+     gb_cart->rtc.latch = 0;
+     gb_cart->rtc.last_time = (time_t)read_le64(data + 40);
+     gb_cart->rtc.loaded = 1;
++}
+ 
++static int load_mbc3_rtc_sidecar(struct gb_cart* gb_cart)
++{
++    uint8_t data[48];
++    if (gb_cart->rtc_filename == NULL) return -1;
++    FILE* file = fopen(gb_cart->rtc_filename, "rb");
++    if (file == NULL) return -1;
++    size_t read_count = fread(data, 1, sizeof(data), file);
++    if (fclose(file) != 0 || read_count != sizeof(data)) return -1;
++    load_mbc3_rtc_data(gb_cart, data);
++
+     DebugMessage(M64MSG_INFO, "GB Loader RTC: %s - %zu",
+             gb_cart->rtc_filename,
+             sizeof(data));
+@@ -150,8 +145,10 @@
+ {
+     uint8_t data[48];
+     FILE* file;
++    IntegralTransferMemory* memory = gb_cart->iram_storage == &g_itransfer_memory
++        ? gb_cart->ram_storage : NULL;
+ 
+-    if (gb_cart->rtc_filename == NULL) {
++    if (gb_cart->rtc_filename == NULL && memory == NULL) {
+         return;
+     }
+ 
+@@ -169,6 +166,11 @@
+ 
+     write_le64(data + 40, (uint64_t)gb_cart->rtc.last_time);
+ 
++    if (memory != NULL) {
++        memcpy(memory->rtc, data, sizeof(data));
++        return;
++    }
++
+     file = fopen(gb_cart->rtc_filename, "wb");
+     if (file == NULL) {
+         DebugMessage(M64MSG_WARNING, "couldn't open GB RTC file '%s' for writing",
+@@ -1208,6 +1210,10 @@
+     gb_cart->iram_storage = iram_storage;
+     gb_cart->extra_devices = type->extra_devices;
+     gb_cart->rtc = rtc;
++    if ((type->extra_devices & GED_RTC) && iram_storage == &g_itransfer_memory &&
++            ram_storage != NULL && ((IntegralTransferMemory*)ram_storage)->has_rtc) {
++        load_mbc3_rtc_data(gb_cart, ((IntegralTransferMemory*)ram_storage)->rtc);
++    }
+     if ((type->extra_devices & GED_RTC) && iram_storage == &g_ifile_storage &&
+             ram_storage != NULL) {
+         gb_cart->rtc_filename = make_mbc3_rtc_filename(
+@@ -1261,4 +1267,3 @@
+ {
+     return gb_cart->write_gb_cart(gb_cart, address, data, size);
+ }
+-

@@ -124,16 +124,12 @@ static int rtc_trailer_valid(const unsigned char *data)
            (now == (uint64_t)-1 || last <= now);
 }
 
-static int write_synthetic_mbc3_rtc(const char *target_path)
+static int make_synthetic_mbc3_rtc(unsigned char trailer[48])
 {
-    unsigned char trailer[TRANSFER_PAK_MBC3_RTC_TRAILER_SIZE];
-    char temporary[TRANSFER_PAK_STORAGE_PATH_CAPACITY + 16u];
-    FILE *output;
     time_t now;
     struct tm tm_now;
-    int length;
 
-    memset(trailer, 0, sizeof(trailer));
+    memset(trailer, 0, 48);
     now = time(NULL);
     if (now == (time_t)-1) {
         return -1;
@@ -154,6 +150,28 @@ static int write_synthetic_mbc3_rtc(const char *target_path)
     trailer[16] = (unsigned char)((tm_now.tm_yday >> 8) & 0x01);
     memcpy(trailer + 20u, trailer, 20u);
     put_le64(trailer + 40u, (uint64_t)now);
+    return 0;
+}
+
+int transfer_pak_memory_rtc(int has_rtc, size_t ram, const unsigned char *save,
+                           size_t size, unsigned char rtc[48])
+{
+    if (!save || !rtc || ram > SIZE_MAX - 48 || (size != ram && size != ram + 48)) return -1;
+    if (!has_rtc) return 0;
+    if (size == ram + 48 && rtc_trailer_valid(save + ram)) {
+        memcpy(rtc, save + ram, 48);
+        return 1;
+    }
+    return make_synthetic_mbc3_rtc(rtc) == 0 ? 1 : -1;
+}
+
+static int write_synthetic_mbc3_rtc(const char *target_path)
+{
+    unsigned char trailer[48];
+    char temporary[TRANSFER_PAK_STORAGE_PATH_CAPACITY + 16u];
+    FILE *output;
+    int length;
+    if (make_synthetic_mbc3_rtc(trailer) != 0) return -1;
 
     length = snprintf(temporary, sizeof(temporary), "%s.part", target_path);
     if (length < 0 || (size_t)length >= sizeof(temporary)) {

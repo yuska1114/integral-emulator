@@ -19,7 +19,7 @@ import traceback
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 
 from .database import AuthorityDatabase
 from .auth_validation import username_comparison_key
-from .errors import AuthenticationError, DuplicateUserError, GameSessionExpiredError, GameSessionFenceError, LeagueError, NotFoundError, RegistrationDisabledError, RevisionConflictError
+from .errors import AuthenticationError, ClientVersionNotAllowedError, DuplicateUserError, GameSessionExpiredError, GameSessionFenceError, LeagueError, NotFoundError, RegistrationDisabledError, RevisionConflictError
 from .errors import (
     AlreadyInRoomError,
     InvalidRoomCodeError,
@@ -61,7 +61,10 @@ from .room import (
     N64_ROOMS_ENV,
     parse_enabled_room_numbers,
 )
-from .n64_runtime_media_sessions import N64RuntimeMediaSessionManager
+from .n64_runtime_media_sessions import (
+    ACTIVE_MEDIA_STATUSES, N64_RUNTIME_MEDIA_SESSION_LOCK,
+    N64RuntimeMediaSessionManager,
+)
 from .network_mode import NETWORK_MODE_TLS, configured_network_mode
 from .mobile.session_service import MobileSessionManager
 from .mobile.package_catalog import MobilePackageCatalog
@@ -86,7 +89,7 @@ from .sqlite_repositories import (
     SQLiteSessionAuthorityRepository,
 )
 from .runtime_repositories import SQLiteRuntimeRepositories
-from .ui import DASHBOARD_HTML, render_admin_html, render_admin_login_html
+from .ui import render_admin_html, render_admin_login_html
 from .user_issuance import issue_user, reset_user_password
 
 
@@ -215,6 +218,14 @@ class LeagueApplication:
         )
         self.allow_self_registration = environment_boolean(
             "INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION", False
+        )
+        self.client_version_check_enabled = environment_boolean(
+            "INTEGRAL_EMULATOR_CLIENT_VERSION_CHECK_ENABLED", False
+        )
+        self.allowed_client_versions = frozenset(
+            item.strip() for item in os.environ.get(
+                "INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS", ""
+            ).split(",") if item.strip()
         )
         self.allow_user_initial_save_import = environment_boolean(
             "INTEGRAL_EMULATOR_ALLOW_USER_INITIAL_SAVE_IMPORT", False
@@ -400,6 +411,7 @@ class LeagueApplication:
             policy=self.room_session_policy,
             game_session_authority=game_authority,
         )
+        rom_slots.sessions = sessions
         mobile_sessions = MobileSessionManager(
             file_storage,
             saves,
@@ -632,6 +644,10 @@ class LeagueApplication:
                 require_json_string(body, "username"),
                 require_json_string(body, "password"),
                 server_id=server_id,
+                client_version_allowed=(not self.client_version_check_enabled or (
+                    isinstance(body.get("client_version"), str) and
+                    body["client_version"] in self.allowed_client_versions
+                )),
             )
             user = self.auth.require_user(token.token)
             return {
@@ -765,6 +781,7 @@ class LeagueApplication:
                 user.id,
                 auth_session_id=self.require_auth_session_id_digest(),
                 link_mode=str(body.get("link_mode", "")),
+                expected_media_session_id=str(body.get("expected_media_session_id", "")),
             )
         if method == "POST" and segments == ["rooms", "heartbeat"]:
             user = self.require_user(bearer_token)
@@ -1143,6 +1160,15 @@ class LeagueApplication:
             )
             control = self.reconcile_gb_runtime_fixed_host_trade(session.id)
             return {"gb_runtime_fixed_host_session": control.to_public_dict(user.id)}
+        if (method == "POST" and len(segments) == 3
+                and segments[0] == "gb-runtime-fixed-host-sessions" and segments[2] == "blocked"):
+            user = self.require_user(bearer_token)
+            session = self.require_session_member(segments[1], user.id)
+            if session.protocol_id != GB_RUNTIME_FIXED_HOST_PROTOCOL_ID:
+                raise NotFoundError("fixed Host session not found")
+            self.sessions.bind_game_session_lock(session.id, user.id, self.require_auth_session_id_digest())
+            control = self.gb_runtime_fixed_host_sessions.block_preflight(session.id, user.id, require_json_string(body, "reason"))
+            return {"gb_runtime_fixed_host_session": control.to_public_dict(user.id)}
         if (
             len(segments) == 3
             and segments[0] == "gb-runtime-fixed-host-sessions"
@@ -1181,7 +1207,7 @@ class LeagueApplication:
             if session.protocol_id != GB_RUNTIME_FIXED_HOST_PROTOCOL_ID:
                 raise NotFoundError("fixed Host session not found")
             control, role, ticket = self.gb_runtime_fixed_host_sessions.issue_ticket(
-                segments[1], user.id
+                segments[1], user.id, resume=body.get("resume") is True
             )
             if control.state == "WAITING_PEER":
                 current_link = self.sessions.get_session(session.id)
@@ -1286,6 +1312,30 @@ class LeagueApplication:
             media_session = self.n64_runtime_media_sessions.get(segments[1])
             role = self.n64_runtime_media_sessions.role_for_user(media_session, user.id)
             return {"media_session": media_session.to_public_dict(role)}
+        if (method == "POST" and len(segments) == 3
+                and segments[0] == "n64-runtime-media-sessions"
+                and segments[2] == "terminate"):
+            user = self.require_user(bearer_token)
+            return self.terminate_n64_room(segments[1], user.id,
+                self.require_auth_session_id_digest(), body.get("room_code"),
+                preflight_failed=body.get("reason") == "preflight_failed")
+        if (method == "POST" and len(segments) == 3
+                and segments[0] == "n64-runtime-media-sessions"
+                and segments[2] == "finish"):
+            user = self.require_user(bearer_token)
+            return self.finish_n64_room(segments[1], user.id, self.require_auth_session_id_digest())
+        if (method == "POST" and len(segments) == 3
+                and segments[0] == "n64-runtime-media-sessions"
+                and segments[2] == "recover"):
+            user = self.require_user(bearer_token)
+            media = self.n64_runtime_media_sessions.get(segments[1])
+            role = self.n64_runtime_media_sessions.role_for_user(media, user.id)
+            if media.status in ACTIVE_MEDIA_STATUSES:
+                if not self.auth_session_owns_n64_runtime_media_reservation(
+                        media, user.id, self.require_auth_session_id_digest()):
+                    raise ValidationError("N64 recovery requires the active participant reservation")
+                media = self.n64_runtime_media_sessions.recover(media.id)
+            return {"media_session": media.to_public_dict(role)}
         if (
             method == "GET"
             and len(segments) == 4
@@ -1389,12 +1439,63 @@ class LeagueApplication:
             and lock.auth_session_id == auth_session_id
         )
 
+    def finish_n64_room(self, session_id: str, user_id: str, auth_session_id: str) -> dict[str, Any]:
+        manager = self.n64_runtime_media_sessions
+        # Match the manager's lock order: filesystem lock before SQLite write.
+        # All three terminal records become visible to Relay together on commit.
+        with manager.storage.exclusive_lock(N64_RUNTIME_MEDIA_SESSION_LOCK):
+            with self.authority_database.write_unit():
+                records = manager.storage.load_n64_runtime_media_sessions()
+                media = manager._get_locked(records, session_id)
+                role = manager.role_for_user(media, user_id)
+                if role != "host":
+                    raise ValidationError("N64 finish requires host role")
+                if media.status not in ACTIVE_MEDIA_STATUSES:
+                    return {"media_session": media.to_public_dict(role)}
+                if not self.auth_session_owns_n64_runtime_media_reservation(media, user_id, auth_session_id):
+                    raise ValidationError("N64 finish requires the active host reservation")
+                room = self.room_manager.current_room(user_id)
+                if room is None or room.room_number != media.room_number:
+                    raise ValidationError("N64 finish room does not match session")
+                media = replace(media, status="COMPLETED", termination_reason="host_finished",
+                                recovery_deadline=None, updated_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds"))
+                manager._save_locked(records, media)
+                media = manager._get_locked(manager.storage.load_n64_runtime_media_sessions(), session_id)
+                return {"media_session": media.to_public_dict(role)}
+
+    def terminate_n64_room(self, session_id: str, user_id: str,
+                           auth_session_id: str, room_code: str, *, preflight_failed: bool = False) -> dict[str, Any]:
+        manager = self.n64_runtime_media_sessions
+        with manager.storage.exclusive_lock(N64_RUNTIME_MEDIA_SESSION_LOCK):
+            with self.authority_database.write_unit():
+                records = manager.storage.load_n64_runtime_media_sessions()
+                media = manager._get_locked(records, session_id)
+                role = manager.role_for_user(media, user_id)
+                if not room_code or room_code != media.room_code or media.room_created_at_ms is None:
+                    raise ValidationError("N64 termination ROOM binding mismatch")
+                if media.status not in ACTIVE_MEDIA_STATUSES:
+                    return {"media_session": media.to_public_dict(role)}
+                if preflight_failed and (role != "host" or not
+                        self.auth_session_owns_n64_runtime_media_reservation(media, user_id, auth_session_id)):
+                    raise ValidationError("N64 preflight failure requires the active host reservation")
+                active = self.sessions.active_game_session_for_user(user_id)
+                if (active and active["lock"].game_run_id == media.id and
+                        not self.auth_session_owns_n64_runtime_media_reservation(media, user_id, auth_session_id)):
+                    raise ValidationError("N64 termination requires the participant reservation")
+                # Repository compares this session's immutable ROOM code AND
+                # creation generation before removing membership, in this unit.
+                expired = manager._expired(media)
+                reason = ("recovery_timeout" if media.recovery_deadline else "session_expired") if expired else "participant_left"
+                if preflight_failed and not expired:
+                    reason = "preflight_failed"
+                media = replace(media, status="EXPIRED" if expired else "CANCELLED", termination_reason=reason,
+                    recovery_deadline=None, updated_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds"))
+                manager._save_locked(records, media)
+                media = manager._get_locked(manager.storage.load_n64_runtime_media_sessions(), session_id)
+                return {"media_session": media.to_public_dict(role)}
+
     def cancel_n64_runtime_media_session(self, media_session) -> None:
         self.n64_runtime_media_sessions.cancel(media_session.id)
-        self.sessions.release_media_game_session_locks(
-            media_session.id,
-            {media_session.host_user_id, media_session.remote_user_id},
-        )
 
     def cancel_n64_runtime_media_sessions_for_user(
         self,
@@ -1430,6 +1531,7 @@ class LeagueApplication:
         return True
 
     def leave_room_for_user(self, user_id: str, auth_session_id: str = "") -> bool:
+        leaving_room = self.room_manager.current_room(user_id)
         if not self.cancel_n64_runtime_media_sessions_for_user(user_id, auth_session_id):
             return False
         session_ids = self.room_manager.link_session_ids_for_user(user_id)
@@ -1450,7 +1552,9 @@ class LeagueApplication:
                 self.sessions.mark_participant_disconnected(session_id, user_id)
             except LeagueError:
                 pass
-        self.room_manager.leave_room(user_id)
+        if leaving_room is not None:
+            self.room_manager.leave_room(user_id, expected_room_code=leaving_room.room_code,
+                close_link_game=bool(leaving_room.link_session_id or leaving_room.post_game_at))
         for session_id in session_ids:
             if not self.auth_session_can_cancel_room_game(session_id, user_id, auth_session_id):
                 continue
@@ -1501,10 +1605,6 @@ class LeagueApplication:
             if actual_users == expected_users:
                 continue
             self.n64_runtime_media_sessions.cancel(media_session.id, reason="room presence stale")
-            self.sessions.release_media_game_session_locks(
-                media_session.id, expected_users
-            )
-            self.room_manager.end_game_for_room(media_session.room_number)
         return pruned_session_ids
 
     def require_room_mutable(self, room_number: int) -> None:
@@ -1829,7 +1929,7 @@ class LeagueApplication:
                 if user_id not in {media_session.host_user_id, media_session.remote_user_id}:
                     continue
                 updated = self._parse_server_time(media_session.updated_at)
-                if updated and updated >= cutoff and media_session.status in {"CANCELLED", "EXPIRED"}:
+                if updated and updated >= cutoff and media_session.status in {"COMPLETED", "CANCELLED", "EXPIRED"}:
                     return {
                         "kind": "media",
                         "session_id": media_session.id,
@@ -2069,19 +2169,27 @@ class LeagueApplication:
                 )
             media_rows = self.session_authority.list_due(
                 "n64", server_id=env.id,
-                active_states={"CREATED", "WAITING_PEER", "READY", "RUNNING"},
+                active_states=ACTIVE_MEDIA_STATUSES,
                 now_ms=now_ms,
                 include_missing_game_locks=True, limit=64,
             )
+            due_ids = {str(row["session_id"]) for row in media_rows}
+            for media in env.n64_runtime_media_sessions.all_sessions():
+                if (media.id not in due_ids and media.recovery_deadline
+                        and self._deadline_reached(media.recovery_deadline, current_time)
+                        and (media.status in ACTIVE_MEDIA_STATUSES or media.status == "EXPIRED")):
+                    media_rows.append({"session_id": media.id})
             for media_row in media_rows:
                 media_session = env.n64_runtime_media_sessions.get(str(media_row["session_id"]))
-                if media_session.status not in {"CREATED", "WAITING_PEER", "READY", "RUNNING"}:
+                if media_session.status not in ACTIVE_MEDIA_STATUSES and media_session.status != "EXPIRED":
                     continue
                 reason = None
                 both_tickets_used = bool(
                     media_session.host_ticket_used and media_session.remote_ticket_used
                 )
-                if self._deadline_reached(media_session.expires_at, current_time):
+                if self._deadline_reached(media_session.recovery_deadline, current_time):
+                    reason = "recovery_timeout"
+                elif self._deadline_reached(media_session.expires_at, current_time):
                     reason = "session_expired"
                 elif both_tickets_used and env.sessions.media_participant_leases_expired(
                     media_session.id,
@@ -2092,11 +2200,6 @@ class LeagueApplication:
                 if reason is None:
                     continue
                 env.n64_runtime_media_sessions.expire(media_session.id, reason)
-                env.sessions.release_media_game_session_locks(
-                    media_session.id,
-                    {media_session.host_user_id, media_session.remote_user_id},
-                )
-                env.room_manager.end_game_for_room(media_session.room_number)
                 self.lifecycle_metrics["media_terminations"] += 1
                 actions.append(
                     {
@@ -2162,13 +2265,22 @@ class LeagueApplication:
         requester_user_id: str,
         auth_session_id: str = "",
         link_mode: str | None = None,
+        expected_media_session_id: str = "",
     ) -> dict[str, Any]:
+        if expected_media_session_id:
+            previous = self.n64_runtime_media_sessions.get(expected_media_session_id)
+            role = self.n64_runtime_media_sessions.role_for_user(previous, requester_user_id)
+            if previous.room_number != room_number:
+                raise ValidationError("N64 media session room mismatch")
+            if previous.status not in ACTIVE_MEDIA_STATUSES:
+                return {"media_session": previous.to_public_dict(role), "room": None}
         room = self.room_manager.room(room_number)
         if N64_ROOM_FIRST <= room_number <= N64_ROOM_LAST:
             if len(room.users) != 2 or not all(user.get("ready") for user in room.users):
                 raise ValidationError("N64 room is not ready")
             host_n64, host_gb, remote_gb = self.validate_n64_room_selection(room)
             media_session = self.n64_runtime_media_sessions.create_or_get(
+                expected_session_id=expected_media_session_id,
                 room_number=room_number,
                 host_user_id=str(room.users[0]["user_id"]),
                 remote_user_id=str(room.users[1]["user_id"]),
@@ -2201,7 +2313,7 @@ class LeagueApplication:
                 expires_at=media_session.expires_at,
             )
             media_session, role, ticket = self.n64_runtime_media_sessions.issue_ticket(media_session.id, requester_user_id)
-            room = self.room_manager.set_game_started(room_number, True)
+            room = self.storage.mark_n64_room_started(media_session.id)
             return {
                 "room": self.public_room(room, viewer_user_id=requester_user_id),
                 "media_session": media_session.to_public_dict(role),
@@ -2759,10 +2871,6 @@ def create_handler(application: LeagueApplication) -> type[BaseHTTPRequestHandle
         def _dispatch(self, method: str) -> None:
             path = urlparse(self.path).path
             try:
-                if method == "GET" and path == "/":
-                    self._send_html(HTTPStatus.OK, DASHBOARD_HTML)
-                    application.write_server_log("INFO", f"{self.client_address[0]} GET / 200")
-                    return
                 if method == "GET" and path == "/admin":
                     if self._admin_session_token() and self._has_admin_session():
                         self._send_html(
@@ -2810,6 +2918,9 @@ def create_handler(application: LeagueApplication) -> type[BaseHTTPRequestHandle
             except AuthenticationError as error:
                 application.write_server_log("WARN", f"{self.client_address[0]} {method} {path} 401 authentication_failed {error}")
                 self._send_error(HTTPStatus.UNAUTHORIZED, "authentication_failed", str(error))
+            except ClientVersionNotAllowedError as error:
+                application.write_server_log("WARN", f"{self.client_address[0]} {method} {path} 426 client_version_not_allowed")
+                self._send_error(HTTPStatus.UPGRADE_REQUIRED, "client_version_not_allowed", str(error))
             except RegistrationDisabledError as error:
                 application.write_server_log("WARN", f"{self.client_address[0]} {method} {path} 403 registration_disabled")
                 self._send_error(HTTPStatus.FORBIDDEN, "registration_disabled", str(error))

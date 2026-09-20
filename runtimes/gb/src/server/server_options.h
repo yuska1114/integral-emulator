@@ -40,6 +40,7 @@ typedef struct ServerOptions {
     unsigned lan_remote_port;
     unsigned speed_multiplier;
     unsigned auto_a_frames;
+    unsigned ir_off_delay_ticks;
     unsigned auto_a_pulse;
     const char *slot1_macro;
     const char *slot2_macro;

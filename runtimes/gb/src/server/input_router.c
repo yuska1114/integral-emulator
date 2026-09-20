@@ -110,6 +110,31 @@ static void set_slot_key(IntegralGBRuntimeSlot *slot, GB_key_t gb_key, bool pres
     }
 }
 
+void integral_gb_runtime_input_router_apply_auto_a(const IntegralGBRuntimeInputRouter *router,
+                                                   unsigned frame,
+                                                   unsigned auto_a_frames,
+                                                   unsigned auto_a_pulse)
+{
+    if (!router || auto_a_frames == 0 || frame > auto_a_frames) {
+        return;
+    }
+    if (frame == auto_a_frames) {
+        set_slot_key(router->slot1, GB_KEY_A,
+                     (router->slot1_applied_buttons & INTEGRAL_GB_RUNTIME_BTN_A) != 0);
+        set_slot_key(router->slot2, GB_KEY_A,
+                     (router->slot2_applied_buttons & INTEGRAL_GB_RUNTIME_BTN_A) != 0);
+        return;
+    }
+
+    bool pressed = true;
+    if (auto_a_pulse > 1) {
+        unsigned half_period = auto_a_pulse / 2;
+        pressed = (frame % auto_a_pulse) < half_period;
+    }
+    set_slot_key(router->slot1, GB_KEY_A, pressed);
+    set_slot_key(router->slot2, GB_KEY_A, pressed);
+}
+
 static void set_slot_button(IntegralGBRuntimeSlot *slot, uint8_t button, bool pressed)
 {
     switch (button) {
@@ -196,31 +221,37 @@ bool integral_gb_runtime_input_router_handle_event(IntegralGBRuntimeInputRouter 
 
     bool pressed = false;
     if (integral_gb_runtime_key_config_binding_matches_event(router->fast_key, event, &pressed)) {
-        if (pressed) {
+        if (pressed && !router->fast_held) {
             router->speed_multiplier = router->speed_multiplier >= 4u ? 1u : router->speed_multiplier + 1u;
             router->speed_multiplier_changed = true;
         }
+        router->fast_held = pressed;
         return true;
     }
     if (integral_gb_runtime_key_config_binding_matches_event(router->screenshot_key, event, &pressed)) {
-        if (pressed) {
+        if (pressed && !router->screenshot_held) {
             router->screenshot_requested = true;
         }
+        router->screenshot_held = pressed;
         return true;
     }
     if (integral_gb_runtime_key_config_binding_matches_event(router->escape_key, event, &pressed)) {
-        if (pressed) {
+        if (pressed && !router->escape_held) {
             router->escape_requested = true;
         }
+        router->escape_held = pressed;
         return true;
     }
     if (integral_gb_runtime_key_config_binding_matches_event(router->reset_key, event, &pressed)) {
-        if (pressed) {
+        if (pressed && !router->reset_held) {
             router->reset_requested = true;
         }
+        router->reset_held = pressed;
         return true;
     }
     if (integral_gb_runtime_key_config_binding_matches_event(router->turbo_hold_key, event, &pressed)) {
+        if (pressed == router->turbo_key_held) return true;
+        router->turbo_key_held = pressed;
         if (router->turbo_macro_control) {
             if (pressed) {
                 router->turbo_macro_toggle_requested = true;
@@ -302,6 +333,8 @@ void integral_gb_runtime_input_router_update_turbo(IntegralGBRuntimeInputRouter 
 
 void integral_gb_runtime_input_router_release_all(IntegralGBRuntimeInputRouter *router)
 {
+    router->screenshot_held = router->escape_held = router->reset_held = false;
+    router->fast_held = router->turbo_key_held = false;
     router->slot1_normal_buttons = 0;
     router->slot2_normal_buttons = 0;
     router->slot1_turbo_buttons = 0;

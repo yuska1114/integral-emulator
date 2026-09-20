@@ -21,6 +21,20 @@ int main(void)
     snprintf(path, sizeof(path), "%s/integral_client.conf", directory);
 #endif
     (void)remove(path);
+    if (integral_config_ir_off_delay(path) != 32) return 50;
+    const char *ir_values[] = {"0", "32", "256", "-1", "257", "32junk", ""};
+    const unsigned ir_expected[] = {0, 32, 256, 32, 32, 32, 32};
+    for (unsigned i = 0; i < sizeof(ir_expected)/sizeof(ir_expected[0]); i++) {
+        FILE *file = fopen(path, "w");
+        if (!file) return 51;
+        fprintf(file, "gb.ir_off_delay_ticks=%s\n", ir_values[i]);
+        fclose(file);
+        if (integral_config_ir_off_delay(path) != ir_expected[i]) return 52;
+        IntegralConfigWindow window = {.width = 360, .height = 360};
+        if (integral_config_save_window(path, &window) != 0 ||
+            integral_config_ir_off_delay(path) != ir_expected[i]) return 53;
+    }
+    (void)remove(path);
     IntegralConfigWindow default_window = {0};
     if (integral_config_load_window(path, &default_window) != 0 ||
         default_window.width != 360u || default_window.height != 360u) return 2;
@@ -33,10 +47,18 @@ int main(void)
     snprintf(expected.n64_p1, sizeof(expected.n64_p1),
              "PAD@fedcba9876543210-0:DPAD_RIGHT,PAD@fedcba9876543210-0:DPAD_LEFT,PAD@fedcba9876543210-0:DPAD_UP,PAD@fedcba9876543210-0:DPAD_DOWN,PAD@fedcba9876543210-0:START,PAD@fedcba9876543210-0:LSHOULDER,PAD@fedcba9876543210-0:B,PAD@fedcba9876543210-0:A,PAD@fedcba9876543210-0:X,PAD@fedcba9876543210-0:Y,PAD@fedcba9876543210-0:RY-,PAD@fedcba9876543210-0:RY+,PAD@fedcba9876543210-0:RSHOULDER,PAD@fedcba9876543210-0:BACK,PAD@fedcba9876543210-0:LX+,PAD@fedcba9876543210-0:LX-,PAD@fedcba9876543210-0:LY-,PAD@fedcba9876543210-0:LY+");
     snprintf(expected.fast, sizeof(expected.fast), "F");
+    snprintf(expected.n64_p2, sizeof(expected.n64_p2), "%s", expected.n64_p1);
+    snprintf(expected.n64_p3, sizeof(expected.n64_p3), "%s", expected.n64_p1);
+    snprintf(expected.n64_p4, sizeof(expected.n64_p4), "%s", expected.n64_p1);
+    char *extra_ports[] = {expected.n64_p2, expected.n64_p3, expected.n64_p4};
+    for (unsigned i = 0; i < 3; i++) {
+        for (char *p = extra_ports[i]; (p = strstr(p, "-0:")) != NULL; p += 3)
+            p[1] = (char)('1' + i);
+    }
     snprintf(expected.screenshot, sizeof(expected.screenshot), "P");
     snprintf(expected.escape, sizeof(expected.escape), "Escape");
     snprintf(expected.turbo_hold, sizeof(expected.turbo_hold), "B");
-    snprintf(expected.reset, sizeof(expected.reset), "I");
+    snprintf(expected.reset, sizeof(expected.reset), "O");
     IntegralConfigWindow expected_window = {.width = 777u, .height = 611u};
     if (integral_config_save_window(path, &expected_window) != 0) return 2;
     if (integral_config_save_keys(path, &expected) != 0) return 2;
@@ -59,6 +81,13 @@ int main(void)
         if (strncmp(line, "display.scale=", 14u) == 0) return 5;
     }
     if (fclose(config) != 0 || !saw_width || !saw_height) return 4;
+    integral_keys_reset_editable_defaults(&actual);
+    if (strcmp(actual.n64_p2, expected.n64_p2) || strcmp(actual.n64_p3, expected.n64_p3) ||
+        strcmp(actual.n64_p4, expected.n64_p4)) return 6;
+    if (integral_config_save_keys(path, &actual) || integral_config_save_window(path, &expected_window) ||
+        integral_config_load_keys(path, &actual) || strcmp(actual.n64_p4, expected.n64_p4)) return 7;
+    integral_keys_defaults(&actual);
+    if (actual.n64_p2[0] || actual.n64_p3[0] || actual.n64_p4[0]) return 8;
     (void)remove(path);
 #ifndef _WIN32
     (void)rmdir(directory);

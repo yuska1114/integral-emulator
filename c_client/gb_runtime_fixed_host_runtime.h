@@ -18,6 +18,7 @@ typedef struct IntegralGBRuntimeFixedHostRuntimeConfig {
     size_t remote_save_size;
     int64_t rtc_offset_seconds;
     uint64_t rtc_target_unix;
+    unsigned ir_off_delay_ticks;
     bool preserve_both_audio;
 } IntegralGBRuntimeFixedHostRuntimeConfig;
 

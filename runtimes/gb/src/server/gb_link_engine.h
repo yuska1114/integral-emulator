@@ -25,6 +25,7 @@ typedef struct IntegralGBRuntimeLinkEngineConfig {
     size_t input_frames;
     uint64_t rtc_offset_seconds;
     uint64_t rtc_target_unix;
+    unsigned ir_off_delay_ticks;
     int display_role;
     bool preserve_both_audio;
 } IntegralGBRuntimeLinkEngineConfig;

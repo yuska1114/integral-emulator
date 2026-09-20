@@ -2,6 +2,9 @@
 
 Integral Emulatorの公開ソースには、第三者由来のコードが含まれています。
 
+SameBoyにはIntegral側の変更として、`Core/gb.c`・`gb.h`・`timing.c`に設定可能な
+IR受信OFF遅延を追加しています。0指定で上流動作となり、上流のrevision更新ではありません。
+
 ## 収録コンポーネント
 
 | コンポーネント | 収録場所 | revision・整合性記録 | ライセンス原文 |

@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+import time
 from typing import Any
 
 from .errors import ValidationError
@@ -62,10 +64,11 @@ class RomSlot:
 
 
 class RomSlotManager:
-    def __init__(self, storage, roms: Any, saves):
+    def __init__(self, storage, roms: Any, saves, sessions=None):
         self.storage = storage
         self.roms = roms
         self.saves = saves
+        self.sessions = sessions
 
     def list_for_user(self, user_id: str) -> list[RomSlot]:
         records = self.storage.load_rom_slots()
@@ -98,6 +101,8 @@ class RomSlotManager:
             slot_number = int(item.get("slot", 0))
             if slot_number < 1 or slot_number > MAX_ROM_SLOTS:
                 raise ValidationError("slot must be 1 to 8")
+            if slot_number in normalized:
+                raise ValidationError("duplicate ROM slot")
             filename_value = item.get("filename", "")
             sha256_value = item.get("sha256", "")
             sha1_value = item.get("sha1", "")
@@ -159,6 +164,89 @@ class RomSlotManager:
                 "slots": [slot.to_dict() for slot in current.values()],
             }
 
+        # Confirmation is read-only. Recovery, if necessary, commits separately:
+        # a later registration failure must not roll back recovered SAV metadata.
+        if self.sessions:
+            for old in deletions:
+                self.sessions.settle_save_replacement(old.save_id, user_id)
+        created = []
+        removed = []
+        try:
+            with self.storage.database.write_unit() as connection:
+                self._require_idle(connection, user_id)
+                latest = {slot.slot: slot for slot in self.list_for_user(user_id)}
+                if any(latest[n].row_version != current[n].row_version for n in current):
+                    raise ValidationError("ROM slots changed; reload and confirm again")
+                result = self._apply_normalized(
+                    user_id, normalized, current, deletions, changes, created, removed,
+                    connection,
+                )
+        except Exception:
+            for save in created:
+                self._cleanup_files(save)
+            raise
+        cleanup_pending = [save.id for save in removed if not self._cleanup_files(save)]
+        if cleanup_pending:
+            result["cleanup_pending_save_ids"] = cleanup_pending
+        return result
+
+    def _cleanup_files(self, save):
+        try:
+            self.saves.remove_save_files(save)
+            return True
+        except OSError:
+            logging.getLogger(__name__).exception("SAV file cleanup pending: %s", save.id)
+            return False
+
+    @staticmethod
+    def _require_idle(connection, user_id):
+        now_ms = int(time.time() * 1000)
+        if connection.execute(
+            "SELECT 1 FROM game_session_locks WHERE user_id=? AND lease_expires_at_ms>?",
+            (user_id, now_ms),
+        ).fetchone():
+            raise ValidationError("ROM slots cannot be changed during an active game session")
+
+    def _detach_history(self, connection, save_id, user_id):
+        now_ms = int(time.time() * 1000)
+        if connection.execute(
+            "SELECT 1 FROM save_locks WHERE save_id=? AND lease_expires_at_ms>?",
+            (save_id, now_ms),
+        ).fetchone():
+            raise ValidationError("SAV is in use; finish the game before replacing it")
+        # Retain terminal session identities, so delayed requests cannot restart
+        # them. The saved payload is no longer required by finished history.
+        pending = connection.execute(
+            "SELECT 1 FROM link_sessions WHERE (save_a_id=? OR save_b_id=?) "
+            "AND status NOT IN ('COMPLETED','CANCELLED','FAILED','EXPIRED')",
+            (save_id, save_id),
+        ).fetchone()
+        if pending:
+            raise ValidationError("SAV recovery must be resolved before replacement")
+        if connection.execute(
+            "SELECT 1 FROM pair_save_commit_journals WHERE (player_a_save_id=? OR player_b_save_id=?) "
+            "AND state NOT IN ('COMMITTED','ABORTED')", (save_id, save_id),
+        ).fetchone():
+            raise ValidationError("SAV pair recovery must be resolved before replacement")
+        pending = connection.execute(
+            "SELECT 1 FROM mobile_sessions WHERE save_id=? AND status='RUNNING' "
+            "AND lease_expires_at_ms>?", (save_id, now_ms),
+        ).fetchone()
+        if pending:
+            raise ValidationError("Mobile game is still running")
+        connection.execute(
+            "UPDATE mobile_sessions SET status='EXPIRED', row_version=row_version+1 "
+            "WHERE save_id=? AND status='RUNNING'", (save_id,),
+        )
+        connection.execute("DELETE FROM mobile_create_requests WHERE save_id=?", (save_id,))
+        connection.execute("UPDATE mobile_sessions SET save_id=NULL WHERE save_id=?", (save_id,))
+        for column in ('save_a_id', 'save_b_id'):
+            connection.execute(f"UPDATE link_sessions SET {column}=NULL, row_version=row_version+1 WHERE {column}=?", (save_id,))
+        for column in ('player_a_save_id', 'player_b_save_id'):
+            connection.execute(f"UPDATE pair_save_commit_journals SET {column}=NULL WHERE {column}=?", (save_id,))
+
+    def _apply_normalized(self, user_id, normalized, current, deletions, changes,
+                          created, removed, connection):
         delete_ids: list[str] = []
         applied = []
         for slot_number in range(1, MAX_ROM_SLOTS + 1):
@@ -211,6 +299,7 @@ class RomSlotManager:
                 registration.game_type,
                 desired["initial_save_bytes"] or self._initial_save_bytes_for_rom(desired["filename"]),
             )
+            created.append(save)
             slot = RomSlot(
                 user_id=user_id,
                 slot=slot_number,
@@ -234,7 +323,11 @@ class RomSlotManager:
 
         for old_slot in deletions:
             if old_slot.save_id:
-                self.saves.delete_save(old_slot.save_id, user_id)
+                self._detach_history(connection, old_slot.save_id, user_id)
+                old_save = self.saves.get_save(old_slot.save_id, user_id)
+                if not self.saves.repository.delete_save(old_slot.save_id, user_id, int(time.time() * 1000)):
+                    raise ValidationError("SAV is still in use")
+                removed.append(old_save)
                 delete_ids.append(old_slot.save_id)
         return {
             "requires_confirmation": False,

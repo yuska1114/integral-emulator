@@ -1087,6 +1087,136 @@ class LinkSessionManager:
             if requested & journal_save_ids:
                 raise ValidationError("save pair commit recovery is in progress")
 
+    def settle_save_replacement(self, save_id: str, user_id: str) -> None:
+        """Retire idle history, completing only an already-started pair commit.
+
+        Use fresh, internal game/SAV fences while reconciling; never revive the
+        old Runtime's authority. Existing per-SAV journals survive any failure.
+        """
+        self.saves.get_save(save_id, user_id)
+        related = [self.get_session(raw["id"]) for raw in self.storage.load_link_sessions().values()
+                   if save_id in (raw.get("save_a_id"), raw.get("save_b_id"))]
+        for session in related:
+            journal = self.storage.get_pair_save_journal(session.id)
+            if session.status in {item.value for item in TERMINAL_STATUSES} and (
+                not journal or journal.get("state") in {"COMMITTED", "ABORTED"}
+            ):
+                continue
+            users = (session.player_a_user_id, session.player_b_user_id)
+            if any(self.active_game_session_for_user(uid) for uid in users):
+                raise ValidationError("finish both games before replacing this SAV")
+            saves = [self.saves.get_save(sid, uid) for sid, uid in
+                     ((session.save_a_id, users[0]), (session.save_b_id, users[1]))]
+            database = self.storage.database
+            with database.transaction() as connection:
+                auth = [connection.execute(
+                    "SELECT token_digest FROM auth_sessions WHERE user_id=? AND server_id=? ORDER BY created_at_ms DESC LIMIT 1",
+                    (uid, self.server_id),
+                ).fetchone() for uid in users]
+            if not all(auth):
+                raise ValidationError("SAV recovery requires administrator repair: missing session identity")
+            recovery_id = issue_secret("recover")
+            deadline = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+            locks = self.game_session_authority.acquire_pair(
+                game_run_id=recovery_id,
+                first_user_id=users[0], first_auth_session_id=auth[0][0],
+                first_save_bindings=[{"save_id": saves[0].id, "revision": saves[0].revision, "sha256": saves[0].sha256}],
+                second_user_id=users[1], second_auth_session_id=auth[1][0],
+                second_save_bindings=[{"save_id": saves[1].id, "revision": saves[1].revision, "sha256": saves[1].sha256}],
+                lease_expires_at=deadline, expires_at=deadline,
+            )
+            locked = []
+            try:
+                for save, lock in zip(saves, locks):
+                    self.saves.lock_save(save.id, save.user_id, recovery_id, deadline,
+                                         auth_session_id=lock.auth_session_id,
+                                         game_run_id=recovery_id, fencing_token=lock.fencing_token)
+                    locked.append((save, lock))
+                # Re-read after acquiring both fences, not from the preview.
+                session = self.get_session(session.id)
+                journal = self.storage.get_pair_save_journal(session.id)
+                completed = False
+                if journal and journal.get("state") not in {"COMMITTED", "ABORTED"}:
+                    completed = self._settle_replacement_pair(session, journal, recovery_id)
+                elif journal and journal.get("state") == "COMMITTED":
+                    completed = True
+                target = LinkSessionStatus.COMPLETED if completed else LinkSessionStatus.CANCELLED
+                if session.status not in {item.value for item in TERMINAL_STATUSES}:
+                    self.transition(session.id, target, reason="ROM replacement settled pending saves")
+                else:
+                    self.cleanup_temp_files(session.id)
+            finally:
+                for save, lock in locked:
+                    self.saves.unlock_save(save.id, save.user_id, owner=recovery_id,
+                                           fencing_token=lock.fencing_token)
+                self.game_session_authority.repository.release_run(recovery_id, status="COMPLETED")
+
+    def _settle_replacement_pair(self, session, journal, recovery_id):
+        players = journal.get("players", {})
+        entries = [players.get(name) for name in ("player_a", "player_b")]
+        if not all(entries) or journal.get("source") != "host-staged":
+            raise ValidationError("SAV recovery requires administrator repair: invalid pair journal")
+        applied = []
+        for entry, sid, uid in zip(entries, (session.save_a_id, session.save_b_id),
+                                   (session.player_a_user_id, session.player_b_user_id)):
+            if entry["save_id"] != sid or entry["user_id"] != uid:
+                raise ValidationError("SAV recovery journal ownership mismatch")
+            current = self.saves.get_save(sid, uid)
+            actual = sha256_bytes(self.storage.read_bytes(current.storage_path))
+            base, target = int(entry["base_revision"]), int(entry["target_revision"])
+            is_applied = bool(entry["changed"] and actual == entry["payload_sha256"])
+            if is_applied and current.revision == base:
+                # Finish metadata after an interrupted atomic file replacement.
+                self.saves.commit_service.reconcile_prepared(save_ids={sid})
+                current = self.saves.get_save(sid, uid)
+            if is_applied:
+                valid = current.revision == target and current.sha256 == actual
+            else:
+                valid = current.revision == base and current.sha256 == actual
+            if not valid:
+                raise ValidationError("SAV recovery requires administrator repair: revision/hash conflict")
+            applied.append(is_applied)
+        if not any(applied):
+            # No persistent save was advanced. Preserve both current saves.
+            journal["state"] = "ABORTED"
+            journal["updated_at"] = now_iso()
+            with self.storage.database.write_unit() as connection:
+                self.storage.update_pair_save_journal(journal, int(journal["__row_version"]))
+                for entry in entries:
+                    connection.execute(
+                        "DELETE FROM save_upload_requests WHERE save_id=? AND state='PREPARED' "
+                        "AND authority_mode='PAIR_COMMIT' AND expected_revision=?",
+                        (entry["save_id"], entry["base_revision"]),
+                    )
+            return False
+        payloads = []
+        for entry, done in zip(entries, applied):
+            if done or not entry["changed"]:
+                payloads.append(None)
+                continue
+            expected = self.session_temp_path(session) / (
+                "player_a.sav" if entry is entries[0] else "player_b.sav")
+            if Path(entry["stage_path"]) != expected or not expected.is_file():
+                raise ValidationError("SAV recovery requires administrator repair: candidate missing")
+            payload = expected.read_bytes()
+            if sha256_bytes(payload) != entry["payload_sha256"]:
+                raise ValidationError("SAV recovery requires administrator repair: candidate hash mismatch")
+            payloads.append(payload)
+        # Validate both sides before writing either. A fresh fenced commit reuses
+        # the existing atomic-file / upload-journal implementation.
+        for entry, payload in zip(entries, payloads):
+            if payload is not None:
+                self.saves.commit_locked(entry["save_id"], entry["user_id"], recovery_id,
+                                         int(entry["base_revision"]), payload)
+            current = self.saves.get_save(entry["save_id"], entry["user_id"])
+            entry.update(committed=True, result_revision=current.revision)
+        journal.update(state="COMMITTED", final=True, committed_at=now_iso(), updated_at=now_iso(),
+                       result={"player_a_revision": entries[0]["result_revision"],
+                               "player_b_revision": entries[1]["result_revision"],
+                               "changed": [name for name, entry in zip(("player_a", "player_b"), entries) if entry["changed"]]})
+        self.storage.update_pair_save_journal(journal, int(journal["__row_version"]))
+        return True
+
     def mark_participant_disconnected(self, session_id: str, user_id: str) -> LinkSession:
         session = self.get_session(session_id)
         if session.status not in {LinkSessionStatus.FINALIZING.value, LinkSessionStatus.RECOVERING.value}:

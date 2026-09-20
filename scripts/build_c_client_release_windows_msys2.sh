@@ -27,7 +27,7 @@ INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD="${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD:-0}
 RELEASE_ROOT="${INTEGRAL_EMULATOR_RELEASE_ROOT}"
 APP_NAME="${INTEGRAL_EMULATOR_RELEASE_APP_NAME}"
 VERSION="$(
-  sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "${PROJECT_ROOT}/c_client/login_client.c" | head -n 1
+  sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "${PROJECT_ROOT}/c_client/client_version.h" | head -n 1
 )"
 if [ -z "${VERSION}" ]; then
   VERSION="0.0"
@@ -70,6 +70,8 @@ if [ "${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD}" != "1" ]; then
 
   echo "Building N64 Runtime runtime binaries..."
   OS=Windows_NT make -C "${PROJECT_ROOT}/runtimes/n64"
+  OS=Windows_NT make -C "${PROJECT_ROOT}/runtimes/n64" transfer-memory-test transfer-pak-save-test
+  OS=Windows_NT make -C "${PROJECT_ROOT}/c_client" n64-client-memory-test
 else
   echo "Skipping builds cannot produce trustworthy build provenance." >&2
   exit 1

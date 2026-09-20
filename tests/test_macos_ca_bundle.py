@@ -49,7 +49,7 @@ class MacOSCABundleTests(unittest.TestCase):
         self.assertNotIn("/opt/homebrew/etc/ca-certificates", builder)
         self.assertIn("LICENSES/third-party/mozilla-ca/MPL-2.0.txt", builder)
 
-        client = (ROOT / "c_client/login_client.c").read_text(encoding="utf-8")
+        client = "\n".join((ROOT / "c_client" / name).read_text(encoding="utf-8") for name in ("client_room_link.c", "client_room_n64.c"))
         self.assertIn(
             'getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_CA_FILE")', client
         )

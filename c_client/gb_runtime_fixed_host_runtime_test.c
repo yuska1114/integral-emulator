@@ -1,5 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#define GB_INTERNAL
 #include "gb_runtime_fixed_host_runtime.h"
 
 #include <stdio.h>
@@ -45,9 +46,12 @@ int main(int argc, char **argv)
         .remote_save = remote_save,
         .remote_save_size = sizeof(remote_save),
         .preserve_both_audio = true,
+        .ir_off_delay_ticks = 32,
     };
     CHECK(integral_gb_runtime_fixed_host_runtime_init(&runtime, &config) == 0);
     CHECK(runtime.initialized);
+    CHECK(runtime.engine.a.gb->ir_off_delay_ticks == 32);
+    CHECK(runtime.engine.b.gb->ir_off_delay_ticks == 32);
     CHECK(all_zero(host_save, sizeof(host_save)));
     CHECK(all_zero(remote_save, sizeof(remote_save)));
     CHECK(integral_gb_runtime_fixed_host_runtime_run_frame(&runtime, 0u, 0u) == 0);

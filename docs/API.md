@@ -6,6 +6,8 @@
 
 ## 起動と基本経路
 
+`GET /`は404を返します。管理画面は`/admin`からログインして使用してください。
+
 ソースツリーから開発用サーバーを起動する例です。
 
 ```bash
@@ -37,6 +39,13 @@ curl http://127.0.0.1:8080/health
 - `GET /me`
 
 `POST /auth/login`は、C Clientが以後の認証に使用するBearer tokenを返します。
+リクエストの`client_version`は機械判定用文字列（例：`0.2.0-beta`）です。
+サーバーの照合は既定で無効で、未送信のClientも接続できます。有効時は許可リストへ
+完全一致する版のみログインできます。未送信・不一致はHTTP `426 Upgrade Required`、
+`error.code=client_version_not_allowed`、
+`error.message=ASK SERVER ADMIN FOR SUPPORTED VERSION`を返し、トークンを発行しません。
+資格情報の不正は従来の401、レート制限は従来の429が優先されます。
+バージョンは自己申告であり、セキュリティ認証ではなく互換性確認・更新案内用です。
 認証が必要なClient APIでは、`Authorization: Bearer <token>`を送信します。
 
 `POST /auth/register`による自己登録は既定で無効です。無効時は、管理者が管理画面
@@ -71,6 +80,12 @@ Cookieで認証します。
 
 ROM登録時にサーバーへ送信するのは、ファイル名、hash、platform、region、
 ROMヘッダータイトルなどのメタデータです。ROM本体はサーバーへ保存しません。
+
+ROM枠の置換は旧SAVの削除確認後に行います。終了済みの利用履歴は置換を妨げません。
+未反映の通信保存は取り消し、片側だけ反映済みの場合は両者のrevision/hashと候補を
+検証して保存を完了させてから置換します。実行中、候補欠損、整合性不明の場合は
+置換せず理由を返します。登録情報の変更は一括で確定し、旧ファイルの後片付けだけが
+失敗した場合は成功応答に`cleanup_pending_save_ids`を含めます。
 
 `game_type`はクライアントから指定できません。サーバーが次のように決定します。
 
@@ -123,17 +138,25 @@ ROOM開始時に発行されたfixed HostセッションIDに対して、次の�
 
 - `GET /gb-runtime-fixed-host-sessions/{session_id}/manifest`
 - `POST /gb-runtime-fixed-host-sessions/{session_id}/preflight`
+- `POST /gb-runtime-fixed-host-sessions/{session_id}/blocked`
 - `GET /gb-runtime-fixed-host-sessions/{session_id}/runtime-snapshots`
 - `POST /gb-runtime-fixed-host-sessions/{session_id}/relay-ticket`
 - `POST /gb-runtime-fixed-host-sessions/{session_id}/host-finish`
 - `POST /gb-runtime-fixed-host-sessions/{session_id}/terminal-receipt`
 - `POST /gb-runtime-fixed-host-sessions/{session_id}/cancel`
 
+HostのSAV検査で開始できない場合、`blocked`へ`rtc_save_required`または
+`rom_unreadable`を送信し、manifestの`state=BLOCKED`と`blocked_reason`を両者で共有します。
+BLOCKED中はpreflightとticket発行を停止します。RTC未準備の場合はROOMを退出し、
+LOCALで起動・正常終了してから新しいROOMを作成してください。
+
 基本フローは、ROOM開始、両参加者のpreflight、HostによるSAVスナップショット取得、
 両参加者のrelay ticket取得、Runtime実行、両者の終了結果確認、確定処理の順です。
 
 relay ticketの`connection.relay_transport`は必須で、`tls`または`plain`です。
 Clientは指定された方式だけを使用し、別の方式へfallbackしません。
+実行中の一時切断では、同じセッションの`relay-ticket`へ`{"resume": true}`を送り、
+新しい一回限りのチケットを取得します。再取得で25秒の復旧期限は延長しません。
 
 User1が固定Hostとなり、2つのGB Runtime slotとローカルLink Cableを実行します。
 Hostには、両参加者が選択したROMと同じROMヘッダータイトルのROMが必要です。
@@ -160,12 +183,26 @@ SAVの取得と更新には、LOCAL実行と同じ`GET /saves/{save_id}`と
 ## N64 Runtime mediaセッション
 
 - `GET /n64-runtime-media-sessions/{session_id}`
+- `POST /n64-runtime-media-sessions/{session_id}/finish`
+- `POST /n64-runtime-media-sessions/{session_id}/terminate`
+- `POST /n64-runtime-media-sessions/{session_id}/recover`
 - `GET /n64-runtime-media-sessions/{session_id}/runtime-saves/{kind}`
+
+`terminate`は参加者の明示退出用です。`room_code`を送信し、対象sessionに保存された
+ROOMコード・作成世代に限定して、media終端、run lock解放、両membershipとROOM削除を
+同じSQLite transactionで確定します。終了済みsessionへの同じ要求は冪等で、新ROOMを
+変更しません。期限内の一時切断は`recover`を使用し、正常Host終了は`finish`を使用します。
 
 N64 mediaセッションは、N64 ROOMで各参加者が
 `POST /rooms/{room_number}/start`を呼び出したときに作成または取得されます。
 各参加者には、それぞれのGame Session Lockとrelay ticketが発行されます。
 ROOM開始応答の`connection.relay_transport`は必須で、`tls`または`plain`です。
+再接続時は同じ開始APIに`expected_media_session_id`を指定します。
+既存の同一セッションに限って新しい一回限りのticketを発行します。
+終了済みの指定セッションではterminal状態を返し、新しいticketは発行しません。
+Hostの`finish`はROOM・Game Session・Media Sessionを`host_finished`で終了させます。
+一時切断の`recover`はサーバー上の共通`recovery_deadline`（25秒）を使用し、
+片側の再認証では期限を延長しません。正常終了では再接続せずMAINへ戻ります。
 
 `kind`は`n64`、`host-gb`、`remote-gb`のいずれかです。
 この経路で取得するSAVはRuntime用の一時データであり、N64 ROOMの実行結果は

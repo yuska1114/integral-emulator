@@ -32,6 +32,7 @@ LOG_CONFIG_TEST_BIN := $(BUILD_DIR)/log_config_test$(EXEEXT)
 KEY_CONFIG_CONTROLLER_TEST_BIN := $(BUILD_DIR)/key_config_controller_test$(EXEEXT)
 VIDEO_WINDOW_EXIT_CONFIRMATION_TEST_BIN := $(BUILD_DIR)/video_window_exit_confirmation_test$(EXEEXT)
 SERVER_OPTIONS_TEST_BIN := $(BUILD_DIR)/server_options_test$(EXEEXT)
+INPUT_ROUTER_AUTO_A_TEST_BIN := $(BUILD_DIR)/input_router_auto_a_test$(EXEEXT)
 DISPLAY_SCALE_TEST_BIN := $(BUILD_DIR)/display_scale_test$(EXEEXT)
 MENU_CONFIG_DISPLAY_SCALE_TEST_BIN := $(BUILD_DIR)/menu_config_display_scale_test$(EXEEXT)
 SERIAL_PERIPHERAL_TEST_BIN := $(BUILD_DIR)/serial_peripheral_test$(EXEEXT)
@@ -58,15 +59,15 @@ GB_RUNTIME_PLATFORM_LIBS += -lws2_32 -liphlpapi
 APP_RESOURCE_OBJECTS += $(BUILD_DIR)/gb_runtime.res.o
 endif
 
-COMMON_HEADERS := common/display_scale.h common/file_util.h common/key_config.h common/log_util.h common/mdns.h common/net_compat.h common/parse_util.h common/process_util.h common/protocol.h common/sdl_text.h common/string_util.h
+COMMON_HEADERS := ../../common/window_focus.h common/display_scale.h common/file_util.h common/utf8_file.h common/key_config.h common/log_util.h common/mdns.h common/net_compat.h common/parse_util.h common/process_util.h common/protocol.h common/sdl_text.h common/string_util.h
 COMMON_SOURCES := common/display_scale.c common/file_util.c common/key_config.c common/log_util.c common/mdns.c common/net_compat.c common/parse_util.c common/process_util.c common/sdl_text.c common/string_util.c
 APP_HEADERS := app/choice_list.h app/key_config_menu.h app/menu_config.h app/menu_draw.h app/menu_paths.h app/menu_state.h app/screenshot_viewer.h
 APP_RESOURCES := app/windows_resource.rc $(BUILD_DIR)/integral_emulator_icon.ico ../../../scripts/verify_app_icon_assets.py
-SERVER_HEADERS := server/audio_player.h server/input_router.h server/lan_remote.h server/link_bridge.h server/rom_profile.h server/screenshot.h server/server_cleanup.h server/server_options.h server/sgb_boot_resource.h server/slot.h server/slot2_upload_wait.h server/stream_server.h server/video_window.h server/wait_window.h serial/serial_peripheral.h
+SERVER_HEADERS := ../../common/screenshot.h ../../common/screenshot_path.h  server/audio_player.h server/input_router.h server/lan_remote.h server/link_bridge.h server/rom_profile.h server/screenshot.h server/server_cleanup.h server/server_options.h server/sgb_boot_resource.h server/slot.h server/slot2_upload_wait.h server/stream_server.h server/video_window.h server/wait_window.h serial/serial_peripheral.h
 SERVER_SOURCES := server/main.c server/audio_player.c server/input_router.c server/lan_remote.c server/link_bridge.c server/rom_profile.c server/screenshot.c server/server_cleanup.c server/server_options.c server/sgb_boot_resource.c server/slot.c server/slot2_upload_wait.c server/stream_server.c server/video_window.c server/wait_window.c serial/serial_peripheral.c
 APP_SOURCES := app/main.c app/choice_list.c app/key_config_menu.c app/menu_config.c app/menu_draw.c app/menu_paths.c app/menu_state.c app/screenshot_viewer.c
 
-.PHONY: all app server mobile-runtime secure-memory-test gb-link-engine-zeroization-test gb-link-engine-save-preflight-test gb-link-engine-determinism-test gb-link-engine-determinism-smoke gb-link-engine-determinism-serial-smoke gb-link-engine-determinism-ir-smoke gb-link-engine-determinism-rtc-smoke rom-profile-test serial-peripheral-test sgb-fixture sgb-slot-test sgb-boot-resource-test log-config-test key-config-controller-test display-scale-test menu-config-display-scale-test video-window-exit-confirmation-test server-options-test clean
+.PHONY: all app server mobile-runtime secure-memory-test gb-link-engine-zeroization-test gb-link-engine-save-preflight-test gb-link-engine-determinism-test gb-link-engine-determinism-smoke gb-link-engine-determinism-serial-smoke gb-link-engine-determinism-ir-smoke gb-link-engine-determinism-rtc-smoke rom-profile-test serial-peripheral-test sgb-fixture sgb-slot-test sgb-boot-resource-test log-config-test key-config-controller-test display-scale-test menu-config-display-scale-test video-window-exit-confirmation-test server-options-test input-router-auto-a-test clean
 
 all: app server
 
@@ -135,8 +136,23 @@ menu-config-display-scale-test: $(MENU_CONFIG_DISPLAY_SCALE_TEST_BIN)
 video-window-exit-confirmation-test: $(VIDEO_WINDOW_EXIT_CONFIRMATION_TEST_BIN)
 	SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy $(VIDEO_WINDOW_EXIT_CONFIRMATION_TEST_BIN)
 
+$(VIDEO_WINDOW_EXIT_CONFIRMATION_TEST_BIN): ../../common/window_focus.h
+
 server-options-test: $(SERVER_OPTIONS_TEST_BIN)
 	$(SERVER_OPTIONS_TEST_BIN)
+
+input-router-auto-a-test: $(INPUT_ROUTER_AUTO_A_TEST_BIN)
+	$(INPUT_ROUTER_AUTO_A_TEST_BIN)
+
+.PHONY: screenshot-test
+screenshot-test: $(BUILD_DIR)/screenshot_test
+	python3 ../../../tests/run_util_capture_test.py $(BUILD_DIR)/screenshot_test
+
+$(BUILD_DIR)/server2_util_test$(EXEEXT): server/server2_util_test.c $(SERVER_SOURCES) $(SERVER_HEADERS) $(COMMON_SOURCES) $(COMMON_HEADERS) $(SAMEBOY_LIB) | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(GB_RUNTIME_CPPFLAGS) $(SDL2_CFLAGS) $(CFLAGS) server/server2_util_test.c $(filter-out server/main.c,$(SERVER_SOURCES)) $(COMMON_SOURCES) $(LDFLAGS) $(SAMEBOY_LIB) -lm $(SDL2_LIBS) $(GB_RUNTIME_PLATFORM_LIBS) -o $@
+
+$(BUILD_DIR)/screenshot_test: server/screenshot_test.c server/screenshot.c server/screenshot.h ../../common/screenshot.h ../../common/screenshot_path.h | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(GB_RUNTIME_CPPFLAGS) $(SDL2_CFLAGS) $(CFLAGS) server/screenshot_test.c server/screenshot.c $(LDFLAGS) $(SDL2_LIBS) -o $@
 
 $(APP_BIN): $(APP_SOURCES) $(APP_HEADERS) $(COMMON_SOURCES) $(COMMON_HEADERS) $(APP_RESOURCE_OBJECTS) | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(GB_RUNTIME_CPPFLAGS) $(SDL2_CFLAGS) $(CFLAGS) $(APP_SOURCES) $(COMMON_SOURCES) $(APP_RESOURCE_OBJECTS) $(LDFLAGS) $(SDL2_LIBS) $(GB_RUNTIME_PLATFORM_LIBS) -o $@
@@ -239,10 +255,13 @@ $(VIDEO_WINDOW_EXIT_CONFIRMATION_TEST_BIN): server/video_window_exit_confirmatio
 $(SERVER_OPTIONS_TEST_BIN): server/server_options_test.c server/server_options.c server/server_options.h common/display_scale.c common/file_util.c common/key_config.c common/parse_util.c common/string_util.c | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(GB_RUNTIME_CPPFLAGS) $(SDL2_CFLAGS) $(CFLAGS) server/server_options_test.c server/server_options.c common/display_scale.c common/file_util.c common/key_config.c common/parse_util.c common/string_util.c $(LDFLAGS) $(SDL2_LIBS) $(GB_RUNTIME_PLATFORM_LIBS) -o $@
 
+$(INPUT_ROUTER_AUTO_A_TEST_BIN): server/input_router_auto_a_test.c server/input_router.c server/input_router.h common/key_config.c common/key_config.h common/string_util.c common/string_util.h | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(GB_RUNTIME_CPPFLAGS) $(SDL2_CFLAGS) $(CFLAGS) server/input_router_auto_a_test.c server/input_router.c common/key_config.c common/string_util.c $(LDFLAGS) $(SDL2_LIBS) $(GB_RUNTIME_PLATFORM_LIBS) -o $@
+
 $(BUILD_DIR):
 	mkdir -p $@
 
-$(SAMEBOY_LIB):
+$(SAMEBOY_LIB): $(wildcard $(SAMEBOY_DIR)/Core/*.c $(SAMEBOY_DIR)/Core/*.h)
 	$(MAKE) -C $(SAMEBOY_DIR) lib \
 		$(if $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS),CC="$(CC) $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS)")
 

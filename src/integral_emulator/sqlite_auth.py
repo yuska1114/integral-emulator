@@ -16,7 +16,7 @@ from .auth_validation import (
     validate_password,
     validate_username,
 )
-from .errors import AuthenticationError, DuplicateUserError, ValidationError
+from .errors import AuthenticationError, ClientVersionNotAllowedError, DuplicateUserError, ValidationError
 from .models import SessionToken, User
 from .security import hash_password, issue_secret, verify_password
 from .sqlite_repositories import RepositoryConflictError, SQLiteAuthRepository
@@ -59,7 +59,8 @@ class SQLiteAuthService:
             raise DuplicateUserError("username is already registered") from error
         return self._user(record)
 
-    def login(self, username: str, password: str, server_id: str = "primary") -> SessionToken:
+    def login(self, username: str, password: str, server_id: str = "primary", *,
+              client_version_allowed: bool = True) -> SessionToken:
         normalized = normalize_username(username)
         normalized_server_id = normalize_server_id(server_id)
         user_data = self.repository.find_user_by_username(normalized)
@@ -67,6 +68,8 @@ class SQLiteAuthService:
             raise AuthenticationError("invalid username or password")
         if user_data.get("status") != "active":
             raise AuthenticationError("user is not active")
+        if not client_version_allowed:
+            raise ClientVersionNotAllowedError("ASK SERVER ADMIN FOR SUPPORTED VERSION")
         now = datetime.now(timezone.utc)
         raw_token = issue_secret("token")
         digest = token_digest(raw_token)

@@ -264,9 +264,19 @@ class SaveCommitService:
             "auth_session_id": authority.auth_session_id,
         }
         if previous is not None:
-            self._require_same_request(previous, identity)
             if previous["state"] == "COMMITTED":
+                # The API has authorized this user and current game authority.
+                # A committed receipt is read-only: after the old game ends or
+                # login changes, the immutable payload still identifies the
+                # same result. Never apply this relaxation to PREPARED writes.
+                self._require_same_request(previous, {
+                    field: identity[field] for field in (
+                        "save_id", "user_id", "expected_revision",
+                        "candidate_sha256", "candidate_size",
+                    )
+                })
                 return self._committed_record(previous, current), True
+            self._require_same_request(previous, identity)
             if previous["state"] != "PREPARED":
                 raise ValidationError("save upload request journal is invalid")
         else:
@@ -370,9 +380,9 @@ class SaveCommitService:
         for path in backups[self.backup_generations:]:
             path.unlink(missing_ok=True)
 
-    def reconcile_prepared(self, limit: int = 100) -> list[str]:
+    def reconcile_prepared(self, limit: int = 100, *, save_ids=None) -> list[str]:
         completed: list[str] = []
-        for journal in self.repository.list_prepared_save_uploads(limit):
+        for journal in self.repository.list_prepared_save_uploads(limit, save_ids=save_ids):
             save = self.repository.get_save(str(journal["save_id"]), str(journal["user_id"]))
             if save is None:
                 continue
@@ -700,16 +710,20 @@ class SQLiteSaveManager:
             raise SaveLockedError(str(error)) from error
         if not deleted:
             raise SaveLockedError("save is locked")
+        self.remove_save_files(current)
+        return current
+
+    def remove_save_files(self, current: SaveRecord) -> None:
+        """Remove bytes only after the metadata deletion has committed."""
         path = self.storage.resolve_relative(current.storage_path)
         path.unlink(missing_ok=True)
         self._fsync_directory(path.parent)
         self._remove_empty_parents(path.parent, self.storage.saves_dir)
-        backup_dir = self.storage.backups_dir / user_id / save_id
+        backup_dir = self.storage.backups_dir / current.user_id / current.id
         if backup_dir.exists():
             shutil.rmtree(backup_dir)
             self._fsync_directory(backup_dir.parent)
             self._remove_empty_parents(backup_dir.parent, self.storage.backups_dir)
-        return current
 
     def lock_save(
         self,

@@ -7,7 +7,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import logging
 from typing import Any
 
 from .errors import NotFoundError, ValidationError
@@ -19,7 +20,7 @@ from .room_session_policy import RoomSessionPolicy
 
 MEDIA_TICKET_SCOPE = "n64_runtime_media"
 N64_RUNTIME_MEDIA_SESSION_TTL_MINUTES = 30
-ACTIVE_MEDIA_STATUSES = {"CREATED", "WAITING_PEER", "READY", "RUNNING"}
+ACTIVE_MEDIA_STATUSES = {"CREATED", "WAITING_PEER", "READY", "RUNNING", "RECOVERING"}
 N64_RUNTIME_MEDIA_SESSION_LOCK = "n64_runtime_media_session"
 
 
@@ -51,6 +52,9 @@ class N64RuntimeMediaSession:
     remote_ticket_sha256: str | None = None
     host_ticket_used: bool = False
     remote_ticket_used: bool = False
+    recovery_deadline: str | None = None
+    room_code: str | None = None
+    room_created_at_ms: int | None = None
     row_version: int = 0
 
     @classmethod
@@ -85,6 +89,7 @@ class N64RuntimeMediaSession:
             "expires_at": self.expires_at,
             "started_at": self.started_at,
             "termination_reason": self.termination_reason,
+            "recovery_deadline": self.recovery_deadline,
             "no_save": self.no_save,
             "ticket_scope": self.ticket_scope,
         }
@@ -111,10 +116,13 @@ class N64RuntimeMediaSessionManager:
         host_save_id: str,
         remote_save_id: str,
         game_type: str,
+        expected_session_id: str = "",
     ) -> N64RuntimeMediaSession:
         with self.storage.exclusive_lock(N64_RUNTIME_MEDIA_SESSION_LOCK):
             records = self.storage.load_n64_runtime_media_sessions()
             current = self._find_active_for_room_locked(records, room_number)
+            if expected_session_id and (current is None or current.id != expected_session_id):
+                raise ValidationError("N64 media session ended; reconnect cannot create a session")
             if current:
                 expected = (
                 host_user_id,
@@ -178,7 +186,8 @@ class N64RuntimeMediaSessionManager:
             records = self.storage.load_n64_runtime_media_sessions()
             session = self._get_locked(records, session_id)
             if self._expired(session) and session.status in ACTIVE_MEDIA_STATUSES:
-                session = replace(session, status="EXPIRED", updated_at=now_iso())
+                session = replace(session, status="EXPIRED", updated_at=now_iso(),
+                                  termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired")
                 self._save_locked(records, session)
             return session
 
@@ -200,7 +209,7 @@ class N64RuntimeMediaSessionManager:
                     continue
                 if self._expired(session):
                     expired = replace(
-                        session, status="EXPIRED", updated_at=now_iso()
+                        session, status="EXPIRED", updated_at=now_iso(), termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired"
                     )
                     self._save_locked(records, expired)
                     continue
@@ -217,7 +226,7 @@ class N64RuntimeMediaSessionManager:
                     continue
                 if self._expired(session):
                     expired = replace(
-                        session, status="EXPIRED", updated_at=now_iso()
+                        session, status="EXPIRED", updated_at=now_iso(), termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired"
                     )
                     self._save_locked(records, expired)
                     continue
@@ -246,16 +255,48 @@ class N64RuntimeMediaSessionManager:
                 self._save_locked(records, session)
             return session
 
-    def expire(self, session_id: str, reason: str) -> N64RuntimeMediaSession:
+    def finish(self, session_id: str) -> N64RuntimeMediaSession:
         with self.storage.exclusive_lock(N64_RUNTIME_MEDIA_SESSION_LOCK):
             records = self.storage.load_n64_runtime_media_sessions()
             session = self._get_locked(records, session_id)
             if session.status in ACTIVE_MEDIA_STATUSES:
+                session = replace(session, status="COMPLETED", termination_reason="host_finished",
+                                  recovery_deadline=None, updated_at=now_iso())
+                self._save_locked(records, session)
+            return session
+
+    def recover(self, session_id: str) -> N64RuntimeMediaSession:
+        """One authority deadline for both participants; repeated requests cannot extend it."""
+        with self.storage.exclusive_lock(N64_RUNTIME_MEDIA_SESSION_LOCK):
+            records = self.storage.load_n64_runtime_media_sessions()
+            session = self._get_locked(records, session_id)
+            if session.status not in ACTIVE_MEDIA_STATUSES:
+                return session
+            if self._expired(session):
+                session = replace(session, status="EXPIRED", termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired", updated_at=now_iso())
+            elif not session.recovery_deadline:
+                session = replace(session, status="RECOVERING", updated_at=now_iso(),
+                    recovery_deadline=(datetime.now(timezone.utc) + timedelta(seconds=25)).isoformat(),
+                    host_ticket_used=False, remote_ticket_used=False,
+                    host_ticket_sha256=None, remote_ticket_sha256=None)
+            else:
+                return session
+            self._save_locked(records, session)
+            return session
+
+    def expire(self, session_id: str, reason: str) -> N64RuntimeMediaSession:
+        with self.storage.exclusive_lock(N64_RUNTIME_MEDIA_SESSION_LOCK):
+            records = self.storage.load_n64_runtime_media_sessions()
+            session = self._get_locked(records, session_id)
+            if session.status in ACTIVE_MEDIA_STATUSES or (
+                session.status == "EXPIRED" and session.recovery_deadline
+            ):
                 session = replace(
                     session,
                     status="EXPIRED",
                     updated_at=now_iso(),
                     termination_reason=reason,
+                    recovery_deadline=None,
                 )
                 self._save_locked(records, session)
             return session
@@ -266,7 +307,7 @@ class N64RuntimeMediaSessionManager:
             session = self._get_locked(records, session_id)
             if session.status not in ACTIVE_MEDIA_STATUSES or self._expired(session):
                 if session.status in ACTIVE_MEDIA_STATUSES:
-                    session = replace(session, status="EXPIRED", updated_at=now_iso())
+                    session = replace(session, status="EXPIRED", updated_at=now_iso(), termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired")
                     self._save_locked(records, session)
                 raise ValidationError("N64 Runtime media session is not active")
             timestamp = now_iso()
@@ -307,7 +348,7 @@ class N64RuntimeMediaSessionManager:
             records = self.storage.load_n64_runtime_media_sessions()
             session = self._get_locked(records, session_id)
             if self._expired(session) and session.status in ACTIVE_MEDIA_STATUSES:
-                session = replace(session, status="EXPIRED", updated_at=now_iso())
+                session = replace(session, status="EXPIRED", updated_at=now_iso(), termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired")
                 self._save_locked(records, session)
             if session.status not in ACTIVE_MEDIA_STATUSES:
                 raise ValidationError("N64 Runtime media session is not active")
@@ -317,7 +358,7 @@ class N64RuntimeMediaSessionManager:
             updates = {
                 f"{role}_ticket_sha256": digest,
                 f"{role}_ticket_used": False,
-                "status": "WAITING_PEER",
+                "status": "RECOVERING" if session.recovery_deadline else "WAITING_PEER",
                 "updated_at": now_iso(),
             }
             session = replace(session, **updates)
@@ -334,7 +375,7 @@ class N64RuntimeMediaSessionManager:
             except NotFoundError:
                 return False
             if self._expired(session) and session.status in ACTIVE_MEDIA_STATUSES:
-                session = replace(session, status="EXPIRED", updated_at=now_iso())
+                session = replace(session, status="EXPIRED", updated_at=now_iso(), termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired")
                 self._save_locked(records, session)
             if session.status not in ACTIVE_MEDIA_STATUSES or session.ticket_scope != MEDIA_TICKET_SCOPE:
                 return False
@@ -350,7 +391,8 @@ class N64RuntimeMediaSessionManager:
                     session,
                     **{
                         f"{role}_ticket_used": True,
-                        "status": "RUNNING" if host_used and remote_used else "READY",
+                        "status": "RUNNING" if host_used and remote_used else ("RECOVERING" if session.recovery_deadline else "READY"),
+                        "recovery_deadline": None if host_used and remote_used else session.recovery_deadline,
                         "updated_at": now_iso(),
                     },
                 )
@@ -389,7 +431,7 @@ class N64RuntimeMediaSessionManager:
             if session.room_number != room_number or session.status not in ACTIVE_MEDIA_STATUSES:
                 continue
             if self._expired(session):
-                expired = replace(session, status="EXPIRED", updated_at=now_iso())
+                expired = replace(session, status="EXPIRED", updated_at=now_iso(), termination_reason="recovery_timeout" if session.recovery_deadline else "session_expired")
                 self._save_locked(records, expired)
                 continue
             current = session
@@ -397,6 +439,11 @@ class N64RuntimeMediaSessionManager:
         return current
 
     def _save_locked(self, records: dict[str, Any], session: N64RuntimeMediaSession) -> None:
+        previous = records.get(session.id, {}).get("status")
+        if previous != session.status:
+            logging.getLogger(__name__).info("media_lifecycle session=%s room=%s from=%s to=%s reason=%s recovery_deadline=%s",
+                session.id, session.room_number, previous, session.status,
+                session.termination_reason, session.recovery_deadline)
         if session.row_version:
             self.storage.update_n64_runtime_media_session(
                 session.to_storage_dict(), session.row_version
@@ -405,6 +452,10 @@ class N64RuntimeMediaSessionManager:
             self.storage.insert_n64_runtime_media_session(session.to_storage_dict())
 
     def _expired(self, session: N64RuntimeMediaSession) -> bool:
+        if session.recovery_deadline:
+            deadline = self._parse_time(session.recovery_deadline)
+            if deadline is None or deadline <= datetime.now(timezone.utc):
+                return True
         try:
             expires_at = datetime.fromisoformat(session.expires_at)
         except ValueError:

@@ -12,6 +12,13 @@
     (INTEGRAL_N64_RUNTIME_MEDIA_MAX_WIDTH * INTEGRAL_N64_RUNTIME_MEDIA_MAX_HEIGHT * 3u)
 #define INTEGRAL_N64_RUNTIME_MEDIA_MAX_AUDIO_BYTES 16384u
 #define INTEGRAL_N64_RUNTIME_MEDIA_VIDEO_BOTTOM_UP 1u
+#define INTEGRAL_N64_RUNTIME_STREAM_WIDTH 640u
+#define INTEGRAL_N64_RUNTIME_STREAM_HEIGHT 480u
+#define INTEGRAL_N64_RUNTIME_STREAM_BYTES (640u * 480u * 3u)
+
+/* RGB24 letterbox; preserves row orientation, including bottom-up readback. */
+int integral_n64_runtime_scale_stream_frame(const uint8_t *source,
+    uint32_t width, uint32_t height, size_t pitch, uint8_t *destination);
 
 typedef struct IntegralN64RuntimeRemoteMediaProducerMetrics {
     uint64_t core_callbacks;
@@ -38,6 +45,12 @@ typedef struct IntegralN64RuntimeRemoteMediaProducerMetrics {
 int integral_n64_runtime_remote_media_open_writer(const char *path);
 int integral_n64_runtime_remote_media_open_reader(const char *path);
 void integral_n64_runtime_remote_media_close(void);
+
+/* One outstanding Host capture; result is published after the PNG write. */
+int integral_n64_runtime_remote_media_request_screenshot(void);
+int integral_n64_runtime_remote_media_take_screenshot_request(void);
+void integral_n64_runtime_remote_media_finish_screenshot(int saved);
+int integral_n64_runtime_remote_media_screenshot_result(void);
 
 int integral_n64_runtime_remote_media_write_video(const void *pixels,
                                        uint32_t width,

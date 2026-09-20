@@ -4,6 +4,7 @@
 #define INTEGRAL_LEAGUE_HTTP_CLIENT_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #define INTEGRAL_EXECUTION_MODE_LOCAL_CLIENT "LOCAL_CLIENT"
 #define INTEGRAL_EXECUTION_MODE_N64_RUNTIME_CLIENT "N64_RUNTIME_CLIENT"
@@ -88,6 +89,7 @@ typedef struct IntegralApiHeartbeatStatus {
     long long server_unix_time;
 } IntegralApiHeartbeatStatus;
 
+/* Returns 0 on success, 426 for version guidance, -1 for other login failures. */
 int integral_api_login(const char *server_url,
                   const char *username,
                   const char *password,
@@ -136,6 +138,18 @@ int integral_api_leave_room(const char *server_url,
                         const char *token,
                         char *error_out,
                         size_t error_out_size);
+
+int integral_api_reject_n64_preflight(const char *server_url, const char *token,
+    const char *session_id, const char *room_code, char *error_out, size_t error_out_size);
+int integral_api_terminate_n64_room(const char *server_url, const char *token,
+                                   const char *session_id, const char *room_code,
+                                   char *error_out, size_t error_out_size);
+int integral_api_finish_n64_room(const char *server_url, const char *token,
+                                const char *session_id, char *error_out,
+                                size_t error_out_size);
+int integral_api_n64_media_state(const char *server_url, const char *token,
+                                const char *session_id, int recover, IntegralApiHeartbeatStatus *state,
+                                char *error_out, size_t error_out_size);
 
 int integral_api_stop_game(const char *server_url,
                       const char *token,
@@ -303,6 +317,7 @@ int integral_api_start_room(const char *server_url,
 int integral_api_start_n64_room(const char *server_url,
                                  const char *token,
                                  unsigned room_number,
+                                 const char *expected_session_id,
                                  char *session_id_out,
                                  size_t session_id_out_size,
                                  char *relay_host_out,
@@ -343,8 +358,11 @@ int integral_api_gb_runtime_fixed_host_get_manifest(const char *server_url,
                                     char *state_out,
                                     size_t state_out_size,
                                     unsigned *pause_remaining_seconds_out,
+                                    char *blocked_reason_out, size_t blocked_reason_size,
                                     char *error_out,
                                     size_t error_out_size);
+int integral_api_gb_runtime_fixed_host_block(const char *server, const char *token,
+    const char *session_id, const char *reason, char *error, size_t error_size);
 int integral_api_gb_runtime_fixed_host_submit_preflight(const char *server_url,
                                         const char *token,
                                         const char *session_id,
@@ -363,6 +381,7 @@ int integral_api_gb_runtime_fixed_host_submit_preflight(const char *server_url,
 int integral_api_gb_runtime_fixed_host_issue_relay_ticket(const char *server_url,
                                           const char *token,
                                           const char *session_id,
+                                          bool resume,
                                           char *relay_host_out,
                                           size_t relay_host_out_size,
                                           unsigned *relay_port_out,

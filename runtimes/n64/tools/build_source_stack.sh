@@ -151,6 +151,12 @@ apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-deferred-
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-homebrew-transferpak.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-current-rdram.patch"
+apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-startup-focus.patch"
+apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-util-keys.patch"
+apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-transferpak-memory.patch"
+cp "$project_root/../common/n64_transfer_memory.h" "$core_build/src/backends/integral_transfer_memory.h"
+cp "$project_root/../common/screenshot_path.h" "$core_build/src/main/integral_screenshot_path.h"
+cp "$project_root/../common/window_focus.h" "$core_build/src/api/integral_window_focus.h"
 make -C "$core_build/projects/unix" -j"$jobs" \
     $make_uname \
     CC="$mupen_cc" \
@@ -165,6 +171,12 @@ make -C "$core_build/projects/unix" \
     PREFIX="$prefix" \
     INSTALL_STRIP_FLAG= \
     install
+# Check the installed public ABI, not just compilation of the patched source.
+case $(uname -s) in
+    Darwin) nm -gU "$prefix/lib/libmupen64plus.dylib" | grep -q ' _IntegralSetTransferPakMemory$' ;;
+    Linux) nm -D --defined-only "$prefix/lib/libmupen64plus.so.2.0.0" | grep -q ' IntegralSetTransferPakMemory$' ;;
+    MINGW*|MSYS*|CYGWIN*) objdump -p "$prefix/lib/mupen64plus.dll" | grep -q 'IntegralSetTransferPakMemory' ;;
+esac
 if [ "$(uname -s)" = "Darwin" ]; then
     # UI Console checks this app-bundle-style location before honoring the
     # explicit core path. Point it at the same project-local core to avoid a

@@ -5,3 +5,10 @@ login.server_id=primary
 login.remember=0
 window.width=360
 window.height=360
+# SERVER2 / Link Cable Host: edit the account-specific integral_client_<server>_<user>.conf.
+# gb.ir_off_delay_ticks=32 (0 disables, range 0..256, 8 MHz ticks; experimental)
+# Account-specific .conf only: LOCAL N64 2P-4P use the same 18 bindings as keys.n64_p1.
+# Empty values select AUTO; KEY CONFIG / RESET DEFAULTS preserve these manual settings.
+# keys.n64_p2=
+# keys.n64_p3=
+# keys.n64_p4=

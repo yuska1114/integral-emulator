@@ -396,6 +396,8 @@ int integral_gb_runtime_link_engine_init(IntegralGBRuntimeLinkEngine *engine,
         return -1;
     }
     GB_set_infrared_callback(engine->a.gb, ir_a);
+    GB_set_infrared_off_delay(engine->a.gb, config->ir_off_delay_ticks);
+    GB_set_infrared_off_delay(engine->b.gb, config->ir_off_delay_ticks);
     GB_set_infrared_callback(engine->b.gb, ir_b);
     GB_set_vblank_callback(engine->a.gb, link_engine_vblank);
     GB_set_vblank_callback(engine->b.gb, link_engine_vblank);

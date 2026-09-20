@@ -86,6 +86,8 @@ void integral_n64_runtime_media_stream_set_video_vsync_enabled(IntegralN64Runtim
 void integral_n64_runtime_media_stream_set_video_renderer_driver(IntegralN64RuntimeMediaStream *stream,
                                                           const char *driver_name);
 void integral_n64_runtime_media_stream_reset(IntegralN64RuntimeMediaStream *stream);
+/* Keep the game/window/IPC alive, but discard transport-dependent codec work. */
+void integral_n64_runtime_media_stream_transport_lost(IntegralN64RuntimeMediaStream *stream);
 
 /* Resend cached codec configuration and recreate the Host encoder so a newly
  * resumed Remote starts from configuration plus a fresh keyframe. */
@@ -96,7 +98,7 @@ int integral_n64_runtime_media_stream_prepare_video_resume(
     size_t error_out_size);
 void integral_n64_runtime_media_stream_destroy(IntegralN64RuntimeMediaStream *stream);
 
-/* Opens the host-side, read-only N64 Runtime RGB/PCM shared file. */
+/* Opens the N64 Runtime RGB/PCM mapping (also carries Host capture requests). */
 int integral_n64_runtime_media_stream_open_host(IntegralN64RuntimeMediaStream *stream,
                                          const char *ipc_path,
                                          char *error_out,
@@ -174,6 +176,7 @@ void integral_n64_runtime_media_stream_set_exit_discard_warning(
 
 /* True when the dedicated remote-video renderer is actually VSync-paced. */
 bool integral_n64_runtime_media_stream_is_video_vsync_paced(const IntegralN64RuntimeMediaStream *stream);
+uint64_t integral_n64_runtime_media_stream_last_receive_us(const IntegralN64RuntimeMediaStream *stream);
 const char *integral_n64_runtime_media_stream_video_renderer_driver(
     const IntegralN64RuntimeMediaStream *stream);
 
@@ -185,5 +188,9 @@ bool integral_n64_runtime_media_stream_is_video_window(const IntegralN64RuntimeM
 bool integral_n64_runtime_media_stream_take_metrics(IntegralN64RuntimeMediaStream *stream,
                                              uint64_t now_us,
                                              IntegralN64RuntimeMediaMetrics *metrics);
+
+/* Save the most recently decoded image, independently of session cleanup. */
+bool integral_n64_runtime_media_stream_save_screenshot(
+    IntegralN64RuntimeMediaStream *stream, const char *mode);
 
 #endif

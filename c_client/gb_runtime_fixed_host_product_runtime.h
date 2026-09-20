@@ -29,6 +29,7 @@ typedef struct IntegralGBRuntimeFixedHostProductRuntime {
     bool running;
     bool exit_confirming;
     bool exit_confirm_yes;
+    bool escape_held, screenshot_held;
 } IntegralGBRuntimeFixedHostProductRuntime;
 
 bool integral_gb_runtime_fixed_host_product_runtime_init(

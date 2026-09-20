@@ -2,6 +2,24 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "sdl_unicode_text.h"
 
+int integral_text_scroll_offset(int text_width, int view_width, Uint32 ticks, bool tail)
+{
+    if (view_width <= 0 || text_width <= view_width) return 0;
+    unsigned excess = (unsigned)(text_width - view_width);
+    if (tail) return (int)excess;
+    Uint64 travel = (Uint64)excess * 20u;
+    Uint64 phase = ticks % (2000u + travel);
+    if (phase < 1000u) return 0;
+    if (phase >= 1000u + travel) return (int)excess;
+    return (int)((phase - 1000u) / 20u);
+}
+
+void integral_sdl_draw_utf8_text(SDL_Renderer *renderer, int x, int y,
+    const char *text, int font_size, SDL_Color color, int max_width)
+{
+    integral_sdl_draw_utf8_scrolled(renderer, x, y, text, font_size, color, max_width, 0, false);
+}
+
 #ifdef INTEGRAL_USE_SDL_TTF
 
 #include <SDL_ttf.h>
@@ -46,13 +64,13 @@ static TTF_Font *open_chat_font(int font_size)
     return NULL;
 }
 
-void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
+void integral_sdl_draw_utf8_scrolled(SDL_Renderer *renderer,
                             int x,
                             int y,
                             const char *text,
                             int font_size,
                             SDL_Color color,
-                            int max_width)
+                            int max_width, Uint32 ticks, bool tail)
 {
     if (!renderer || !text || text[0] == '\0' || font_size <= 0 || max_width <= 0) {
         return;
@@ -66,6 +84,7 @@ void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
     SDL_Surface *surface = TTF_RenderUTF8_Blended(font, text, color);
     if (surface) {
         SDL_Rect src = {.x = 0, .y = 0, .w = surface->w, .h = surface->h};
+        src.x = integral_text_scroll_offset(surface->w, max_width, ticks, tail);
         if (src.w > max_width) {
             src.w = max_width;
         }
@@ -101,13 +120,13 @@ static CTFontRef create_chat_font(CGFloat size)
     return font;
 }
 
-void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
+void integral_sdl_draw_utf8_scrolled(SDL_Renderer *renderer,
                             int x,
                             int y,
                             const char *text,
                             int font_size,
                             SDL_Color color,
-                            int max_width)
+                            int max_width, Uint32 ticks, bool tail)
 {
     if (!renderer || !text || text[0] == '\0' || font_size <= 0 || max_width <= 0) {
         return;
@@ -148,6 +167,7 @@ void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
     CGFloat leading = 0;
     double typographic_width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
     int texture_width = (int)ceil(typographic_width) + 4;
+    int offset = integral_text_scroll_offset(texture_width, max_width, ticks, tail);
     int texture_height = (int)ceil(ascent + descent + leading) + 4;
     if (texture_width < 1) {
         texture_width = 1;
@@ -181,7 +201,7 @@ void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
                                                  rgb,
                                                  kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host);
     if (context) {
-        CGContextSetTextPosition(context, 2, descent + 2);
+        CGContextSetTextPosition(context, 2 - offset, descent + 2);
         CTLineDraw(line, context);
         SDL_Texture *texture = SDL_CreateTexture(renderer,
                                                  SDL_PIXELFORMAT_ARGB8888,
@@ -212,14 +232,16 @@ void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
 
 #include "sdl_text.h"
 
-void integral_sdl_draw_utf8_text(SDL_Renderer *renderer,
+void integral_sdl_draw_utf8_scrolled(SDL_Renderer *renderer,
                             int x,
                             int y,
                             const char *text,
                             int font_size,
                             SDL_Color color,
-                            int max_width)
+                            int max_width, Uint32 ticks, bool tail)
 {
+    (void)ticks;
+    (void)tail;
     int scale = font_size >= 14 ? 2 : 1;
     integral_sdl_draw_text_fit(renderer, x, y, text, scale, color, max_width);
 }

@@ -98,11 +98,26 @@ bool integral_gb_runtime_fixed_host_result_ipc_receive(
     IntegralGBRuntimeFixedHostIPCRead reader, void *context,
     IntegralGBRuntimeFixedHostResult *result)
 {
+    return integral_gb_runtime_fixed_host_ipc_receive_event(reader, context, result) == 1;
+}
+
+bool integral_gb_runtime_fixed_host_ipc_request_ticket(
+    IntegralGBRuntimeFixedHostIPCWrite writer, void *context)
+{
+    return writer && write_all(writer, context, (const uint8_t *)"IFQ1", 4);
+}
+
+int integral_gb_runtime_fixed_host_ipc_receive_event(
+    IntegralGBRuntimeFixedHostIPCRead reader, void *context,
+    IntegralGBRuntimeFixedHostResult *result)
+{
     uint8_t header[RESULT_HEADER_SIZE], digest[32];
     bool success = false;
     if (!reader || !result) return false;
     memset(result, 0, sizeof(*result));
-    if (!read_all(reader, context, header, sizeof(header)) ||
+    if (!read_all(reader, context, header, 4)) goto done;
+    if (!memcmp(header, "IFQ1", 4)) return 2;
+    if (!read_all(reader, context, header + 4, sizeof(header) - 4) ||
         memcmp(header, RESULT_MAGIC, 4u) || header[4] != 1u ||
         (header[5] != 1u && header[5] != 2u) || header[6] || header[7]) goto done;
     result->host = header[5] == 1u;

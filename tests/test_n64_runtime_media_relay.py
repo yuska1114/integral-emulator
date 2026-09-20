@@ -8,10 +8,14 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 import shutil
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from integral_emulator.database import AuthorityDatabase
+from integral_emulator.errors import ValidationError
 from integral_emulator.n64_runtime_media_sessions import MEDIA_TICKET_SCOPE, N64RuntimeMediaSessionManager
 from integral_emulator.gb_runtime_fixed_host_protocol import (
     GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE,
@@ -38,9 +42,69 @@ from integral_emulator.n64_runtime_media_relay import (
     MEDIA_H264_KEYFRAME,
     AuthenticatedN64RuntimeMediaRelay,
     MediaFrameFilter,
+    MediaForwardQueue,
     MediaRelayClient,
     ReloadingTLSContext,
 )
+
+
+class MediaQueueTests(unittest.TestCase):
+    @staticmethod
+    def frame(kind, sequence=1, flags=0, payload=None):
+        if payload is None:
+            payload = struct.pack('!Q', 1) + b'x' if kind == MEDIA_H264_FRAME else struct.pack('!Q', 1)
+        return struct.pack('!4sBBHII', b'N64R', 2, kind, flags, sequence, len(payload)) + payload
+
+    def test_normal_video_audio_ack_burst_has_independent_buckets(self):
+        filter_ = MediaFrameFilter('host', GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE)
+        frames = []
+        for seq in range(1, 101):
+            if seq <= 80:
+                frames.append(self.frame(MEDIA_H264_FRAME, seq))
+            frames.append(self.frame(MEDIA_AUDIO_ADPCM, seq, payload=struct.pack('!IHHQ', 44100, 2, 1, 1)+bytes(8)))
+            frames.append(self.frame(GB_FIXED_INPUT_ACK, seq, payload=struct.pack('!IIQQ', seq, 0, 1, 1)))
+        self.assertEqual(filter_.feed(b''.join(frames), now=1.0), frames)
+        with self.assertRaisesRegex(ValueError, 'type rate'):
+            filter_.feed(b''.join(self.frame(MEDIA_H264_FRAME, seq) for seq in range(81, 122)), now=1.0)
+
+    def test_stale_media_drops_but_controls_config_and_key_survive(self):
+        queue = MediaForwardQueue(1024)
+        config = self.frame(MEDIA_H264_CONFIG)
+        key = self.frame(MEDIA_H264_FRAME, flags=MEDIA_H264_KEYFRAME)
+        delta = self.frame(MEDIA_H264_FRAME, 2)
+        control = self.frame(GB_FIXED_TERMINAL)
+        for frame in (config, key, delta, self.frame(MEDIA_AUDIO_ADPCM), control):
+            self.assertTrue(queue.append(frame, 1.0))
+        queue.prune(2.0)
+        self.assertEqual([item.data for item in queue.frames], [config, key, control])
+        self.assertTrue(queue.wait_keyframe)
+        self.assertTrue(queue.append(self.frame(MEDIA_H264_FRAME, 3), 2.0))
+        self.assertEqual(len(queue.frames), 3)
+        self.assertTrue(queue.append(self.frame(MEDIA_H264_FRAME, 4, MEDIA_H264_KEYFRAME), 2.0))
+        self.assertFalse(queue.wait_keyframe)
+        self.assertIn(control, [item.data for item in queue.frames])
+
+    def test_partial_tcp_frame_is_not_dropped(self):
+        queue = MediaForwardQueue(1024)
+        frame = self.frame(MEDIA_H264_FRAME)
+        queue.append(frame, 1.0)
+        queue.sent(3)
+        queue.prune(3.0, pressure=True)
+        self.assertEqual(queue.frames[0].offset, 3)
+        self.assertEqual(queue.bytes, len(frame)-3)
+        queue.sent(len(frame)-3)
+        self.assertEqual(queue.bytes, 0)
+        self.assertFalse(queue.frames)
+
+    def test_control_pressure_requires_backpressure_not_drop(self):
+        frame = self.frame(GB_FIXED_INPUT)
+        queue = MediaForwardQueue(len(frame)*2)
+        self.assertTrue(queue.append(frame, 1.0))
+        self.assertTrue(queue.append(frame, 1.0))
+        self.assertFalse(queue.append(frame, 1.0))
+        self.assertEqual(queue.bytes, queue.limit)
+        self.assertEqual(len(queue.frames), 2)
+        self.assertFalse(queue.dropped)
 
 
 class N64RuntimeMediaRelayTests(unittest.TestCase):
@@ -77,6 +141,70 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_reconnect_cannot_create_replacement_session(self) -> None:
+        arguments = {name: getattr(self.session, name) for name in (
+            "room_number", "host_user_id", "remote_user_id", "host_n64_slot",
+            "host_gb_slot", "remote_gb_slot", "host_n64_rom_id", "host_gb_rom_id",
+            "remote_gb_rom_id", "host_n64_save_id", "host_save_id", "remote_save_id",
+            "game_type",
+        )}
+        self.assertEqual(self.manager.create_or_get(
+            **arguments, expected_session_id=self.session.id).id, self.session.id)
+        with self.assertRaisesRegex(ValidationError, "reconnect cannot create"):
+            self.manager.create_or_get(**arguments, expected_session_id="different-session")
+        self.manager.expire(self.session.id, "test ended")
+        records = self.storage.load_n64_runtime_media_sessions()
+        with self.assertRaisesRegex(ValidationError, "reconnect cannot create"):
+            self.manager.create_or_get(**arguments, expected_session_id=self.session.id)
+        self.assertEqual(records, self.storage.load_n64_runtime_media_sessions())
+
+    def test_recovery_deadline_is_shared_and_not_extended_by_one_role(self):
+        recovering = self.manager.recover(self.session.id)
+        self.assertEqual(recovering.status, "RECOVERING")
+        other = N64RuntimeMediaSessionManager(self.storage)
+        deadline = other.recover(self.session.id).recovery_deadline
+        self.assertEqual(deadline, recovering.recovery_deadline)
+        _, _, ticket = other.issue_ticket(self.session.id, "user-host")
+        self.assertTrue(other.validate_ticket(self.session.id, "host", ticket))
+        self.assertEqual(self.manager.get(self.session.id).status, "RECOVERING")
+        self.assertEqual(self.manager.recover(self.session.id).recovery_deadline, deadline)
+        current = self.manager.get(self.session.id)
+        expired = replace(current, recovery_deadline=(datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat())
+        self.storage.update_n64_runtime_media_session(expired.to_storage_dict(), expired.row_version)
+        ended = other.get(self.session.id)
+        self.assertEqual((ended.status, ended.termination_reason), ("EXPIRED", "recovery_timeout"))
+        self.assertEqual(self.manager.recover(self.session.id).status, "EXPIRED")
+        reconciled = self.manager.expire(self.session.id, "recovery_timeout")
+        self.assertIsNone(reconciled.recovery_deadline)
+        self.assertEqual(reconciled.termination_reason, "recovery_timeout")
+
+    def test_both_reauthenticated_roles_resume_same_session(self):
+        self.manager.recover(self.session.id)
+        for role in ("host", "remote"):
+            _, _, ticket = self.manager.issue_ticket(self.session.id, f"user-{role}")
+            self.assertTrue(self.manager.validate_ticket(self.session.id, role, ticket))
+        resumed = self.manager.get(self.session.id)
+        self.assertEqual(resumed.status, "RUNNING")
+        self.assertIsNone(resumed.recovery_deadline)
+        self.manager.finish(self.session.id)
+        self.assertEqual(self.manager.recover(self.session.id).termination_reason, "host_finished")
+
+    def test_recovery_at_20_seconds_and_terminal_at_26_seconds(self):
+        started = datetime.now(timezone.utc)
+        with patch("integral_emulator.n64_runtime_media_sessions.datetime", wraps=datetime) as clock:
+            clock.now.return_value = started
+            self.manager.recover(self.session.id)
+            clock.now.return_value = started + timedelta(seconds=20)
+            for role in ("host", "remote"):
+                _, _, ticket = self.manager.issue_ticket(self.session.id, f"user-{role}")
+                self.assertTrue(self.manager.validate_ticket(self.session.id, role, ticket))
+            resumed = self.manager.get(self.session.id)
+            self.assertEqual(resumed.id, self.session.id)
+            self.assertEqual(resumed.status, "RUNNING")
+            self.manager.recover(self.session.id)
+            clock.now.return_value = started + timedelta(seconds=46)
+            self.assertEqual(self.manager.get(self.session.id).status, "EXPIRED")
 
     def _create_certificate_pair(self, name: str) -> tuple[Path, Path]:
         if shutil.which("openssl") is None:
@@ -431,6 +559,96 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
             [gb_input],
         )
 
+    def test_cancelled_pair_closes_both_roles_without_retention(self):
+        manager = GBRuntimeFixedHostSessionManager(self.storage)
+        for exiting in ("host", "remote"):
+            for attempt in range(3):
+                session_id = f"cancel-{exiting}-{attempt}"
+                manifest = GBRuntimeFixedHostManifest(
+                    session_id=session_id, session_epoch=1,
+                    host_user_id="h", remote_user_id="r", host_save_id="a", remote_save_id="b",
+                    host_game_type="a", remote_game_type="b", host_platform="gb", remote_platform="gb",
+                    host_rom_header_title="A", remote_rom_header_title="B",
+                    host_base_revision=1, remote_base_revision=1, requested_mode="battle",
+                    save_policy="discard", runtime_build_id="test")
+                manager.create(16, manifest)
+                record = self.storage.load_gb_runtime_fixed_host_sessions()[session_id]
+                record["state"] = "RUNNING"
+                self.storage.update_gb_runtime_fixed_host_session(record, int(record["__row_version"]))
+                relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+                clients, peers = {}, {}
+                for role in ("host", "remote"):
+                    server, peer = socket.socketpair()
+                    self.addCleanup(peer.close)
+                    peer.settimeout(3)
+                    peers[role] = peer
+                    clients[role] = MediaRelayClient(server, ("127.0.0.1", 1), session_id, role,
+                                                     time.monotonic(), GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE)
+                worker = threading.Thread(target=relay.bridge, args=(clients["host"], clients["remote"]), daemon=True)
+                worker.start()
+                for peer in peers.values():
+                    self.assertIn(b"PAIRED", self._recv_line(peer))
+                manager.cancel(session_id, "explicit_exit")
+                peers[exiting].close()
+                survivor = peers["remote" if exiting == "host" else "host"]
+                self.assertEqual(struct.unpack("!II", survivor.recv(24)[16:]), (3, 0))
+                self.assertEqual(survivor.recv(1), b"")
+                worker.join(timeout=3)
+                self.assertFalse(worker.is_alive())
+                self.assertNotIn(session_id, relay.pending)
+                self.assertNotIn(session_id, relay.active)
+
+    def test_cancelled_retained_host_is_not_kept_for_reconnect(self):
+        from types import SimpleNamespace
+        for role in ("host", "remote"):
+            for attempt in range(3):
+                with self.subTest(role=role, attempt=attempt):
+                    relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+                    manager = unittest.mock.Mock()
+                    manager.get.return_value = SimpleNamespace(state="PAUSED_REMOTE")
+                    relay.gb_runtime_fixed_host_session_managers = [manager]
+                    server, peer = socket.socketpair()
+                    self.addCleanup(peer.close)
+                    peer.settimeout(3)
+                    host = MediaRelayClient(server, ("127.0.0.1", 1), "old-session", "host",
+                                            time.monotonic(), GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE)
+                    relay._retain_gb_runtime_fixed_host_for_resume(host)
+                    self.assertEqual(struct.unpack("!II", peer.recv(24)[16:]), (1, 25000))
+                    manager.get.return_value = SimpleNamespace(state="ABORTED")
+                    self.assertEqual(struct.unpack("!II", peer.recv(24)[16:]), (3, 0))
+                    self.assertEqual(peer.recv(1), b"")
+                    self.assertNotIn(host.session_id, relay.pending)
+                    # A late old timer may not remove a new transport.
+                    replacement, other = socket.socketpair()
+                    self.addCleanup(replacement.close)
+                    self.addCleanup(other.close)
+                    new = replace(host, sock=replacement)
+                    relay.pending[host.session_id] = {"host": new}
+                    relay.expire_pending_client(host)
+                    self.assertIs(relay.pending[host.session_id]["host"], new)
+
+    def test_retained_host_keeps_original_deadline_during_temporary_outage(self):
+        from types import SimpleNamespace
+        relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+        manager = unittest.mock.Mock()
+        manager.get.return_value = SimpleNamespace(state="PAUSED_REMOTE")
+        relay.gb_runtime_fixed_host_session_managers = [manager]
+        server, peer = socket.socketpair()
+        self.addCleanup(server.close)
+        self.addCleanup(peer.close)
+        start = time.monotonic()
+        host = MediaRelayClient(server, ("127.0.0.1", 1), "outage", "host", start,
+                               GB_RUNTIME_FIXED_HOST_MEDIA_SCOPE, pending_expires_at=start + 25.25,
+                               resume_pending=True)
+        relay.pending[host.session_id] = {"host": host}
+        with patch("integral_emulator.n64_runtime_media_relay.threading.Timer"):
+            for elapsed in (10, 20):
+                with patch("integral_emulator.n64_runtime_media_relay.time.monotonic", return_value=start + elapsed):
+                    relay.expire_pending_client(host)
+                self.assertIs(relay.pending[host.session_id]["host"], host)
+                self.assertEqual(host.pending_expires_at, start + 25.25)
+                self.assertGreaterEqual(server.fileno(), 0)
+
     def test_product_remote_disconnect_pauses_and_reconnect_resumes_host_socket(self) -> None:
         manager = GBRuntimeFixedHostSessionManager(self.storage)
         manifest = GBRuntimeFixedHostManifest(
@@ -490,7 +708,7 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
         self.assertEqual(manager.get(manifest.session_id).state, "PAUSED_REMOTE")
         paused = host_peer.recv(24)
         self.assertEqual(paused[5], 9)
-        self.assertEqual(struct.unpack("!II", paused[16:24]), (1, 20000))
+        self.assertEqual(struct.unpack("!II", paused[16:24]), (1, 25000))
         _, _, resumed_ticket = manager.issue_ticket(
             manifest.session_id, "resume-remote"
         )
@@ -663,6 +881,27 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
         self.manager.cancel(self.session.id)
         self.assertFalse(relay.session_is_active(self.session.id))
 
+    def test_preflight_failure_closes_both_n64_relay_connections(self) -> None:
+        relay = AuthenticatedN64RuntimeMediaRelay([self.root])
+        clients, peers = [], []
+        for index, role in enumerate(("host", "remote")):
+            server, peer = socket.socketpair()
+            self.addCleanup(server.close); self.addCleanup(peer.close)
+            peer.settimeout(3)
+            clients.append(MediaRelayClient(server, ("127.0.0.1", index + 1),
+                self.session.id, role, time.monotonic()))
+            peers.append(peer)
+        worker = threading.Thread(target=relay.bridge, args=tuple(clients), daemon=True)
+        worker.start()
+        for peer in peers: self.assertIn(b"PAIRED", self._recv_line(peer))
+        self.manager.cancel(self.session.id, reason="preflight_failed")
+        worker.join(timeout=3)
+        self.assertFalse(worker.is_alive())
+        for peer in peers: self.assertEqual(peer.recv(1), b"")
+        self.assertNotIn(self.session.id, relay.active)
+        self.assertNotIn(self.session.id, relay.pending)
+        self.assertEqual(self.manager.recover(self.session.id).termination_reason, "preflight_failed")
+
     def test_pairing_never_crosses_session_ids(self) -> None:
         relay = AuthenticatedN64RuntimeMediaRelay([self.root])
         sockets = [socket.socketpair() for _ in range(4)]
@@ -820,6 +1059,47 @@ class N64RuntimeMediaRelayTests(unittest.TestCase):
 
         self.assertFalse(bridge.is_alive())
         self.assertLess(time.monotonic() - started, 2.0)
+
+    def test_control_backpressure_delivers_every_input_after_slow_receive(self):
+        relay = AuthenticatedN64RuntimeMediaRelay([self.root], forward_queue_bytes=256,
+                                                 write_idle_seconds=2.0)
+        host_relay, host_client = socket.socketpair()
+        remote_relay, remote_client = socket.socketpair()
+        for sock in (host_relay, host_client, remote_relay, remote_client):
+            self.addCleanup(sock.close)
+            sock.settimeout(2.0)
+        host_relay.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 128)
+        now = time.monotonic()
+        host = MediaRelayClient(host_relay, ('127.0.0.1', 1), self.session.id, 'host', now)
+        remote = MediaRelayClient(remote_relay, ('127.0.0.1', 2), self.session.id, 'remote', now)
+        failures = []
+        def run():
+            try:
+                relay.bridge(host, remote)
+            except Exception as error:
+                failures.append(error)
+        bridge = threading.Thread(target=run)
+        bridge.start()
+        try:
+            expected_line = f'{HANDSHAKE_MAGIC} PAIRED {self.session.id}\n'.encode()
+            self.assertEqual(host_client.recv(len(expected_line)), expected_line)
+            self.assertEqual(remote_client.recv(len(expected_line)), expected_line)
+            frames = b''.join(MediaQueueTests.frame(CONTROL_INPUT, sequence)
+                              for sequence in range(1, 81))
+            remote_client.sendall(frames)
+            time.sleep(0.1)
+            received = bytearray()
+            while len(received) < len(frames):
+                chunk = host_client.recv(len(frames)-len(received))
+                self.assertTrue(chunk)
+                received.extend(chunk)
+            self.assertEqual(bytes(received), frames)
+            self.assertTrue(bridge.is_alive())
+        finally:
+            self.manager.cancel(self.session.id)
+            bridge.join(timeout=3.0)
+        self.assertFalse(bridge.is_alive())
+        self.assertEqual(failures, [])
 
     def test_idle_pair_starts_write_stall_timer_when_first_frame_is_queued(self) -> None:
         relay = AuthenticatedN64RuntimeMediaRelay(

@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "rom_metadata.h"
+#include "../runtimes/gb/src/common/utf8_file.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -99,7 +100,7 @@ int integral_rom_metadata_read(const char *path, IntegralRomMetadata *metadata)
     size_t size;
     if (!path || !metadata) return -1;
     memset(metadata, 0, sizeof(*metadata));
-    file = fopen(path, "rb");
+    file = integral_fopen(path, "rb");
     if (!file) return -1;
     size = fread(raw, 1u, sizeof(raw), file);
     if (fclose(file) != 0) return -1;

@@ -476,6 +476,9 @@ int main(int argc, char **argv)
     IntegralGBRuntimeLinkBridge link_bridge;
     bool link_connected = false;
     if (options.link_enabled && slot2_ready) {
+        GB_set_infrared_off_delay(slot1->gb, options.ir_off_delay_ticks);
+        GB_set_infrared_off_delay(slot2->gb, options.ir_off_delay_ticks);
+        printf("  IR OFF delay: %u ticks\n", options.ir_off_delay_ticks);
         if (integral_gb_runtime_link_bridge_connect(&link_bridge, slot1, slot2) != 0) {
             fprintf(stderr, "Failed to attach the local Link serial peripheral\n");
             free_slot_heap(&slot1);
@@ -500,6 +503,8 @@ int main(int argc, char **argv)
                                            : SDLK_UNKNOWN,
                                        options.reset_key);
     integral_gb_runtime_input_router_set_speed_multiplier(&input_router, options.self_mode ? options.speed_multiplier : 1u);
+    if (!options.self_mode || slot2_ready || options.lan_remote_enabled)
+        integral_gb_runtime_input_router_disable_speed_controls(&input_router);
     if (options.display) {
             integral_gb_runtime_input_router_print_keymap(&input_router);
             if (options.self_mode) {
@@ -613,18 +618,10 @@ int main(int argc, char **argv)
         if (frames_to_run > 0 && frame >= frames_to_run) {
             break;
         }
-        bool auto_a_pressed = options.auto_a_frames > 0 && frame < options.auto_a_frames;
-        if (auto_a_pressed && options.auto_a_pulse > 1) {
-            unsigned half_period = options.auto_a_pulse / 2;
-            if (half_period == 0) {
-                half_period = 1;
-            }
-            auto_a_pressed = (frame % options.auto_a_pulse) < half_period;
-        }
-        GB_set_key_state(slot1->gb, GB_KEY_A, auto_a_pressed);
-        if (slot2_ready) {
-            GB_set_key_state(slot2->gb, GB_KEY_A, auto_a_pressed);
-        }
+        integral_gb_runtime_input_router_apply_auto_a(&input_router,
+                                                       frame,
+                                                       options.auto_a_frames,
+                                                       options.auto_a_pulse);
         slot1_macro_events += apply_slot_macro(slot1,
                                                "slot1",
                                                options.slot1_macro,
@@ -677,9 +674,11 @@ int main(int argc, char **argv)
                 integral_gb_runtime_video_window_set_status_message(window, "");
             }
         }
-        if (options.self_mode && integral_gb_runtime_input_router_take_screenshot_request(&input_router)) {
+        if (integral_gb_runtime_input_router_take_screenshot_request(&input_router)) {
             char screenshot_path[512];
-            if (integral_gb_runtime_screenshot_save_slot(slot1, screenshot_path, sizeof(screenshot_path)) == 0) {
+            if (integral_gb_runtime_screenshot_save_pair(slot1, slot2_ready ? slot2 : NULL,
+                    slot2_ready ? "local_gb_server2" : "local_gb", "local",
+                    screenshot_path, sizeof(screenshot_path)) == 0) {
                 printf("  screenshot saved: %s\n", screenshot_path);
                 integral_gb_runtime_video_window_show_message(window, "SCREENSHOT SAVED");
             }
@@ -688,7 +687,7 @@ int main(int argc, char **argv)
                 integral_gb_runtime_video_window_show_message(window, "SCREENSHOT FAILED");
             }
         }
-        if (options.self_mode && integral_gb_runtime_input_router_take_reset_request(&input_router)) {
+        if (integral_gb_runtime_input_router_take_reset_request(&input_router)) {
             integral_gb_runtime_slot_reset(slot1);
             if (slot2_ready) {
                 integral_gb_runtime_slot_reset(slot2);

@@ -1,0 +1,44 @@
+diff --git a/src/api/vidext.c b/src/api/vidext.c
+index 98c8bc1..c6dbc1c 100644
+--- a/src/api/vidext.c
++++ b/src/api/vidext.c
+@@ -190,6 +190,7 @@ EXPORT m64p_error CALL VidExt_Quit(void)
+     SDL_ShowCursor(SDL_ENABLE);
+ #if SDL_VERSION_ATLEAST(2,0,0)
+     SDL2_DestroyWindow();
++    integral_startup_focus_requested = 0;
+ #endif
+ #ifdef VIDEXT_VULKAN
+     if (l_RenderMode == M64P_RENDER_VULKAN) {
+diff --git a/src/api/vidext_sdl2_compat.h b/src/api/vidext_sdl2_compat.h
+index 20e2959..7c6fc9b 100644
+--- a/src/api/vidext_sdl2_compat.h
++++ b/src/api/vidext_sdl2_compat.h
+@@ -21,6 +21,8 @@
+ 
+ #include <SDL_config.h>
+ #include <SDL_surface.h>
++/* Integral addition: shared startup activation, not recurring focus recovery. */
++#include "integral_window_focus.h"
+ 
+ #ifndef USE_GLES
+ 
+@@ -71,6 +73,7 @@ typedef struct SDL_VideoInfo
+ int initialized_video = 0;
+ 
+ static SDL_Window *SDL_VideoWindow = NULL;
++static int integral_startup_focus_requested = 0;
+ static SDL_Surface *SDL_VideoSurface = NULL;
+ static SDL_Surface *SDL_PublicSurface = NULL;
+ static SDL_Rect SDL_VideoViewport;
+@@ -467,6 +470,10 @@ SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags)
+         return NULL;
+     }
+     SDL_SetWindowIcon(SDL_VideoWindow, SDL_VideoIcon);
++    if (!integral_startup_focus_requested) {
++        integral_startup_focus_requested = 1;
++        integral_focus_new_game_window(SDL_VideoWindow);
++    }
+ 
+     window_flags = SDL_GetWindowFlags(SDL_VideoWindow);
+     surface_flags = 0;

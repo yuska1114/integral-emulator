@@ -33,6 +33,12 @@ class SQLiteGameSessionAuthorityTests(unittest.TestCase):
                     (f"token-{user_id}", user_id),
                 )
         self.repository = SQLiteGameSessionRepository(self.database)
+        with self.database.transaction(write=True) as connection:
+            for sid in ('save-a', 'save-1', 'save-2'):
+                connection.execute(
+                    "INSERT INTO save_records (save_id,server_id,user_id,game_type,relative_path,size_bytes,sha256,revision,created_at_ms,updated_at_ms) VALUES (?,'primary','a','test',?,1,?,1,1,1)",
+                    (sid, f'saves/{sid}.sav', 'a'*64),
+                )
         self.primary = SQLiteGameSessionAuthority(self.repository, "primary")
         self.secondary = SQLiteGameSessionAuthority(self.repository, "secondary")
 
@@ -115,9 +121,9 @@ class SQLiteGameSessionAuthorityTests(unittest.TestCase):
         first, second = self.primary.acquire_pair(
             game_run_id="self-link", first_user_id="a",
             first_auth_session_id="token-a",
-            first_save_bindings=[{"save_id": "save-1"}],
+            first_save_bindings=[{"save_id": "save-1", "revision": 1, "sha256": "a"*64}],
             second_user_id="a", second_auth_session_id="token-a",
-            second_save_bindings=[{"save_id": "save-2"}],
+            second_save_bindings=[{"save_id": "save-2", "revision": 1, "sha256": "a"*64}],
             lease_expires_at=self.expiry(), expires_at=self.expiry(30),
         )
         self.assertEqual(first, second)
@@ -138,6 +144,16 @@ class SQLiteGameSessionAuthorityTests(unittest.TestCase):
         )
         self.assertEqual(first.game_run_id, second.game_run_id)
         self.assertNotEqual(first.game_session_id, second.game_session_id)
+
+    def test_removed_or_changed_save_cannot_start_from_stale_binding(self):
+        for sid, revision in [('missing', 1), ('save-a', 2)]:
+            with self.assertRaises(ValidationError):
+                self.primary.acquire_single(
+                    user_id='a', auth_session_id='token-a', execution_mode='LOCAL_CLIENT',
+                    lease_expires_at=self.expiry(), expires_at=self.expiry(),
+                    save_bindings=[{'save_id': sid, 'revision': revision, 'sha256': 'a'*64}],
+                )
+        self.assertIsNone(self.primary.active_for_user('a'))
 
 
 if __name__ == "__main__":

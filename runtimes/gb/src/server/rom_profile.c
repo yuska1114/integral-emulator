@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "rom_profile.h"
+#include "../common/utf8_file.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -25,7 +26,7 @@ int integral_gb_runtime_rom_profile_read(const char *path,
         return -1;
     }
 
-    FILE *rom = fopen(path, "rb");
+    FILE *rom = integral_fopen(path, "rb");
     if (!rom) {
         if (error && error_size > 0) {
             snprintf(error, error_size, "open failed: %s", strerror(errno));

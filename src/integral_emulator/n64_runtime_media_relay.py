@@ -50,6 +50,7 @@ GB_FIXED_TERMINAL = 12
 GB_FIXED_TERMINAL_ACK = 13
 GB_FIXED_STATE_PAUSED = 1
 GB_FIXED_STATE_RESUMED = 2
+GB_FIXED_STATE_TERMINATED = 3
 CONTROL_HEADER_SIZE = 16
 CONTROL_INPUT_SIZE = 8
 GB_FIXED_INPUT_SIZE = 16
@@ -72,6 +73,31 @@ DEFAULT_FORWARD_QUEUE_BYTES = 8 * 1024 * 1024
 # bounded queue as the hard memory limit, but allow that normal startup gap.
 DEFAULT_WRITE_IDLE_SECONDS = 15.0
 DEFAULT_CERT_RELOAD_INTERVAL_SECONDS = 60.0
+
+# Independent message budgets: an audio callback/ACK must not spend a video
+# token. Capacities permit two seconds of ordinary scheduling coalescence.
+MESSAGE_RATES = {
+    CONTROL_INPUT: 120, MEDIA_H264_CONFIG: 8, MEDIA_H264_FRAME: 60,
+    MEDIA_AUDIO_ADPCM: 240, GB_FIXED_INPUT: 120, GB_FIXED_INPUT_ACK: 120,
+    GB_FIXED_PING: 20, GB_FIXED_PONG: 20,
+    GB_FIXED_TERMINAL: 8, GB_FIXED_TERMINAL_ACK: 8,
+}
+
+
+class TokenBucket:
+    def __init__(self, rate: float, capacity: float):
+        self.rate, self.capacity = rate, capacity
+        self.tokens = capacity
+        self.updated_at: float | None = None
+
+    def take(self, amount: float, now: float) -> bool:
+        if self.updated_at is not None:
+            self.tokens = min(self.capacity, self.tokens + max(0, now - self.updated_at) * self.rate)
+        self.updated_at = now
+        if amount > self.tokens:
+            return False
+        self.tokens -= amount
+        return True
 
 
 def create_server_tls_context(cert_file: Path, key_file: Path) -> ssl.SSLContext:
@@ -194,8 +220,9 @@ class MediaFrameFilter:
         self.scope = scope
         self.buffer = bytearray()
         self.last_sequences: dict[str, int] = {}
-        self.frame_times: list[float] = []
-        self.byte_times: list[tuple[float, int]] = []
+        self.buckets = {kind: TokenBucket(rate, rate * 2) for kind, rate in MESSAGE_RATES.items()}
+        self.byte_bucket = TokenBucket(MEDIA_MAX_HOST_BYTES_PER_SECOND, MEDIA_MAX_HOST_BYTES_PER_SECOND)
+        self.message_counts: dict[int, int] = {}
 
     def feed(self, data: bytes, now: float | None = None) -> list[bytes]:
         if not data:
@@ -227,17 +254,11 @@ class MediaFrameFilter:
                 if delta == 0 or delta >= 0x80000000:
                     raise ValueError("replayed media sequence")
             self.last_sequences[sequence_channel] = sequence
-            self.frame_times = [value for value in self.frame_times if timestamp - value < 1.0]
-            frame_limit = CONTROL_MAX_FRAMES_PER_SECOND if self.role == "remote" else MEDIA_MAX_HOST_FRAMES_PER_SECOND
-            if len(self.frame_times) >= frame_limit:
-                raise ValueError("media frame rate exceeded")
-            self.frame_times.append(timestamp)
-            self.byte_times = [(value, size) for value, size in self.byte_times if timestamp - value < 1.0]
-            if self.role == "host":
-                transferred = sum(size for _, size in self.byte_times)
-                if transferred + frame_size > MEDIA_MAX_HOST_BYTES_PER_SECOND:
-                    raise ValueError("media bitrate exceeded")
-                self.byte_times.append((timestamp, frame_size))
+            if not self.buckets[message_type].take(1, timestamp):
+                raise ValueError(f"media type rate exceeded type={message_type}")
+            if not self.byte_bucket.take(frame_size, timestamp):
+                raise ValueError("media bitrate exceeded")
+            self.message_counts[message_type] = self.message_counts.get(message_type, 0) + 1
             frames.append(frame)
         return frames
 
@@ -326,6 +347,106 @@ class MediaFrameFilter:
                 raise ValueError("invalid ADPCM audio")
 
 
+@dataclass
+class ForwardFrame:
+    data: bytes
+    created_at: float
+    offset: int = 0
+
+    @property
+    def kind(self) -> int:
+        return self.data[5]
+
+    @property
+    def keyframe(self) -> bool:
+        return self.kind == MEDIA_H264_FRAME and bool(self.data[7] & MEDIA_H264_KEYFRAME)
+
+
+class MediaForwardQueue:
+    """Bounded complete-message queue; never truncate a TCP/TLS frame.
+
+    A False append means backpressure, not permission to lose a control frame.
+    After a delta is discarded, dependent deltas wait for the next keyframe.
+    """
+
+    def __init__(self, limit: int):
+        self.limit = limit
+        self.frames: deque[ForwardFrame] = deque()
+        self.bytes = 0
+        self.wait_keyframe = False
+        self.dropped: dict[int, int] = {}
+
+    def _drop(self, frame: ForwardFrame) -> None:
+        self.bytes -= len(frame.data)
+        self.dropped[frame.kind] = self.dropped.get(frame.kind, 0) + 1
+
+    def prune(self, now: float, pressure: bool = False) -> None:
+        kept: deque[ForwardFrame] = deque()
+        broken_video = False
+        for frame in self.frames:
+            if frame.offset:
+                kept.append(frame)
+                continue
+            if frame.keyframe:
+                broken_video = False
+            stale = now - frame.created_at > 0.25
+            if ((frame.kind == MEDIA_AUDIO_ADPCM and (stale or pressure)) or
+                (frame.kind == MEDIA_H264_FRAME and not frame.keyframe and
+                 (stale or pressure or broken_video))):
+                self._drop(frame)
+                if frame.kind == MEDIA_H264_FRAME:
+                    broken_video = True
+            else:
+                kept.append(frame)
+        self.frames = kept
+        if broken_video:
+            self.wait_keyframe = True
+
+    def append(self, data: bytes, now: float) -> bool:
+        frame = ForwardFrame(data, now)
+        self.prune(now)
+        if frame.keyframe and (self.wait_keyframe or self.bytes + len(data) > self.limit):
+            # Supersede an obsolete GOP, but retain every control message,
+            # the newest config, and any frame whose send already started.
+            configs = [item for item in self.frames if item.kind == MEDIA_H264_CONFIG]
+            latest_config = configs[-1] if configs else None
+            kept = deque()
+            for item in self.frames:
+                if not item.offset and (item.kind == MEDIA_H264_FRAME or
+                    (item.kind == MEDIA_H264_CONFIG and item is not latest_config)):
+                    self._drop(item)
+                else:
+                    kept.append(item)
+            self.frames = kept
+        if self.wait_keyframe and frame.kind == MEDIA_H264_FRAME and not frame.keyframe:
+            self.dropped[frame.kind] = self.dropped.get(frame.kind, 0) + 1
+            return True
+        if self.bytes + len(data) > self.limit:
+            self.prune(now, pressure=True)
+        if self.wait_keyframe and frame.kind == MEDIA_H264_FRAME and not frame.keyframe:
+            self.dropped[frame.kind] = self.dropped.get(frame.kind, 0) + 1
+            return True
+        if self.bytes + len(data) > self.limit:
+            if frame.kind == MEDIA_AUDIO_ADPCM or (frame.kind == MEDIA_H264_FRAME and not frame.keyframe):
+                self.dropped[frame.kind] = self.dropped.get(frame.kind, 0) + 1
+                if frame.kind == MEDIA_H264_FRAME:
+                    self.wait_keyframe = True
+                return True
+            return False
+        if frame.keyframe:
+            self.wait_keyframe = False
+        self.frames.append(frame)
+        self.bytes += len(data)
+        return True
+
+    def sent(self, count: int) -> None:
+        frame = self.frames[0]
+        frame.offset += count
+        self.bytes -= count
+        if frame.offset == len(frame.data):
+            self.frames.popleft()
+
+
 class AuthenticatedN64RuntimeMediaRelay:
     def __init__(
         self,
@@ -359,6 +480,7 @@ class AuthenticatedN64RuntimeMediaRelay:
         self.forward_queue_bytes = forward_queue_bytes
         self.write_idle_seconds = write_idle_seconds
         self.pending: dict[str, dict[str, MediaRelayClient]] = {}
+        self.active: dict[str, tuple[MediaRelayClient, MediaRelayClient]] = {}
         self.lock = threading.RLock()
 
     @staticmethod
@@ -383,9 +505,9 @@ class AuthenticatedN64RuntimeMediaRelay:
         if transport == NETWORK_MODE_PLAIN and tls_context_reloader is not None:
             raise ValueError("plain media relay must not receive a TLS context reloader")
         for manager in self.gb_runtime_fixed_host_session_managers:
-            for session_id in manager.abort_relay_orphans():
+            for session_id in manager.pause_relay_orphans():
                 print(
-                    f"N64 Runtime fixed Host session aborted after Relay restart "
+                    f"N64 Runtime fixed Host session paused after Relay restart "
                     f"session={session_id}",
                     flush=True,
                 )
@@ -504,6 +626,12 @@ class AuthenticatedN64RuntimeMediaRelay:
 
     def register_pending(self, client: MediaRelayClient) -> MediaRelayClient | None:
         with self.lock:
+            # A freshly authenticated transport replaces, never runs beside,
+            # an old pair for this session. Old bridge cleanup cannot cancel it.
+            previous = self.active.pop(client.session_id, None)
+            if previous:
+                for old_client in previous:
+                    self._close_socket(old_client.sock)
             self._expire_pending_locked(time.monotonic())
             session_pending = self.pending.setdefault(client.session_id, {})
             old = session_pending.pop(client.role, None)
@@ -520,7 +648,8 @@ class AuthenticatedN64RuntimeMediaRelay:
                 if client.pending_expires_at is not None
                 else self.pending_timeout_seconds
             )
-            timer = threading.Timer(timeout, self.expire_pending_client, args=(client,))
+            timer = threading.Timer(min(timeout, SESSION_RECHECK_SECONDS) if client.resume_pending else timeout,
+                                    self.expire_pending_client, args=(client,))
             timer.daemon = True
             timer.start()
             print(
@@ -537,11 +666,19 @@ class AuthenticatedN64RuntimeMediaRelay:
             deadline = client.pending_expires_at
             if deadline is None:
                 deadline = client.authenticated_at + self.pending_timeout_seconds
-            if time.monotonic() < deadline:
+            terminated = client.resume_pending and self._fixed_host_terminated(client.session_id)
+            if not terminated and time.monotonic() < deadline:
+                if client.resume_pending:
+                    timer = threading.Timer(min(SESSION_RECHECK_SECONDS, deadline - time.monotonic()),
+                                            self.expire_pending_client, args=(client,))
+                    timer.daemon = True
+                    timer.start()
                 return
             roles.pop(client.role, None)
             if not roles:
                 self.pending.pop(client.session_id, None)
+            if terminated:
+                self._notify_fixed_host_terminated(client)
             self._close_socket(client.sock)
             if client.resume_pending:
                 self._expire_gb_runtime_fixed_host_pause(client.session_id)
@@ -551,6 +688,8 @@ class AuthenticatedN64RuntimeMediaRelay:
             self._close_socket(left.sock)
             self._close_socket(right.sock)
             raise ValueError("media relay pairing invariant failed")
+        with self.lock:
+            self.active[left.session_id] = (left, right)
         print(
             f"N64 Runtime media relay paired session={left.session_id} {left.addr}<->{right.addr}",
             flush=True,
@@ -567,11 +706,10 @@ class AuthenticatedN64RuntimeMediaRelay:
         selector = selectors.DefaultSelector()
         clients = {left.sock: left, right.sock: right}
         peers = {left.sock: right.sock, right.sock: left.sock}
-        queues: dict[socket.socket, deque[memoryview]] = {
-            left.sock: deque(),
-            right.sock: deque(),
+        queues = {
+            left.sock: MediaForwardQueue(self.forward_queue_bytes),
+            right.sock: MediaForwardQueue(self.forward_queue_bytes),
         }
-        queued_bytes = {left.sock: 0, right.sock: 0}
         write_progress_at = {left.sock: time.monotonic(), right.sock: time.monotonic()}
         selector.register(left.sock, selectors.EVENT_READ)
         selector.register(right.sock, selectors.EVENT_READ)
@@ -587,22 +725,67 @@ class AuthenticatedN64RuntimeMediaRelay:
         disconnected_role: str | None = None
         fixed_terminal_payload: bytes | None = None
         fixed_terminal_acknowledged = False
+        close_reason = "session_ended"
+        last_metrics_at = time.monotonic()
+        previous_counts = {"host": {}, "remote": {}}
+
+        def update_interest(sock):
+            target = peers[sock]
+            capacity = self.forward_queue_bytes - queues[target].bytes - len(filters[clients[sock].role].buffer)
+            events = (selectors.EVENT_READ if capacity > 0 else 0)
+            if queues[sock].frames:
+                events |= selectors.EVENT_WRITE
+            try:
+                selector.get_key(sock)
+            except KeyError:
+                if events:
+                    selector.register(sock, events)
+            else:
+                if events:
+                    selector.modify(sock, events)
+                else:
+                    selector.unregister(sock)
+
         try:
             while True:
                 if not self.session_is_active(left.session_id):
                     return
                 now = time.monotonic()
                 for sock, queue in queues.items():
-                    if queue and now - write_progress_at[sock] >= self.write_idle_seconds:
-                        raise TimeoutError(
-                            "media relay receiver stalled "
-                            f"role={clients[sock].role} queued_bytes={queued_bytes[sock]}"
-                        )
+                    queue.prune(now)
+                    update_interest(sock)
+                    if queue.frames and now - write_progress_at[sock] >= self.write_idle_seconds:
+                        disconnected_role = clients[sock].role
+                        close_reason = "receiver_stalled"
+                        return
+                if now - last_metrics_at >= 5.0:
+                    for sock, queue in queues.items():
+                        age = now - queue.frames[0].created_at if queue.frames else 0
+                        source_role = clients[peers[sock]].role
+                        counts = filters[source_role].message_counts
+                        rates = {kind: round((count - previous_counts[source_role].get(kind, 0)) /
+                                            (now - last_metrics_at), 2)
+                                 for kind, count in counts.items()}
+                        previous_counts[source_role] = counts.copy()
+                        type_queue = {}
+                        for frame in queue.frames:
+                            size, oldest = type_queue.get(frame.kind, (0, 0.0))
+                            type_queue[frame.kind] = (size + len(frame.data) - frame.offset,
+                                                     round(max(oldest, now - frame.created_at), 3))
+                        print(f"media relay metrics session={left.session_id} target_role={clients[sock].role} "
+                              f"queued_bytes={queue.bytes} oldest_seconds={age:.3f} drops={queue.dropped} "
+                              f"source_type_rates={rates} type_queue_bytes_age={type_queue}", flush=True)
+                    last_metrics_at = now
                 for key, mask in selector.select(SESSION_RECHECK_SECONDS):
                     source: socket.socket = key.fileobj
                     if mask & selectors.EVENT_READ:
+                        target = peers[source]
+                        capacity = self.forward_queue_bytes - queues[target].bytes - len(filters[clients[source].role].buffer)
+                        if capacity <= 0:
+                            update_interest(source)
+                            continue
                         try:
-                            data = source.recv(65536)
+                            data = source.recv(min(65536, capacity))
                         except (BlockingIOError, ssl.SSLWantReadError, ssl.SSLWantWriteError):
                             data = None
                         except (ConnectionError, OSError, ssl.SSLError):
@@ -610,13 +793,15 @@ class AuthenticatedN64RuntimeMediaRelay:
                             # producing a clean EOF.  Preserve the role so the
                             # fixed-Host product can enter its resume window.
                             disconnected_role = clients[source].role
+                            close_reason = "read_error"
                             return
                         if data == b"":
                             disconnected_role = clients[source].role
+                            close_reason = "peer_eof"
                             return
                         if data:
                             target = peers[source]
-                            queue_was_empty = not queues[target]
+                            queue_was_empty = not queues[target].frames
                             for frame in filters[clients[source].role].feed(data):
                                 if fixed_product:
                                     message_type = frame[5]
@@ -633,64 +818,103 @@ class AuthenticatedN64RuntimeMediaRelay:
                                         and payload == fixed_terminal_payload
                                     ):
                                         fixed_terminal_acknowledged = True
-                                if queued_bytes[target] + len(frame) > self.forward_queue_bytes:
-                                    raise BufferError("media relay forward queue limit exceeded")
-                                queues[target].append(memoryview(frame))
-                                queued_bytes[target] += len(frame)
-                            if queues[target]:
+                                if not queues[target].append(frame, now):
+                                    # Read capacity above reserves all buffered bytes,
+                                    # so protected frames always fit without dropping.
+                                    raise RuntimeError("media relay queue reservation invariant failed")
+                            if queues[target].frames:
                                 if queue_was_empty:
                                     write_progress_at[target] = time.monotonic()
-                                selector.modify(target, selectors.EVENT_READ | selectors.EVENT_WRITE)
+                                update_interest(target)
+                            update_interest(source)
                     if mask & selectors.EVENT_WRITE:
                         queue = queues[source]
-                        while queue:
+                        while queue.frames:
                             try:
-                                sent = source.send(queue[0])
+                                frame = queue.frames[0]
+                                remaining = len(frame.data) - frame.offset
+                                sent = source.send(memoryview(frame.data)[frame.offset:])
                             except (BlockingIOError, ssl.SSLWantReadError, ssl.SSLWantWriteError):
                                 break
-                            if sent <= 0:
+                            except (ConnectionError, OSError, ssl.SSLError):
+                                disconnected_role = clients[source].role
+                                close_reason = "write_error"
                                 return
-                            queued_bytes[source] -= sent
+                            if sent <= 0:
+                                disconnected_role = clients[source].role
+                                close_reason = "write_closed"
+                                return
+                            queue.sent(sent)
                             write_progress_at[source] = time.monotonic()
-                            if sent == len(queue[0]):
-                                queue.popleft()
-                            else:
-                                queue[0] = queue[0][sent:]
+                            if sent < remaining:
                                 break
-                        if not queue:
-                            selector.modify(source, selectors.EVENT_READ)
+                        update_interest(source)
+                        update_interest(peers[source])
+        except Exception as error:
+            close_reason = f"{type(error).__name__}:{error}"
+            raise
         finally:
             selector.close()
+            with self.lock:
+                current_pair = self.active.get(left.session_id) == (left, right)
+                if current_pair:
+                    self.active.pop(left.session_id, None)
             host_client = left if left.role == "host" else right
             remote_client = right if left.role == "host" else left
+            terminated = fixed_product and current_pair and self._fixed_host_terminated(left.session_id)
+            if terminated:
+                close_reason = "authoritative_terminal"
+                for client in (left, right):
+                    # Complete only an already-started frame before the notice.
+                    # Unsent video must not delay terminal delivery.
+                    queue = queues[client.sock]
+                    prefix = b""
+                    if queue.frames and queue.frames[0].offset:
+                        frame = queue.frames[0]
+                        prefix = frame.data[frame.offset:]
+                    self._notify_fixed_host_terminated(client, prefix)
             if (
                 fixed_product
+                and current_pair
+                and not terminated
                 and disconnected_role == "remote"
                 and not fixed_terminal_acknowledged
             ):
                 self._close_socket(remote_client.sock)
                 self._retain_gb_runtime_fixed_host_for_resume(host_client)
             else:
+                if not fixed_product and current_pair:
+                    for manager in self.session_managers:
+                        try:
+                            manager.recover(left.session_id)
+                            break
+                        except NotFoundError:
+                            continue
                 self._close_socket(left.sock)
                 self._close_socket(right.sock)
                 if (
                     fixed_product
+                    and current_pair
                     and not fixed_terminal_acknowledged
                     and disconnected_role in {"host", "remote"}
                 ):
                     self._gb_runtime_fixed_host_peer_disconnected(left.session_id, disconnected_role)
-            print(f"N64 Runtime media relay closed session={left.session_id}", flush=True)
+            print(f"N64 Runtime media relay closed session={left.session_id} role={disconnected_role} reason={close_reason}", flush=True)
 
     def _retain_gb_runtime_fixed_host_for_resume(self, host: MediaRelayClient) -> None:
         # The small grace keeps the monotonic Relay timer strictly after the
         # persisted wall-clock authority deadline.
-        deadline = time.monotonic() + 20.25
+        deadline = time.monotonic() + 25.25
         host.authenticated_at = time.monotonic()
         host.pending_expires_at = deadline
         host.resume_pending = True
         try:
+            if self._fixed_host_terminated(host.session_id):
+                self._notify_fixed_host_terminated(host)
+                self._close_socket(host.sock)
+                return
             host.sock.setblocking(True)
-            host.sock.sendall(self._gb_runtime_fixed_host_state_frame(GB_FIXED_STATE_PAUSED, 20000))
+            host.sock.sendall(self._gb_runtime_fixed_host_state_frame(GB_FIXED_STATE_PAUSED, 25000))
             host.sock.settimeout(None)
             self._gb_runtime_fixed_host_peer_disconnected(host.session_id, "remote")
             self.register_pending(host)
@@ -701,6 +925,23 @@ class AuthenticatedN64RuntimeMediaRelay:
             )
             self._close_socket(host.sock)
             self._gb_runtime_fixed_host_peer_disconnected(host.session_id, "host")
+
+    def _fixed_host_terminated(self, session_id: str) -> bool:
+        for manager in self.gb_runtime_fixed_host_session_managers:
+            try:
+                return manager.get(session_id).state in {"ABORTED", "CANCELLED"}
+            except NotFoundError:
+                continue
+        return False
+
+    def _notify_fixed_host_terminated(self, client: MediaRelayClient, prefix: bytes = b"") -> None:
+        # Delivery is bounded and best effort. The parent independently reaps
+        # on authoritative ROOM removal, including EOF-before-notice races.
+        try:
+            client.sock.settimeout(0.1)
+            client.sock.sendall(prefix + self._gb_runtime_fixed_host_state_frame(GB_FIXED_STATE_TERMINATED, 0))
+        except (OSError, ssl.SSLError):
+            pass
 
     @staticmethod
     def _gb_runtime_fixed_host_state_frame(state: int, remaining_ms: int) -> bytes:

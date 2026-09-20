@@ -22,5 +22,12 @@ bool integral_gb_runtime_fixed_host_result_ipc_receive(
     IntegralGBRuntimeFixedHostIPCRead reader, void *context,
     IntegralGBRuntimeFixedHostResult *result);
 void integral_gb_runtime_fixed_host_result_release(IntegralGBRuntimeFixedHostResult *result);
+/* Existing child->parent pipe: 2 = fresh-ticket request, 1 = result, 0 = EOF/error. */
+int integral_gb_runtime_fixed_host_ipc_receive_event(
+    IntegralGBRuntimeFixedHostIPCRead reader, void *context,
+    IntegralGBRuntimeFixedHostResult *result);
+bool integral_gb_runtime_fixed_host_ipc_request_ticket(
+    IntegralGBRuntimeFixedHostIPCWrite writer, void *context);
+#define INTEGRAL_GB_RECONNECT_TICKET_BYTES 192u
 
 #endif

@@ -16,12 +16,15 @@ TRANSFER_PAK_SOURCES = src/transfer_pak/storage.c \
 TRANSFER_PAK_HEADERS = src/transfer_pak/storage.h \
 	src/transfer_pak/save_stage.h src/transfer_pak/media_session.h
 N64_RUNTIME_SOURCES = src/main.c src/platform/dynlib.c src/platform/thread.c \
+	src/transfer_pak/memory_session.c ../common/transfer_sav_ipc.c \
+	../gb/src/server/content_hash.c ../gb/src/server/secure_memory.c \
 	src/platform/process.c src/gui/menu.c src/gui/text.c src/gui/cart.c \
 	src/gui/keymap.c src/gui/hotkeys.c src/remote_input.c \
 	src/remote_media_ipc.c \
 	$(TRANSFER_PAK_SOURCES)
 
 N64_RUNTIME_EXPORT_LDFLAGS = -Wl,-export_dynamic
+TRANSFER_PAK_HEADERS += src/transfer_pak/memory_session.h ../common/transfer_sav_ipc.h ../common/n64_transfer_memory.h
 
 ifeq ($(shell uname -s),Linux)
 N64_RUNTIME_EXPORT_LDFLAGS = -Wl,--export-dynamic
@@ -43,7 +46,7 @@ ai-context:
 
 frontend: build/integral_n64_runtime_frontend$(EXEEXT)
 
-build/integral_n64_runtime_frontend$(EXEEXT): $(N64_RUNTIME_SOURCES) $(TRANSFER_PAK_HEADERS) src/platform/dynlib.h src/platform/thread.h | source-stack
+build/integral_n64_runtime_frontend$(EXEEXT): $(N64_RUNTIME_SOURCES) $(TRANSFER_PAK_HEADERS) src/platform/dynlib.h src/platform/thread.h src/gui/screenshot_notice.h src/remote_media_ipc.h ../common/window_focus.h ../gb/src/common/utf8_file.h | source-stack
 	mkdir -p build
 	$(CC) $(N64_RUNTIME_CPPFLAGS) $(N64_RUNTIME_CFLAGS) \
 		$(N64_RUNTIME_SOURCES) -o $@ $(N64_RUNTIME_EXPORT_LDFLAGS) $(N64_RUNTIME_LDLIBS)
@@ -115,6 +118,14 @@ build/test-gui-hotkeys: tests/gui_hotkeys_test.c src/gui/hotkeys.c \
 hotkeys-test: build/test-gui-hotkeys
 	build/test-gui-hotkeys
 
+.PHONY: screenshot-notice-test
+build/test-screenshot-notice$(EXEEXT): tests/screenshot_notice_test.c src/gui/screenshot_notice.h
+	mkdir -p build
+	$(CC) -Isrc $$(sdl2-config --cflags) $(N64_RUNTIME_CFLAGS) tests/screenshot_notice_test.c -o $@ $$(sdl2-config --libs)
+
+screenshot-notice-test: build/test-screenshot-notice$(EXEEXT)
+	SDL_VIDEODRIVER=dummy build/test-screenshot-notice$(EXEEXT)
+
 config-load-test: frontend
 	tools/test_config_load.sh
 
@@ -149,4 +160,13 @@ release-macos:
 gui-smoke: frontend
 	tools/test_gui_smoke.sh
 
-test: transfer-pak-save-test process-test cart-test keymap-test hotkeys-test remote-input-test remote-media-ipc-test config-load-test gui-smoke
+test: transfer-memory-test transfer-pak-save-test process-test cart-test keymap-test hotkeys-test screenshot-notice-test remote-input-test remote-media-ipc-test config-load-test gui-smoke
+
+TRANSFER_MEMORY_SOURCES = src/transfer_pak/memory_session.c ../common/transfer_sav_ipc.c ../gb/src/server/content_hash.c ../gb/src/server/secure_memory.c $(TRANSFER_PAK_SOURCES)
+build/test-transfer-memory$(EXEEXT): tests/transfer_memory_test.c $(TRANSFER_MEMORY_SOURCES) $(TRANSFER_PAK_HEADERS)
+	mkdir -p build
+	$(CC) -Isrc $(N64_RUNTIME_CFLAGS) tests/transfer_memory_test.c $(TRANSFER_MEMORY_SOURCES) -o $@ $(N64_RUNTIME_LDLIBS)
+
+.PHONY: transfer-memory-test
+transfer-memory-test: build/test-transfer-memory$(EXEEXT)
+	python3 tests/run_transfer_memory_test.py build/test-transfer-memory$(EXEEXT)

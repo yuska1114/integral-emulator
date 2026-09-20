@@ -17,6 +17,8 @@
 #else
 #include <unistd.h>
 #endif
+#include "../../gb/src/common/utf8_file.h"
+#include <SDL_opengl.h>
 
 #include "m64p_common.h"
 #include "m64p_config.h"
@@ -26,7 +28,9 @@
 
 #include "transfer_pak/media_session.h"
 #include "transfer_pak/storage.h"
+#include "transfer_pak/memory_session.h"
 #include "gui/hotkeys.h"
+#include "gui/screenshot_notice.h"
 #include "gui/keymap.h"
 #include "gui/menu.h"
 #include "platform/dynlib.h"
@@ -49,6 +53,8 @@ typedef struct Options {
     const char *screenshot_dir;
     const char *save_dir;
     const char *save_name;
+    const char *transfer_sav_session;
+    int transfer_sav_fd;
     const char *video_path;
     const char *audio_path;
     const char *input_path;
@@ -102,13 +108,17 @@ typedef struct Frontend {
     bool core_started;
     bool rom_open;
     bool screenshot_requested;
+    atomic_int screenshot_result;
+    IntegralN64ScreenshotNotice screenshot_notice;
     bool stop_requested;
     unsigned int last_frame;
     TransferPakMediaSession media_session;
     bool media_prepared;
+    TransferPakMemorySession transfer_memory;
     atomic_int latest_core_state;
     atomic_int core_stop_sent;
     unsigned char *remote_media_frame;
+    unsigned char *remote_media_stream_frame;
     size_t remote_media_frame_capacity;
     uint64_t remote_media_next_capture_us;
     uint64_t remote_media_last_callback_us;
@@ -237,6 +247,7 @@ static bool parse_options(int argc, char **argv, Options *options)
     int i;
     memset(options, 0, sizeof(*options));
     options->screenshot_frame = INTEGRAL_N64_RUNTIME_DEFAULT_FRAME;
+    options->transfer_sav_fd = -1;
     options->width = INTEGRAL_N64_RUNTIME_DEFAULT_WIDTH;
     options->height = INTEGRAL_N64_RUNTIME_DEFAULT_HEIGHT;
     options->transfer_mask = 0x0fu;
@@ -296,6 +307,14 @@ static bool parse_options(int argc, char **argv, Options *options)
         else if (strcmp(argv[i], "--transfer-storage") == 0) {
             if (!require_value(argc, argv, &i, &options->transfer_storage)) return false;
         }
+        else if (strcmp(argv[i], "--transfer-sav-session") == 0) {
+            if (!require_value(argc, argv, &i, &options->transfer_sav_session)) return false;
+        }
+        else if (strcmp(argv[i], "--transfer-sav-fd") == 0) {
+            unsigned int fd;
+            if (!require_value(argc, argv, &i, &value) || !parse_unsigned(value, &fd) || fd < 3 || fd > INT_MAX) return false;
+            options->transfer_sav_fd = (int)fd;
+        }
         else if (strcmp(argv[i], "--remote-input-file") == 0) {
             if (!require_value(argc, argv, &i, &options->remote_input_file)) return false;
         }
@@ -339,7 +358,10 @@ static bool parse_options(int argc, char **argv, Options *options)
         }
     }
 
-    return options->rom_path != NULL &&
+    return ((options->transfer_sav_fd < 0 && !options->transfer_sav_session && !options->remote_media_file) ||
+            (options->transfer_sav_fd >= 3 && options->transfer_sav_session &&
+             options->transfer_storage && options->remote_media_file)) &&
+           options->rom_path != NULL &&
            options->core_path != NULL &&
            options->config_dir != NULL &&
            options->data_dir != NULL &&
@@ -371,6 +393,11 @@ static void state_callback(void *context, m64p_core_param parameter, int value)
 {
     Frontend *frontend = atomic_load(&g_frontend);
     (void)context;
+    if (frontend && parameter == M64CORE_SCREENSHOT_CAPTURED) {
+        atomic_store(&frontend->screenshot_result, value ? 1 : -1);
+        if (frontend->remote_media_open)
+            integral_n64_runtime_remote_media_finish_screenshot(value != 0);
+    }
     if (parameter == M64CORE_EMU_STATE) {
         if (frontend != NULL)
             atomic_store(&frontend->latest_core_state, value);
@@ -386,6 +413,18 @@ static void frame_callback(unsigned int frame_index)
         return;
     }
     frontend->last_frame = frame_index;
+    if (frontend->remote_media_open &&
+        integral_n64_runtime_remote_media_take_screenshot_request() &&
+        frontend->core.do_command(M64CMD_TAKE_NEXT_SCREENSHOT, 0, NULL) != M64ERR_SUCCESS) {
+        integral_n64_runtime_remote_media_finish_screenshot(0);
+        atomic_store(&frontend->screenshot_result, -1);
+    }
+    Uint64 notice_now = SDL_GetTicks64();
+    int captured = atomic_exchange(&frontend->screenshot_result, 0);
+    if (captured)
+        integral_n64_screenshot_notice_show(&frontend->screenshot_notice,
+            SDL_GL_GetCurrentWindow(), captured > 0, notice_now);
+    integral_n64_screenshot_notice_tick(&frontend->screenshot_notice, notice_now);
     uint64_t callback_us = monotonic_us();
     if (frontend->remote_media_open) {
         IntegralN64RuntimeRemoteMediaProducerMetrics *metrics = &frontend->remote_media_metrics;
@@ -409,10 +448,19 @@ static void frame_callback(unsigned int frame_index)
         int width = 0;
         int height = 0;
         frontend->plugins[0].read_screen(NULL, &width, &height, 0);
-        if (width > 0 && height > 0 &&
-            width <= (int)INTEGRAL_N64_RUNTIME_MEDIA_MAX_WIDTH &&
-            height <= (int)INTEGRAL_N64_RUNTIME_MEDIA_MAX_HEIGHT) {
-            size_t required = (size_t)width * (size_t)height * 3u;
+        typedef void (APIENTRY *GetInteger)(GLenum, GLint *);
+        GetInteger get_integer = NULL;
+        void *get_integer_address = SDL_GL_GetProcAddress("glGetIntegerv");
+        memcpy(&get_integer, &get_integer_address, sizeof(get_integer));
+        GLint alignment = 0;
+        if (get_integer) get_integer(GL_PACK_ALIGNMENT, &alignment);
+        if (width > 0 && height > 0 && width <= 8192 && height <= 8192 &&
+            (alignment == 1 || alignment == 2 || alignment == 4 || alignment == 8)) {
+            size_t pitch = ((size_t)width * 3u + (size_t)alignment - 1u) &
+                           ~((size_t)alignment - 1u);
+            size_t required = pitch * (size_t)height;
+            if (!frontend->remote_media_stream_frame)
+                frontend->remote_media_stream_frame = malloc(INTEGRAL_N64_RUNTIME_STREAM_BYTES);
             if (frontend->remote_media_frame_capacity < required) {
                 unsigned char *resized = realloc(frontend->remote_media_frame, required);
                 if (resized != NULL) {
@@ -420,7 +468,9 @@ static void frame_callback(unsigned int frame_index)
                     frontend->remote_media_frame_capacity = required;
                 }
             }
-            if (frontend->remote_media_frame_capacity >= required) {
+            if (frontend->remote_media_frame_capacity >= required &&
+                frontend->remote_media_stream_frame) {
+                int captured_width = width, captured_height = height;
                 uint64_t readback_started_us = monotonic_us();
                 frontend->plugins[0].read_screen(frontend->remote_media_frame,
                                                  &width,
@@ -434,11 +484,17 @@ static void frame_callback(unsigned int frame_index)
                     metrics->readback_max_us = bounded_readback_us;
                 }
                 uint64_t write_started_us = monotonic_us();
-                int write_result = integral_n64_runtime_remote_media_write_video(
-                    frontend->remote_media_frame,
-                    (uint32_t)width,
-                    (uint32_t)height,
-                    INTEGRAL_N64_RUNTIME_MEDIA_VIDEO_BOTTOM_UP);
+                int write_result = -1;
+                if (width == captured_width && height == captured_height &&
+                    integral_n64_runtime_scale_stream_frame(frontend->remote_media_frame,
+                        (uint32_t)width, (uint32_t)height, pitch,
+                        frontend->remote_media_stream_frame) == 0) {
+                    write_result = integral_n64_runtime_remote_media_write_video(
+                        frontend->remote_media_stream_frame,
+                        INTEGRAL_N64_RUNTIME_STREAM_WIDTH,
+                        INTEGRAL_N64_RUNTIME_STREAM_HEIGHT,
+                        INTEGRAL_N64_RUNTIME_MEDIA_VIDEO_BOTTOM_UP);
+                }
                 uint64_t write_us = monotonic_us() - write_started_us;
                 uint32_t bounded_write_us = duration_us_u32(write_us);
                 metrics->ipc_write_samples++;
@@ -622,6 +678,10 @@ static bool configure_core(Frontend *frontend)
     }
 
     return set_parameter(frontend, core_section, "OnScreenDisplay", M64TYPE_BOOL, &disabled) &&
+           set_parameter(frontend, core_section, "Integral Screenshot Mode", M64TYPE_STRING,
+                         frontend->options.remote_media_file ? "n64_room" : "local_n64") &&
+           set_parameter(frontend, core_section, "Integral Screenshot Role", M64TYPE_STRING,
+                         frontend->options.remote_media_file ? "host" : "local") &&
            set_parameter(frontend, core_section, "EnableDebugger", M64TYPE_BOOL, &disabled) &&
            set_parameter(frontend, core_section, "R4300Emulator", M64TYPE_INT, &interpreter) &&
            set_parameter(frontend, core_section, "ScreenshotPath", M64TYPE_STRING,
@@ -671,6 +731,9 @@ static bool configure_emulator_hotkeys(Frontend *frontend)
         snprintf(joy_name, sizeof(joy_name), "Joy Mapping %s",
                  integral_n64_runtime_hotkey_core_names[i]);
         integral_n64_runtime_hotkey_joy_mapping(entry, joy_mapping, sizeof(joy_mapping));
+        /* ROOM controller screenshots belong to the parent, including when
+         * this game window has focus. Keyboard hotkeys remain window-local. */
+        if (frontend->options.remote_media_file && i == 8) joy_mapping[0] = '\0';
         if (!set_parameter(frontend, section, legacy_name, M64TYPE_INT, &legacy) ||
             !set_parameter(frontend, section, physical_name, M64TYPE_INT,
                            &scancode) ||
@@ -763,6 +826,10 @@ static bool configure_transfer_paks(Frontend *frontend)
 
 static bool configure_controllers(Frontend *frontend)
 {
+    m64p_handle runtime_section = NULL;
+    int local_four_ports = frontend->options.remote_input_file == NULL;
+    if (frontend->core.config_open_section("IntegralRuntime", &runtime_section) != M64ERR_SUCCESS ||
+        !set_parameter(frontend, runtime_section, "LocalFourPorts", M64TYPE_BOOL, &local_four_ports)) return false;
     int controller;
     for (controller = 0; controller < 4; ++controller) {
         char section_name[32];
@@ -824,7 +891,7 @@ static bool configure_controllers(Frontend *frontend)
 
 static bool read_rom(const char *path, unsigned char **data, int *size)
 {
-    FILE *file = fopen(path, "rb");
+    FILE *file = integral_fopen(path, "rb");
     long length;
     unsigned char *buffer;
     if (file == NULL) {
@@ -858,6 +925,10 @@ static bool read_rom(const char *path, unsigned char **data, int *size)
 static void cleanup(Frontend *frontend)
 {
     int i;
+    if (frontend->options.transfer_sav_fd >= 0) {
+        transfer_sav_close(frontend->options.transfer_sav_fd);
+        frontend->options.transfer_sav_fd = -1;
+    }
     for (i = 3; i >= 0; --i) {
         if (frontend->plugins[i].attached) {
             (void)frontend->core.detach_plugin(frontend->plugins[i].type);
@@ -888,11 +959,14 @@ static void cleanup(Frontend *frontend)
         frontend->core_started = false;
     }
     integral_n64_runtime_dynlib_close(&frontend->core.library);
+    transfer_pak_memory_clear(&frontend->transfer_memory);
     if (frontend->remote_media_open) {
         integral_n64_runtime_remote_media_close();
         frontend->remote_media_open = false;
     }
     free(frontend->remote_media_frame);
+    free(frontend->remote_media_stream_frame);
+    frontend->remote_media_stream_frame = NULL;
     frontend->remote_media_frame = NULL;
     frontend->remote_media_frame_capacity = 0;
 }
@@ -912,6 +986,16 @@ static int run_frontend(Frontend *frontend)
     StopRequestMonitor stop_request_monitor;
     IntegralN64RuntimeThread stop_request_monitor_thread;
     bool stop_request_monitor_started = false;
+
+    if (frontend->options.transfer_sav_fd >= 0) {
+        int fd = frontend->options.transfer_sav_fd;
+        frontend->options.transfer_sav_fd = -1;
+        if (transfer_pak_memory_prepare(&frontend->transfer_memory, &frontend->media_session,
+                frontend->options.transfer_storage, frontend->options.transfer_sav_session, fd) != 0) {
+            fprintf(stderr, "N64 Runtime: Transfer Pak memory IPC rejected\n");
+            return 5;
+        }
+    }
 
     if (SDL_WasInit(SDL_INIT_VIDEO) == 0u &&
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
@@ -936,7 +1020,16 @@ static int run_frontend(Frontend *frontend)
     frontend->core_started = true;
     if (!configure_core(frontend)) return 4;
     if (!configure_emulator_hotkeys(frontend)) return 4;
-    if (frontend->options.transfer_storage != NULL) {
+    if (frontend->options.transfer_sav_session != NULL) {
+        m64p_error (CALL *install_memory)(unsigned int, IntegralTransferMemory *, unsigned int) = NULL;
+        if (!integral_n64_runtime_dynlib_symbol(&frontend->core.library,
+                "IntegralSetTransferPakMemory", &install_memory, sizeof(install_memory)) ||
+            install_memory(INTEGRAL_TRANSFER_MEMORY_VERSION, frontend->transfer_memory.slots, 2) != M64ERR_SUCCESS) {
+            fprintf(stderr, "N64 Runtime: Transfer Pak memory backend unavailable\n");
+            return 5;
+        }
+        printf("N64 Runtime: Transfer Pak memory ready ports=2 no_save=1\n");
+    } else if (frontend->options.transfer_storage != NULL) {
         if (transfer_pak_media_session_prepare_mask(
                 &frontend->media_session, frontend->options.transfer_storage,
                 frontend->options.transfer_mask) != 0) {
@@ -1096,6 +1189,7 @@ static void initialize_frontend(Frontend *frontend, const Options *options)
     frontend->plugins[3] = (Plugin){M64PLUGIN_RSP, "RSP", options->rsp_path,
                                     {0}, NULL, NULL, false, false};
     atomic_init(&frontend->latest_core_state, M64EMU_STOPPED);
+    atomic_init(&frontend->screenshot_result, 0);
     atomic_init(&frontend->core_stop_sent, 0);
     integral_n64_runtime_remote_input_configure(options->remote_input_file);
 }

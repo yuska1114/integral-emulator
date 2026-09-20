@@ -13,6 +13,7 @@
 
 void integral_gb_runtime_server_print_usage(const char *program)
 {
+    printf("  --ir-off-delay-ticks 0..256: experimental SERVER2 IR release delay (default 32; 0 disables)\n");
     printf("Usage: %s --rom1 PATH [--rom2 PATH] --save1 PATH [--save2 PATH] [--self] [--display-slots 1|2] [--slot1-keys SPEC] [--slot2-keys SPEC] [--fast-key KEY] [--screenshot-key KEY] [--escape-key KEY] [--turbo-hold-key KEY] [--reset-key KEY] [--speed 1|2|3|4] [--auto-a-frames N] [--auto-a-pulse N] [--slot1-macro TEXT] [--slot2-macro TEXT] [--macro-step-frames N] [--macro-press-frames N] [--macro-screenshots] [--dump-screenshot] [--lan-remote] [--lan-remote-port PORT] [--rtc-offset-minutes N] [--rtc-offset-seconds N] [--smoke-screenshot] [--bind ADDR] [--port PORT] [--frames N] [--display] [--scale auto|1|2|3|4|5|6] [--window-width N --window-height N] [--audio] [--no-audio] [--audio-max-ms N] [--no-skip-boot-rom] [--no-link] [--remote-input] [--remote-input-dual] [--auth-token TOKEN] [--slot1-auth-token TOKEN] [--slot2-auth-token TOKEN] [--slot1-auth-token-file PATH] [--slot2-auth-token-file PATH]\n", program);
 }
 
@@ -46,6 +47,7 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
         "INTEGRAL_EMULATOR_DISPLAY_SCALE");
     options->skip_boot_rom = true;
     options->link_enabled = true;
+    options->ir_off_delay_ticks = 32;
     options->audio_max_ms = 120;
     options->display_slots = 2;
     options->speed_multiplier = 1;
@@ -203,6 +205,9 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
                 fprintf(stderr, "Invalid --speed value\n");
                 return -1;
             }
+        }
+        else if (strcmp(argv[i], "--ir-off-delay-ticks") == 0 && i + 1 < argc) {
+            if (integral_gb_runtime_parse_uint_range(argv[++i], 0, 256, &options->ir_off_delay_ticks) != 0) return -1;
         }
         else if (strcmp(argv[i], "--auto-a-frames") == 0 && i + 1 < argc) {
             if (integral_gb_runtime_parse_uint_range(argv[++i], 0, 65535, &options->auto_a_frames) != 0) {
