@@ -57,9 +57,10 @@ sh unlock_macos.sh
 
 ## テスト
 
-Pythonテストと、固定した第三者ソースの整合性確認は次のコマンドで実行できます。
+PythonテストにはC Clientとの統合試験が含まれます。[C Clientのビルド依存関係](docs/C_CLIENT.md)を導入し、ROOM試験バイナリを作成してから実行してください。
 
 ```bash
+make -C c_client room-state-test
 PYTHONPATH=src python3 -m unittest discover -s tests
 python3 scripts/verify_third_party_lock.py
 python3 scripts/verify_libmobile_dependency.py runtimes/gb/third_party/libmobile
