@@ -262,7 +262,7 @@ $(BUILD_DIR):
 	mkdir -p $@
 
 $(SAMEBOY_LIB): $(wildcard $(SAMEBOY_DIR)/Core/*.c $(SAMEBOY_DIR)/Core/*.h)
-	$(MAKE) -C $(SAMEBOY_DIR) lib \
+	$(MAKE) -C $(SAMEBOY_DIR) lib CONF=release\
 		$(if $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS),CC="$(CC) $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS)")
 
 clean:

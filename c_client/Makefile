@@ -146,7 +146,7 @@ $(WINDOWS_CLIENT_RESOURCE): windows_launcher.rc build/integral_emulator_icon.ico
 endif
 
 $(SAMEBOY_LIB): $(wildcard $(SAMEBOY_DIR)/Core/*.c $(SAMEBOY_DIR)/Core/*.h)
-	$(MAKE) -C $(SAMEBOY_DIR) lib \
+	$(MAKE) -C $(SAMEBOY_DIR) lib CONF=release\
 		$(if $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS),CC="$(CC) $(INTEGRAL_RELEASE_PREFIX_MAP_FLAGS)")
 
 N64_RUNTIME_STOP_TEST_DIR ?= $(BUILD_DIR)/n64_runtime_stop_process_test
