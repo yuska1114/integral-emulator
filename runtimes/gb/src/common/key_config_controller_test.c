@@ -169,10 +169,64 @@ int main(int argc, char **argv)
     util.type = SDL_JOYBUTTONUP;
     CHECK(!integral_gb_runtime_key_config_binding_rising(a_button, &util, &held) && !held, "gamepad util release");
 
+    /*
+     * Reconnect the first of two identical controllers.
+     * Its previously captured binding must remain valid.
+     */
+    SDL_Event removed;
+    SDL_zero(removed);
+
+    SDL_JoystickID old_instance_a = instance_a;
+
+    CHECK(SDL_JoystickDetachVirtual(virtual_a) == 0,
+          "detach first virtual device");
+    virtual_a = -1;
+
+    removed.type = SDL_JOYDEVICEREMOVED;
+    removed.jdevice.which = old_instance_a;
+    integral_gb_runtime_key_config_handle_device_event(&removed);
+
+    virtual_a = SDL_JoystickAttachVirtual(
+        SDL_JOYSTICK_TYPE_GAMECONTROLLER, 2, 8, 1);
+    CHECK(virtual_a >= 0,
+          "reattach first virtual device");
+
+    SDL_JoystickID reconnected_instance_a =
+        SDL_JoystickGetDeviceInstanceID(virtual_a);
+
+    CHECK(reconnected_instance_a >= 0 &&
+              reconnected_instance_a != old_instance_a,
+          "reconnected device receives new instance id");
+
+    SDL_Event readded;
+    SDL_zero(readded);
+    readded.type = SDL_JOYDEVICEADDED;
+    readded.jdevice.which = virtual_a;
+    integral_gb_runtime_key_config_handle_device_event(&readded);
+
+    SDL_Event reconnected_a_down = a_down;
+    reconnected_a_down.jbutton.which = reconnected_instance_a;
+
+    CHECK(integral_gb_runtime_key_config_binding_matches_event(
+              a_button, &reconnected_a_down, &pressed) &&
+              pressed,
+          "reconnected first identical device keeps original binding");
+
+    CHECK(integral_gb_runtime_key_config_binding_matches_event(
+              b_button, &b_down, &pressed) &&
+              pressed,
+          "second identical device keeps its original binding");
+
+    CHECK(!integral_gb_runtime_key_config_binding_matches_event(
+              a_button, &b_down, &pressed),
+          "reconnected first binding still rejects second identical device");
+
+    CHECK(!integral_gb_runtime_key_config_binding_matches_event(
+              b_button, &reconnected_a_down, &pressed),
+          "second binding still rejects reconnected first identical device");
+
 cleanup:
     integral_gb_runtime_key_config_close_game_controllers();
-    if (virtual_b >= 0) (void)SDL_JoystickDetachVirtual(virtual_b);
-    if (virtual_a >= 0) (void)SDL_JoystickDetachVirtual(virtual_a);
     SDL_Quit();
     if (result == 0) printf("GB Runtime controller input test passed\n");
     return result;

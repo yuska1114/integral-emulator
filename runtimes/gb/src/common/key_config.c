@@ -75,9 +75,7 @@ static uint64_t joystick_fingerprint(SDL_Joystick *joystick)
              SDL_JoystickGetSerial(joystick) ? SDL_JoystickGetSerial(joystick) : "");
     uint64_t hash = hash_text(hash_text(UINT64_C(1469598103934665603), guid), numeric);
     hash = hash_text(hash, SDL_JoystickName(joystick));
-#if SDL_VERSION_ATLEAST(2, 24, 0)
-    hash = hash_text(hash, SDL_JoystickPath(joystick));
-#endif
+
     return hash;
 }
 
@@ -245,31 +243,87 @@ static bool joystick_instance_open(SDL_JoystickID instance_id)
     return open_device_for_instance(instance_id) != NULL;
 }
 
+static OpenInputDevice *disconnected_device_for_fingerprint(uint64_t fingerprint)
+{
+    OpenInputDevice *best = NULL;
+
+    for (size_t i = 0; i < INTEGRAL_GB_RUNTIME_MAX_OPEN_DEVICES; i++) {
+        OpenInputDevice *entry = &open_devices[i];
+
+        if (!entry->joystick &&
+            entry->stable_id[0] != '\0' &&
+            entry->fingerprint == fingerprint &&
+            (!best || entry->ordinal < best->ordinal)) {
+            best = entry;
+        }
+    }
+
+    return best;
+}
+
 static OpenInputDevice *unused_open_device(void)
 {
+    /* Prefer a completely unused slot. */
     for (size_t i = 0; i < INTEGRAL_GB_RUNTIME_MAX_OPEN_DEVICES; i++) {
-        if (!open_devices[i].joystick) return &open_devices[i];
+        if (!open_devices[i].joystick &&
+            open_devices[i].stable_id[0] == '\0') {
+            return &open_devices[i];
+        }
     }
+
+    /*
+     * If all slots have historical identities, reclaim a disconnected one.
+     */
+    for (size_t i = 0; i < INTEGRAL_GB_RUNTIME_MAX_OPEN_DEVICES; i++) {
+        if (!open_devices[i].joystick) {
+            return &open_devices[i];
+        }
+    }
+
     return NULL;
 }
 
-static void remember_device(SDL_GameController *controller, SDL_Joystick *joystick, int device_index)
+static void remember_device(SDL_GameController *controller,
+                            SDL_Joystick *joystick,
+                            int device_index)
 {
-    OpenInputDevice *entry = unused_open_device();
-    if (!entry || !joystick) return;
+    if (!joystick) return;
+
+    uint64_t fingerprint = joystick_fingerprint(joystick);
+
+    /*
+     * Reconnecting a previously seen device should reuse its stable identity.
+     */
+    OpenInputDevice *entry =
+        disconnected_device_for_fingerprint(fingerprint);
+
+    if (entry) {
+        entry->controller = controller;
+        entry->joystick = joystick;
+        entry->instance_id = SDL_JoystickInstanceID(joystick);
+        entry->device_index = device_index;
+        return;
+    }
+
+    entry = unused_open_device();
+    if (!entry) return;
+
     memset(entry, 0, sizeof(*entry));
     entry->controller = controller;
     entry->joystick = joystick;
     entry->instance_id = SDL_JoystickInstanceID(joystick);
     entry->device_index = device_index;
-    entry->fingerprint = joystick_fingerprint(joystick);
+    entry->fingerprint = fingerprint;
+
     for (size_t i = 0; i < INTEGRAL_GB_RUNTIME_MAX_OPEN_DEVICES; i++) {
-        if (open_devices[i].joystick && &open_devices[i] != entry &&
+        if (&open_devices[i] != entry &&
+            open_devices[i].stable_id[0] != '\0' &&
             open_devices[i].fingerprint == entry->fingerprint &&
             open_devices[i].ordinal >= entry->ordinal) {
             entry->ordinal = open_devices[i].ordinal + 1u;
         }
     }
+
     snprintf(entry->stable_id,
              sizeof(entry->stable_id),
              "%016llx-%u",
@@ -328,9 +382,14 @@ void integral_gb_runtime_key_config_handle_device_event(const SDL_Event *event)
     if (event->type == SDL_CONTROLLERDEVICEREMOVED || event->type == SDL_JOYDEVICEREMOVED) {
         OpenInputDevice *entry = open_device_for_instance(event->jdevice.which);
         if (!entry) return;
+
         if (entry->controller) SDL_GameControllerClose(entry->controller);
         else if (entry->joystick) SDL_JoystickClose(entry->joystick);
-        memset(entry, 0, sizeof(*entry));
+
+        entry->controller = NULL;
+        entry->joystick = NULL;
+        entry->instance_id = -1;
+        entry->device_index = -1;
     }
 }
 
