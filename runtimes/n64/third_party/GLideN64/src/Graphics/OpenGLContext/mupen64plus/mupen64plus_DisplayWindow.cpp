@@ -40,6 +40,9 @@ private:
 	void _changeWindow() override;
 	void _readScreen(void **_pDest, long *_pWidth, long *_pHeight) override {}
 	void _readScreen2(void * _dest, int * _width, int * _height, int _front) override;
+	void _readGameScreen2(void * _dest, int * _width, int * _height, int _front) override;
+	void _readScreenArea(void * _dest, int * _width, int * _height, int _front,
+		u32 _x, u32 _y, u32 _captureWidth, u32 _captureHeight);
 #ifdef M64P_GLIDENUI
 	bool _supportsWithRateFunctions = true;
 #endif // M64P_GLIDENUI
@@ -243,11 +246,28 @@ void DisplayWindowMupen64plus::_getDisplaySize()
 
 void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _height, int _front)
 {
+	_readScreenArea(_dest, _width, _height, _front,
+		0, m_heightOffset, m_screenWidth, m_screenHeight);
+}
+
+void DisplayWindowMupen64plus::_readGameScreen2(void * _dest, int * _width, int * _height, int _front)
+{
+	const u32 captureWidth = m_width <= m_screenWidth ? m_width : m_screenWidth;
+	const u32 captureHeight = m_height <= m_screenHeight ? m_height : m_screenHeight;
+	const u32 hOffset = (m_screenWidth - captureWidth) / 2;
+	const u32 vOffset = (m_screenHeight - captureHeight) / 2 + m_heightOffset;
+	_readScreenArea(_dest, _width, _height, _front,
+		hOffset, vOffset, captureWidth, captureHeight);
+}
+
+void DisplayWindowMupen64plus::_readScreenArea(void * _dest, int * _width, int * _height, int _front,
+	u32 _x, u32 _y, u32 _captureWidth, u32 _captureHeight)
+{
 	if (_width == nullptr || _height == nullptr)
 		return;
 
-	*_width = m_screenWidth;
-	*_height = m_screenHeight;
+	*_width = static_cast<int>(_captureWidth);
+	*_height = static_cast<int>(_captureHeight);
 
 	if (_dest == nullptr)
 		return;
@@ -260,7 +280,7 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
 		glReadBuffer(GL_FRONT);
 	else
 		glReadBuffer(GL_BACK);
-	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGB, GL_UNSIGNED_BYTE, _dest);
+	glReadPixels(_x, _y, _captureWidth, _captureHeight, GL_RGB, GL_UNSIGNED_BYTE, _dest);
 	if (graphics::BufferAttachmentParam(oldMode) == graphics::bufferAttachment::COLOR_ATTACHMENT0) {
 		FrameBuffer * pBuffer = frameBufferList().getCurrent();
 		if (pBuffer != nullptr)
@@ -272,7 +292,7 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
 	if (pBufferData == nullptr)
 		return;
 	u8 *pDest = (u8*)_dest;
-	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, pBufferData);
+	glReadPixels(_x, _y, _captureWidth, _captureHeight, GL_RGBA, GL_UNSIGNED_BYTE, pBufferData);
 
 	//Convert RGBA to RGB
 	for (s32 y = 0; y < *_height; ++y) {

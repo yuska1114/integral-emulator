@@ -175,3 +175,8 @@ void PluginAPI::ReadScreen2(void * _dest, int * _width, int * _height, int _fron
 {
 	dwnd().readScreen2(_dest, _width, _height, _front);
 }
+
+void PluginAPI::ReadGameScreen2(void * _dest, int * _width, int * _height, int _front)
+{
+	dwnd().readGameScreen2(_dest, _width, _height, _front);
+}

@@ -22,6 +22,7 @@ public:
 	void setToggleFullscreen() { m_bToggleFullscreen = true; }
 	void readScreen(void **_pDest, long *_pWidth, long *_pHeight);
 	void readScreen2(void * _dest, int * _width, int * _height, int _front);
+	void readGameScreen2(void * _dest, int * _width, int * _height, int _front);
 	u32 maxMSAALevel() const;
 	u32 maxAnisotropy() const;
 
@@ -84,6 +85,7 @@ private:
 	virtual bool _resizeWindow() = 0;
 	virtual void _readScreen(void **_pDest, long *_pWidth, long *_pHeight) = 0;
 	virtual void _readScreen2(void * _dest, int * _width, int * _height, int _front) = 0;
+	virtual void _readGameScreen2(void * _dest, int * _width, int * _height, int _front) = 0;
 	virtual graphics::ObjectHandle _getDefaultFramebuffer() = 0;
 
 };

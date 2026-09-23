@@ -814,7 +814,7 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
 	}
 
 	const float scaleX = config.frameBufferEmulation.nativeResFactor == 0 ?
-		wnd.getScaleX() :
+		std::max(wnd.getScaleX(), 1.0f) :
 		static_cast<float>(config.frameBufferEmulation.nativeResFactor);
 
 	if (m_pCurrent == nullptr || m_pCurrent->m_startAddress != _address || m_pCurrent->m_width != _width)

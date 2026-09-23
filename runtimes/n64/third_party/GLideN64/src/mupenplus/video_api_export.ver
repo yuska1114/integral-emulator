@@ -15,6 +15,7 @@ UpdateScreen;
 ViStatusChanged;
 ViWidthChanged;
 ReadScreen2;
+IntegralReadGameScreen2;
 SetRenderingCallback;
 ResizeVideoOutput;
 FBRead;
