@@ -97,6 +97,7 @@ typedef struct Plugin {
     IntegralN64RuntimeDynlib library;
     ptr_PluginShutdown shutdown;
     ptr_ReadScreen2 read_screen;
+    ptr_ReadScreen2 read_room_screen;
     bool started;
     bool attached;
 } Plugin;
@@ -441,13 +442,16 @@ static void frame_callback(unsigned int frame_index)
         }
         frontend->remote_media_last_callback_us = callback_us;
     }
-    if (frontend->remote_media_open && frontend->plugins[0].read_screen != NULL &&
+    ptr_ReadScreen2 capture_screen = frontend->plugins[0].read_room_screen != NULL
+        ? frontend->plugins[0].read_room_screen
+        : frontend->plugins[0].read_screen;
+    if (frontend->remote_media_open && capture_screen != NULL &&
         remote_media_capture_due(frontend, callback_us)) {
         IntegralN64RuntimeRemoteMediaProducerMetrics *metrics = &frontend->remote_media_metrics;
         metrics->capture_due++;
         int width = 0;
         int height = 0;
-        frontend->plugins[0].read_screen(NULL, &width, &height, 0);
+        capture_screen(NULL, &width, &height, 0);
         typedef void (APIENTRY *GetInteger)(GLenum, GLint *);
         GetInteger get_integer = NULL;
         void *get_integer_address = SDL_GL_GetProcAddress("glGetIntegerv");
@@ -472,7 +476,7 @@ static void frame_callback(unsigned int frame_index)
                 frontend->remote_media_stream_frame) {
                 int captured_width = width, captured_height = height;
                 uint64_t readback_started_us = monotonic_us();
-                frontend->plugins[0].read_screen(frontend->remote_media_frame,
+                capture_screen(frontend->remote_media_frame,
                                                  &width,
                                                  &height,
                                                  0);
@@ -778,6 +782,18 @@ static bool load_plugin(Frontend *frontend, Plugin *plugin)
                                  sizeof(plugin->read_screen))) {
         fprintf(stderr, "N64 Runtime: video plugin cannot capture remote frames\n");
         return false;
+    }
+    if (plugin->type == M64PLUGIN_GFX) {
+        (void)integral_n64_runtime_dynlib_symbol(&plugin->library,
+                                 "IntegralReadGameScreen2",
+                                 &plugin->read_room_screen,
+                                 sizeof(plugin->read_room_screen));
+        if (frontend->options.remote_media_file != NULL &&
+            plugin->read_room_screen == NULL) {
+            fprintf(stderr,
+                    "N64 Runtime WARNING: video plugin lacks ROOM game-frame capture; "
+                    "falling back to ReadScreen2\n");
+        }
     }
     if (get_version(&actual_type, &version, NULL, &name, NULL) != M64ERR_SUCCESS ||
         actual_type != plugin->type) {
@@ -1178,16 +1194,16 @@ static void initialize_frontend(Frontend *frontend, const Options *options)
     memset(frontend, 0, sizeof(*frontend));
     frontend->options = *options;
     frontend->plugins[0] = (Plugin){M64PLUGIN_GFX, "Video", options->video_path,
-                                    {0}, NULL, NULL, false, false};
+                                    {0}, NULL, NULL, NULL, false, false};
     frontend->plugins[1] =
         (Plugin){M64PLUGIN_AUDIO, "Audio",
                  strcmp(options->audio_path, "dummy") == 0
                      ? NULL : options->audio_path,
-                 {0}, NULL, NULL, false, false};
+                 {0}, NULL, NULL, NULL, false, false};
     frontend->plugins[2] = (Plugin){M64PLUGIN_INPUT, "Input", options->input_path,
-                                    {0}, NULL, NULL, false, false};
+                                    {0}, NULL, NULL, NULL, false, false};
     frontend->plugins[3] = (Plugin){M64PLUGIN_RSP, "RSP", options->rsp_path,
-                                    {0}, NULL, NULL, false, false};
+                                    {0}, NULL, NULL, NULL, false, false};
     atomic_init(&frontend->latest_core_state, M64EMU_STOPPED);
     atomic_init(&frontend->screenshot_result, 0);
     atomic_init(&frontend->core_stop_sent, 0);
