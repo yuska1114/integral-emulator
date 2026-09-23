@@ -122,11 +122,11 @@ const char *room_link_mode_label(IntegralRoomLinkMode mode)
 {
     switch (mode) {
         case INTEGRAL_ROOM_MODE_BATTLE:
-            return "BATTLE MODE";
+            return "SAVE OFF";
         case INTEGRAL_ROOM_MODE_TRADE:
-            return "TRADE MODE";
+            return "SAVE ON";
     }
-    return "TRADE MODE";
+    return "SAVE ON";
 }
 
 
