@@ -1856,6 +1856,45 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(len(repeated["users"]), 2)
         self.assert_no_auth_session_digest(repeated)
 
+    def test_link_room_members_receive_selected_rom_header_titles_only(self) -> None:
+        self.post("/auth/register", {"username": "LinkHost", "password": "correct horse battery staple"})
+        self.post("/auth/register", {"username": "LinkGuest", "password": "correct horse battery staple"})
+        host = self.post("/auth/login", {"username": "linkhost", "password": "correct horse battery staple"})["token"]["token"]
+        guest = self.post("/auth/login", {"username": "linkguest", "password": "correct horse battery staple"})["token"]["token"]
+
+        alpha = SYNTHETIC_ROMS[0]
+        beta = SYNTHETIC_ROMS[1]
+        self.post(
+            "/rom-slots/apply",
+            {"slots": [
+                {"slot": 1, "filename": "host-alpha.gbc", "sha256": alpha.sha256, "sha1": alpha.sha1, "game_type": alpha.game_type, "region": "JP"},
+            ]},
+            token=host,
+        )
+        self.post(
+            "/rom-slots/apply",
+            {"slots": [
+                {"slot": 3, "filename": "guest-beta.gbc", "sha256": beta.sha256, "sha1": beta.sha1, "game_type": beta.game_type, "region": "JP"},
+            ]},
+            token=guest,
+        )
+
+        created = self.post("/room-matching/create", {"mode": "link_cable"}, token=host)["room"]
+        self.post("/room-matching/join", {"room_code": created["room_code"]}, token=guest)
+        self.post(f"/rooms/{created['room_number']}/state", {"slot": "ROM1", "ready": False}, token=host)
+        guest_view = self.post(
+            f"/rooms/{created['room_number']}/state",
+            {"slot": "ROM3", "ready": False},
+            token=guest,
+        )["room"]
+
+        self.assertEqual(
+            [user["slot_rom_header_title"] for user in guest_view["users"]],
+            [alpha.rom_header_title, beta.rom_header_title],
+        )
+        self.assertNotIn("slot_filename", guest_view["users"][0])
+        self.assertNotIn("slot_filename", guest_view["users"][1])
+
     def test_room_matching_n64_pool_and_fields_survive_room_updates(self) -> None:
         self.post("/auth/register", {"username": "N64Host", "password": "correct horse battery staple"})
         token = self.post("/auth/login", {"username": "n64host", "password": "correct horse battery staple"})["token"]["token"]
