@@ -63,6 +63,7 @@ MEDIA_FOUNDATION_PROBE_TARGET := $(BUILD_DIR)/media_foundation_probe$(EXEEXT)
 MEDIA_H264_TEST_TARGET := $(BUILD_DIR)/media_h264_test$(EXEEXT)
 MEDIA_H264_INTEROP_TARGET := $(BUILD_DIR)/media_h264_interop$(EXEEXT)
 GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET := $(BUILD_DIR)/integral_gb_runtime_fixed_host$(EXEEXT)
+GB_RUNTIME_SGB2_BOOT := $(BUILD_DIR)/bootroms/sgb2_boot.bin
 GB_RUNTIME_FIXED_HOST_RUNTIME_TEST_TARGET := $(BUILD_DIR)/gb_runtime_fixed_host_runtime_test$(EXEEXT)
 GB_RUNTIME_FIXED_HOST_PRODUCT_RUNTIME_TEST_TARGET := $(BUILD_DIR)/gb_runtime_fixed_host_product_runtime_test$(EXEEXT)
 GB_RUNTIME_FIXED_HOST_SNAPSHOT_IPC_TEST_TARGET := $(BUILD_DIR)/gb_runtime_fixed_host_snapshot_ipc_test$(EXEEXT)
@@ -212,7 +213,11 @@ GB_RUNTIME_FIXED_HOST_PRODUCT_HEADERS := gb_runtime_fixed_host_product_runtime.h
 	gb_runtime_fixed_host_result_ipc.h gb_runtime_fixed_host_runtime.h media_relay_client.h \
 	media_codec.h media_h264.h n64_runtime_media_stream.h sdl_text.h $(GB_ENGINE_HEADERS)
 
-$(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET): $(GB_RUNTIME_FIXED_HOST_PRODUCT_SOURCES) $(GB_RUNTIME_FIXED_HOST_PRODUCT_HEADERS) $(SAMEBOY_LIB) | $(BUILD_DIR)
+$(GB_RUNTIME_SGB2_BOOT): ../runtimes/gb/assets/bootroms/sgb2_boot.bin | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	cp -f $< $@
+
+$(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET): $(GB_RUNTIME_FIXED_HOST_PRODUCT_SOURCES) $(GB_RUNTIME_FIXED_HOST_PRODUCT_HEADERS) $(SAMEBOY_LIB) | $(BUILD_DIR) $(GB_RUNTIME_SGB2_BOOT)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) \
 		-std=gnu11 -I../runtimes/gb/src/common \
 		-I../runtimes/gb/third_party/SameBoy/Core -Wno-multichar -o $@ \
