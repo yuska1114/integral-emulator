@@ -352,19 +352,33 @@ bash scripts/build_c_client_release_linux.sh \
 公開ソースでは`assets/public/`の全面黒プレースホルダーを既定アイコンとして
 使用します。
 
-検証済みのLinuxビルドディレクトリとWindowsビルドディレクトリから、
-配布用のtar.gzとZIPを同時に作成できます。
+検証済みのLinuxビルドディレクトリから、Linux配布用tar.gzを単独で作成できます。
+
+```bash
+bash scripts/package_c_client_linux_release.sh \
+  dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_BUILD
+```
+
+Windowsビルドディレクトリから、Windows配布用ZIPを単独で作成する場合は次を実行します。
+
+```bash
+bash scripts/package_c_client_windows_release.sh \
+  dist/windows/INTEGRAL_EMULATOR_CLIENT_VER0.3.0-beta
+```
+
+従来どおりLinuxとWindowsを同時に作成する入口も利用できます。
 
 ```bash
 bash scripts/package_c_client_linux_windows_release.sh \
-  dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_YYYYMMDD \
-  dist/windows/INTEGRAL_EMULATOR_C_CLIENT_WINDOWS_YYYYMMDD
+  dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_BUILD \
+  dist/windows/INTEGRAL_EMULATOR_CLIENT_VER0.3.0-beta
 ```
 
-出力先は既定で`dist/releases/`です。両パッケージの`README.txt`は
-`c_client/RELEASE_README.txt`だけを原本とし、作成時に同一性を検証します。
-各プラットフォームに同形式の
+各スクリプトは第2引数（同時作成の場合は第3引数）で出力先を指定できます。
+省略時は`dist/releases/`です。各パッケージの`README.txt`は
+`c_client/RELEASE_README.txt`を原本とし、各プラットフォームに同形式の
 `RELEASE_MANIFEST.json`と`SHA256SUMS`、各アーカイブの隣に`.sha256`を生成します。
+同時作成時はLinux版とWindows版の`README.txt`が同一であることも検証します。
 
 公開ソースZIPは次のように検証できます。
 
