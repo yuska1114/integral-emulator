@@ -62,8 +62,15 @@ static void draw_join_room(SDL_Renderer *renderer, const AppState *state);
 static void format_local_slot_label(const AppState *state, unsigned local_slot, const char *label, char *out, size_t out_size);
 static void format_local_slot_detail(const AppState *state, unsigned local_slot, char *out, size_t out_size);
 static void format_rom_filename_with_header(const IntegralConfigRomSlot *slot, char *out, size_t out_size);
-static void format_room_slot_label(const AppState *state, char *out, size_t out_size);
-static void format_room_slot_detail(const AppState *state, char *out, size_t out_size);
+static const char *room_link_save_label(IntegralRoomLinkMode mode);
+static void format_link_room_slot(const AppState *state,
+                                  const IntegralApiRoom *room,
+                                  unsigned user_index,
+                                  bool local_user,
+                                  char *label_out,
+                                  size_t label_out_size,
+                                  char *detail_out,
+                                  size_t detail_out_size);
 static void draw_local_mode(SDL_Renderer *renderer, const AppState *state);
 static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, bool mobile_mode);
 static void draw_local(SDL_Renderer *renderer, const AppState *state);
@@ -229,24 +236,84 @@ static void format_local_slot_detail(const AppState *state, unsigned local_slot,
 }
 
 
-static void format_room_slot_label(const AppState *state, char *out, size_t out_size)
+static const char *room_link_save_label(IntegralRoomLinkMode mode)
 {
-    if (!registered_rom_slot_at(state, state->room.link.room_slot_index)) {
-        copy_text(out, out_size, "SLOT <EMPTY>");
-        return;
+    switch (mode) {
+        case INTEGRAL_ROOM_MODE_BATTLE:
+            return "SAVE OFF";
+        case INTEGRAL_ROOM_MODE_TRADE:
+            return "SAVE ON";
     }
-    snprintf(out, out_size, "SLOT ROM%d", state->room.link.room_slot_index + 1);
+    return "SAVE ON";
 }
 
 
-static void format_room_slot_detail(const AppState *state, char *out, size_t out_size)
+static void format_link_room_slot(const AppState *state,
+                                  const IntegralApiRoom *room,
+                                  unsigned user_index,
+                                  bool local_user,
+                                  char *label_out,
+                                  size_t label_out_size,
+                                  char *detail_out,
+                                  size_t detail_out_size)
 {
-    const IntegralConfigRomSlot *slot = registered_rom_slot_at(state, state->room.link.room_slot_index);
-    if (!slot) {
-        copy_text(out, out_size, "LEFT/RIGHT SELECT ROM1-8");
-        return;
+    const char *slot_name = "";
+    const char *filename = "";
+    const char *header_title = "";
+
+    if (room) {
+        if (user_index == 0u) {
+            slot_name = room->slot1;
+            filename = room->slot_filename1;
+            header_title = room->slot_header_title1;
+        }
+        else {
+            slot_name = room->slot2;
+            filename = room->slot_filename2;
+            header_title = room->slot_header_title2;
+        }
     }
-    copy_text(out, out_size, path_file_name(slot->rom_path));
+
+    const IntegralConfigRomSlot *local_slot = NULL;
+    char local_slot_name[16] = "";
+    if (local_user) {
+        local_slot = registered_rom_slot_at(state, state->room.link.room_slot_index);
+        if (local_slot) {
+            snprintf(local_slot_name,
+                     sizeof(local_slot_name),
+                     "ROM%d",
+                     state->room.link.room_slot_index + 1);
+            slot_name = local_slot_name;
+        }
+    }
+
+    snprintf(label_out,
+             label_out_size,
+             "USER%u GB SLOT : %s",
+             user_index + 1u,
+             slot_name && slot_name[0] ? slot_name : "<EMPTY>");
+
+    detail_out[0] = '\0';
+    if (local_user) {
+        if (local_slot) {
+            format_rom_filename_with_header(local_slot, detail_out, detail_out_size);
+        }
+        else if (filename && filename[0]) {
+            if (header_title && header_title[0]) {
+                snprintf(detail_out,
+                         detail_out_size,
+                         "%s (%s)",
+                         path_file_name(filename),
+                         header_title);
+            }
+            else {
+                copy_text(detail_out, detail_out_size, path_file_name(filename));
+            }
+        }
+    }
+    else if (header_title && header_title[0]) {
+        copy_text(detail_out, detail_out_size, header_title);
+    }
 }
 
 
@@ -479,7 +546,7 @@ static void draw_room(SDL_Renderer *renderer, const AppState *state)
     char subtitle[32];
     const IntegralApiRoom *header_room = state->room.common.room_number >= 1 && state->room.common.room_number <= INTEGRAL_API_ROOMS
                                               ? &state->room.common.current_room : NULL;
-    snprintf(subtitle, sizeof(subtitle), "LINK CODE %s",
+    snprintf(subtitle, sizeof(subtitle), "ROOM CODE %s",
              header_room && header_room->room_code[0] ? header_room->room_code : "-----");
     draw_header(renderer, subtitle, state->login.username, state->login.server);
 
@@ -505,38 +572,124 @@ static void draw_room(SDL_Renderer *renderer, const AppState *state)
              ready2 ? " READY" : "");
     integral_client_ui_draw_text_fit(renderer, 48, 140, user_line, 2, value, 380);
 
-    char slot_label[80];
-    char slot_detail[220];
     char room_phase[160];
-    format_room_slot_label(state, slot_label, sizeof(slot_label));
-    format_room_slot_detail(state, slot_detail, sizeof(slot_detail));
     format_room_phase(state, room, ready1, ready2, room_phase, sizeof(room_phase));
     bool game_ended = current_room_game_ended(&state->room);
+    bool local_is_user1 = current_room_is_user1(&state->room);
+
+    char slot_labels[2][96];
+    char slot_details[2][260];
+    format_link_room_slot(state,
+                          room,
+                          0u,
+                          local_is_user1,
+                          slot_labels[0],
+                          sizeof(slot_labels[0]),
+                          slot_details[0],
+                          sizeof(slot_details[0]));
+    format_link_room_slot(state,
+                          room,
+                          1u,
+                          !local_is_user1,
+                          slot_labels[1],
+                          sizeof(slot_labels[1]),
+                          slot_details[1],
+                          sizeof(slot_details[1]));
+
     const char *labels[] = {
-        game_ended ? "SLOT LOCKED" : slot_label,
-        game_ended ? "MODE LOCKED" : room_link_mode_label(state->room.link.room_link_mode),
-        game_ended ? "GAME ENDED" : (state->room.common.room_ready_self ? "READY OK" : "READY"),
+        "",
+        "",
+        "",
         "CHAT LOG",
         "CHAT INPUT",
     };
     const char *details[] = {
-        game_ended ? "GAME INSTANCE USED" : slot_detail,
-        current_room_is_user1(&state->room) ? "LEFT/RIGHT SELECT" : "USER1 SELECTS",
-        room_phase,
+        "",
+        "",
+        "",
         "LEFT/RIGHT SCROLL",
         state->room.common.room_chat_editing ? "TEXT INPUT ACTIVE" : "ENTER EDIT",
     };
-    for (unsigned i = 0; i < 3; i++) {
-        int y = 170 + (int)i * 32;
-        if (state->room.common.room_selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-            SDL_Rect rect = {.x = 14, .y = y - 6, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 28};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y + 2, ">", 2, selected);
-        }
-        integral_client_ui_draw_text_fit(renderer, 58, y, labels[i], 2, state->room.common.room_selected == i ? selected : label, 190);
-        integral_client_ui_draw_text_fit(renderer, 230, y + 6, details[i], 1, i == 0 ? value : muted, 210);
+
+    const int slot_y[2] = {170, 190};
+    unsigned local_slot_row = local_is_user1 ? 0u : 1u;
+    if (state->room.common.room_selected == 0) {
+        int y = slot_y[local_slot_row];
+        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+        SDL_Rect rect = {.x = 14, .y = y - 4, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 18};
+        SDL_RenderFillRect(renderer, &rect);
+        integral_sdl_draw_text(renderer, 24, y, ">", 1, selected);
     }
+
+    for (unsigned i = 0; i < 2; i++) {
+        bool is_local = (i == local_slot_row);
+        SDL_Color slot_label_color =
+            is_local && state->room.common.room_selected == 0 ? selected :
+            (is_local ? label : muted);
+        SDL_Color slot_detail_color = is_local ? value : muted;
+        integral_client_ui_draw_text_fit(renderer,
+                                         58,
+                                         slot_y[i],
+                                         slot_labels[i],
+                                         1,
+                                         slot_label_color,
+                                         166);
+        if (slot_details[i][0] != '\0') {
+            integral_client_ui_draw_text_fit(renderer,
+                                             230,
+                                             slot_y[i],
+                                             slot_details[i],
+                                             1,
+                                             slot_detail_color,
+                                             210);
+        }
+    }
+
+    int save_y = 210;
+    if (state->room.common.room_selected == 1) {
+        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+        SDL_Rect rect = {.x = 14, .y = save_y - 4, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 18};
+        SDL_RenderFillRect(renderer, &rect);
+        integral_sdl_draw_text(renderer, 24, save_y, ">", 1, selected);
+    }
+    integral_client_ui_draw_text_fit(renderer,
+                                     58,
+                                     save_y,
+                                     room_link_save_label(state->room.link.room_link_mode),
+                                     1,
+                                     state->room.common.room_selected == 1 ? selected : label,
+                                     166);
+    integral_client_ui_draw_text_fit(renderer,
+                                     230,
+                                     save_y,
+                                     game_ended ? "LOCKED" :
+                                     (local_is_user1 ? "LEFT/RIGHT SELECT" : "USER1 SELECTS"),
+                                     1,
+                                     muted,
+                                     210);
+
+    int ready_y = 230;
+    if (state->room.common.room_selected == 2) {
+        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+        SDL_Rect rect = {.x = 14, .y = ready_y - 4, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 18};
+        SDL_RenderFillRect(renderer, &rect);
+        integral_sdl_draw_text(renderer, 24, ready_y, ">", 1, selected);
+    }
+    integral_client_ui_draw_text_fit(renderer,
+                                     58,
+                                     ready_y,
+                                     game_ended ? "GAME ENDED" :
+                                     (state->room.common.room_ready_self ? "READY OK" : "READY"),
+                                     1,
+                                     state->room.common.room_selected == 2 ? selected : label,
+                                     166);
+    integral_client_ui_draw_text_fit(renderer,
+                                     230,
+                                     ready_y,
+                                     room_phase,
+                                     1,
+                                     muted,
+                                     210);
 
     int log_y = 276;
     if (state->room.common.room_selected == 3) {
