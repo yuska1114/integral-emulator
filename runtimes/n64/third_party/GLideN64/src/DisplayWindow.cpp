@@ -209,6 +209,11 @@ void DisplayWindow::readScreen2(void * _dest, int * _width, int * _height, int _
 	_readScreen2(_dest, _width, _height, _front);
 }
 
+void DisplayWindow::readGameScreen2(void * _dest, int * _width, int * _height, int _front)
+{
+	_readGameScreen2(_dest, _width, _height, _front);
+}
+
 u32 DisplayWindow::maxMSAALevel() const
 {
 	return m_maxMsaa;
