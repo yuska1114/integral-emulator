@@ -78,10 +78,10 @@ static void format_n64_room_selection_line(char *out,
                                            const char *header_title);
 static void draw_n64_room(SDL_Renderer *renderer, const AppState *state);
 static void draw_key_config(SDL_Renderer *renderer, const AppState *state);
-static void format_rom_slot_summary(const IntegralConfigRomSlot *slot,
-                                    const IntegralApiRomSlot *server_slot,
-                                    char *out,
-                                    size_t out_size);
+static unsigned format_rom_slot_summary(const IntegralConfigRomSlot *slot,
+                                        const IntegralApiRomSlot *server_slot,
+                                        char *out,
+                                        size_t out_size);
 static void draw_rom_register(SDL_Renderer *renderer, const AppState *state);
 
 static void mask_password(const char *password, char *out, size_t out_size)
@@ -946,71 +946,76 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
 }
 
 
-static void format_rom_slot_summary(const IntegralConfigRomSlot *slot,
-                                    const IntegralApiRomSlot *server_slot,
-                                    char *out,
-                                    size_t out_size)
+enum {
+    ROM_SLOT_WARNING_SERVER_UNREGISTERED = 1u << 0,
+    ROM_SLOT_WARNING_LOCAL_NOT_FOUND = 1u << 1,
+};
+
+
+static unsigned format_rom_slot_summary(const IntegralConfigRomSlot *slot,
+                                        const IntegralApiRomSlot *server_slot,
+                                        char *out,
+                                        size_t out_size)
 {
     const char *filename = slot->rom_path[0] ? path_file_name(slot->rom_path) : "";
+    bool registered = slot_has_server_registration(slot);
+    bool local_found = slot->rom_path[0] != '\0' && local_file_exists(slot->rom_path);
+
+    /*
+     * A pending local replacement deliberately has its local IDs cleared for
+     * presentation, so do not let the previous server slot make it look
+     * registered. Only fall back to server registration when there is no local
+     * path at all.
+     */
+    if (!registered && slot->rom_path[0] == '\0' && server_slot &&
+        server_slot->rom_id[0] != '\0' && server_slot->save_id[0] != '\0') {
+        registered = true;
+    }
+
     if (!filename[0] && server_slot && server_slot->filename[0]) {
         filename = server_slot->filename;
     }
-    if (slot->rom_path[0] && !slot_has_server_registration(slot)) {
-        IntegralRomMetadata header;
-        if (read_supported_rom_header(slot->rom_path, &header) == 0) {
-            snprintf(out,
-                     out_size,
-                     "%s  %s  LOCAL READY",
-                     path_file_name(slot->rom_path),
-                     header.header_title);
-            return;
-        }
-        snprintf(out,
-                 out_size,
-                 "%s  %s - NOT REGISTERED",
-                 path_file_name(slot->rom_path), local_file_exists(slot->rom_path) ? "UNSUPPORTED" : "FILE NOT FOUND");
-        return;
-    }
 
-    bool registered = slot_has_server_registration(slot) ||
-                      (server_slot && server_slot->rom_id[0] != '\0' && server_slot->save_id[0] != '\0');
-    if (!registered && slot->rom_path[0] == '\0') {
+    bool has_slot = slot->rom_path[0] != '\0' ||
+                    (server_slot && (server_slot->filename[0] != '\0' ||
+                                     server_slot->rom_id[0] != '\0' ||
+                                     server_slot->save_id[0] != '\0'));
+    if (!has_slot) {
         copy_text(out, out_size, "<EMPTY>");
-        return;
+        return 0u;
     }
-    if (registered) {
-        const char *local = local_file_exists(slot->rom_path) ? "LOCAL OK" : "LOCAL MISSING";
-        if (!server_slot || !server_slot->game_type[0]) {
-            snprintf(out,
-                     out_size,
-                     "%s  SERVER METADATA INVALID  %s",
-                     filename[0] ? filename : "SERVER ROM",
-                     local);
-            return;
-        }
-        snprintf(out,
-                 out_size,
-                 "%s  SERVER REGISTERED  %s  %s",
-                 filename[0] ? filename : "SERVER ROM",
-                 local,
-                 server_slot->game_type);
-        return;
-    }
-    IntegralRomMetadata header;
-    if (read_supported_rom_header(slot->rom_path, &header) == 0) {
-        snprintf(out,
-                 out_size,
-                 "%s  %s  LOCAL READY",
-                 path_file_name(slot->rom_path),
-                 header.header_title);
-        return;
-    }
-    snprintf(out,
-             out_size,
-             "%s  UNSUPPORTED",
-             path_file_name(slot->rom_path));
-}
 
+    IntegralRomMetadata header = {0};
+    const char *header_title = "";
+    if (local_found && read_supported_rom_header(slot->rom_path, &header) == 0) {
+        header_title = header.header_title;
+    }
+    else if (registered && server_slot && server_slot->rom_header_title[0] != '\0') {
+        header_title = server_slot->rom_header_title;
+    }
+
+    if (filename[0] && header_title[0]) {
+        snprintf(out, out_size, "%s (%s)", filename, header_title);
+    }
+    else if (filename[0]) {
+        copy_text(out, out_size, filename);
+    }
+    else if (header_title[0]) {
+        snprintf(out, out_size, "SERVER ROM (%s)", header_title);
+    }
+    else {
+        copy_text(out, out_size, "SERVER ROM");
+    }
+
+    unsigned warnings = 0u;
+    if (!registered) {
+        warnings |= ROM_SLOT_WARNING_SERVER_UNREGISTERED;
+    }
+    if (!local_found) {
+        warnings |= ROM_SLOT_WARNING_LOCAL_NOT_FOUND;
+    }
+    return warnings;
+}
 
 static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
 {
@@ -1021,6 +1026,7 @@ static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
     SDL_Color value = {238, 238, 238, 255};
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
+    SDL_Color warning = {230, 92, 76, 255};
 
     draw_header(renderer, "ROM REGISTER", state->login.username, state->login.server);
     integral_sdl_draw_text(renderer, 24, 88, "MAX 8 ROMS  SAV IS SERVER MANAGED", 1, muted);
@@ -1044,13 +1050,42 @@ static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
                 display_slot.rom_id[0] = '\0';
                 display_slot.save_id[0] = '\0';
             }
-            format_rom_slot_summary(&display_slot, &state->catalog.server_rom_slots[i], summary, sizeof(summary));
+            unsigned warnings =
+                format_rom_slot_summary(&display_slot, &state->catalog.server_rom_slots[i], summary, sizeof(summary));
+            char warning_text[64] = "";
+            if ((warnings & ROM_SLOT_WARNING_SERVER_UNREGISTERED) &&
+                (warnings & ROM_SLOT_WARNING_LOCAL_NOT_FOUND)) {
+                copy_text(warning_text, sizeof(warning_text), "SERVER UNREGISTERED  LOCAL NOT FOUND");
+            }
+            else if (warnings & ROM_SLOT_WARNING_SERVER_UNREGISTERED) {
+                copy_text(warning_text, sizeof(warning_text), "SERVER UNREGISTERED");
+            }
+            else if (warnings & ROM_SLOT_WARNING_LOCAL_NOT_FOUND) {
+                copy_text(warning_text, sizeof(warning_text), "LOCAL NOT FOUND");
+            }
+
             integral_sdl_draw_text(renderer, 48, y, label_text, 2, state->catalog.rom_editor.rom_selected == i ? selected : label);
+
+            const int detail_width = 300;
+            const int warning_gap = warning_text[0] ? 12 : 0;
+            int warning_width = (int)strlen(warning_text) * 6;
+            int summary_width = detail_width - warning_gap - warning_width;
+            if (summary_width < 6) {
+                summary_width = 6;
+            }
             if (state->catalog.rom_editor.rom_selected == i) {
-                integral_client_ui_draw_marquee_text_fit(renderer, 146, y + 4, summary, 1, value, 300, i * 7u);
+                integral_client_ui_draw_marquee_text_fit(renderer, 146, y + 4, summary, 1, value, summary_width, i * 7u);
             }
             else {
-                integral_client_ui_draw_text_fit(renderer, 146, y + 4, summary, 1, value, 300);
+                integral_client_ui_draw_text_fit(renderer, 146, y + 4, summary, 1, value, summary_width);
+            }
+            if (warning_text[0]) {
+                integral_sdl_draw_text(renderer,
+                                       146 + summary_width + warning_gap,
+                                       y + 4,
+                                       warning_text,
+                                       1,
+                                       warning);
             }
         }
         else if (i == INTEGRAL_ROM_REGISTER_ROW) {
