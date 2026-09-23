@@ -136,7 +136,6 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
     SDL_RenderClear(renderer);
 
     SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
 
@@ -146,11 +145,6 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
         "MOBILE MODE",
         "N64 MODE",
     };
-    const char *details[] = {
-        "GAME BOY / GAME BOY COLOR",
-        "SERVER-SELECTED GAME PROFILE",
-        "NINTENDO 64",
-    };
 
     for (unsigned i = 0; i < INTEGRAL_LOCAL_MODE_ROWS; i++) {
         int y = 126 + (int)i * 76;
@@ -158,7 +152,7 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 10, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 58};
             SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y + 6, ">", 2, selected);
+            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
         }
         integral_sdl_draw_text_fit(renderer,
                                    48,
@@ -167,13 +161,13 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
                                    2,
                                    view->selected == i ? selected : label,
                                    390);
-        integral_sdl_draw_text_fit(renderer, 48, y + 28, details[i], 1, value, 390);
     }
 
     integral_sdl_draw_text_fit(renderer, 22, 410, view->status, 1, muted, INTEGRAL_CLIENT_UI_WIDTH - 44);
     integral_sdl_draw_text(renderer, 22, 438, "TAB MOVE  ENTER SELECT", 1, muted);
     integral_sdl_draw_text(renderer, 22, 456, "ESC MENU", 1, muted);
-    if (view->save_notice) integral_sdl_draw_text_fit(renderer, 22, 374, view->save_notice, 1, value, INTEGRAL_CLIENT_UI_WIDTH - 44);
-    if (view->save_error) integral_sdl_draw_text_fit(renderer, 22, 392, view->save_error, 1, value, INTEGRAL_CLIENT_UI_WIDTH - 44);
+    if (view->save_notice) integral_sdl_draw_text_fit(renderer, 22, 374, view->save_notice, 1, (SDL_Color){238, 238, 238, 255}, INTEGRAL_CLIENT_UI_WIDTH - 44);
+    if (view->save_error) integral_sdl_draw_text_fit(renderer, 22, 392, view->save_error, 1, (SDL_Color){238, 238, 238, 255}, INTEGRAL_CLIENT_UI_WIDTH - 44);
     SDL_RenderPresent(renderer);
 }
+

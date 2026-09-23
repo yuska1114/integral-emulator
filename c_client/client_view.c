@@ -61,6 +61,7 @@ static void draw_room_mode(SDL_Renderer *renderer, const AppState *state);
 static void draw_join_room(SDL_Renderer *renderer, const AppState *state);
 static void format_local_slot_label(const AppState *state, unsigned local_slot, const char *label, char *out, size_t out_size);
 static void format_local_slot_detail(const AppState *state, unsigned local_slot, char *out, size_t out_size);
+static void format_rom_filename_with_header(const IntegralConfigRomSlot *slot, char *out, size_t out_size);
 static void format_room_slot_label(const AppState *state, char *out, size_t out_size);
 static void format_room_slot_detail(const AppState *state, char *out, size_t out_size);
 static void draw_local_mode(SDL_Renderer *renderer, const AppState *state);
@@ -201,6 +202,22 @@ static void format_local_slot_label(const AppState *state, unsigned local_slot, 
 }
 
 
+static void format_rom_filename_with_header(const IntegralConfigRomSlot *slot, char *out, size_t out_size)
+{
+    if (!slot) {
+        out[0] = '\0';
+        return;
+    }
+
+    IntegralRomMetadata header = {0};
+    if (read_supported_rom_header(slot->rom_path, &header) == 0 && header.header_title[0] != '\0') {
+        snprintf(out, out_size, "%s (%s)", path_file_name(slot->rom_path), header.header_title);
+        return;
+    }
+    copy_text(out, out_size, path_file_name(slot->rom_path));
+}
+
+
 static void format_local_slot_detail(const AppState *state, unsigned local_slot, char *out, size_t out_size)
 {
     const IntegralConfigRomSlot *slot = local_selected_rom_slot(state, local_slot);
@@ -208,7 +225,7 @@ static void format_local_slot_detail(const AppState *state, unsigned local_slot,
         copy_text(out, out_size, "LEFT/RIGHT SELECT ROM1-8");
         return;
     }
-    copy_text(out, out_size, path_file_name(slot->rom_path));
+    format_rom_filename_with_header(slot, out, out_size);
 }
 
 
@@ -276,7 +293,7 @@ static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, b
     }
     const char *labels[] = {"START", slot1, mobile_mode ? "SCENARIO" : slot2};
     const char *details[] = {
-        mobile_mode ? "MOBILE ADAPTER GB" : (local_selected_rom_slot(state, 1) ? "SERVER2 MODE" : "SELF MODE"),
+        "",
         slot1_detail,
         mobile_mode ? scenario_detail : slot2_detail,
     };
@@ -288,10 +305,12 @@ static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, b
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 10, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 58};
             SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y + 6, ">", 2, selected);
+            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
         }
         integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.local_selected == i ? selected : label, 390);
-        integral_client_ui_draw_text_fit(renderer, 48, y + 28, details[i], 1, value, 390);
+        if (details[i][0] != '\0') {
+            integral_client_ui_draw_text_fit(renderer, 48, y + 28, details[i], 1, value, 390);
+        }
     }
 
     integral_client_ui_draw_text_fit(renderer, 22, 374, state->local.save_sync_notice, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
@@ -330,11 +349,19 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
     draw_header(renderer, "N64 MODE", state->login.username, state->login.server);
 
     char n64_label[240];
+    char n64_detail[240] = "";
     const IntegralConfigRomSlot *n64_slot = selected_n64_rom_slot(state);
-    snprintf(n64_label,
-             sizeof(n64_label),
-             "N64 SLOT %s",
-             n64_slot ? path_file_name(n64_slot->rom_path) : "<EMPTY>");
+    if (n64_slot) {
+        snprintf(n64_label,
+                 sizeof(n64_label),
+                 "N64 SLOT ROM%d",
+                 state->local.integral_n64_runtime_n64_slot_index + 1);
+        format_rom_filename_with_header(n64_slot, n64_detail, sizeof(n64_detail));
+    }
+    else {
+        copy_text(n64_label, sizeof(n64_label), "N64 SLOT <EMPTY>");
+    }
+
     char transfer_labels[4][240];
     for (unsigned i = 0; i < 4; i++) {
         int index = state->local.integral_n64_runtime_transfer_slot_indices[i];
@@ -366,15 +393,14 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
         }
         integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.integral_n64_runtime_selected == i ? selected : label, 390);
         if (i == 1 && n64_slot) {
-            IntegralRomMetadata header;
-            if (read_supported_rom_header(n64_slot->rom_path, &header) == 0) {
-                integral_client_ui_draw_text_fit(renderer, 48, y + 24, header.header_title, 1, value, 390);
-            }
+            integral_client_ui_draw_text_fit(renderer, 48, y + 24, n64_detail, 1, value, 390);
         }
         else if (i >= 2) {
             const IntegralConfigRomSlot *slot = selected_transfer_rom_slot(state, i - 2);
             if (slot) {
-                integral_client_ui_draw_text_fit(renderer, 48, y + 24, path_file_name(slot->rom_path), 1, value, 390);
+                char slot_detail[240];
+                format_rom_filename_with_header(slot, slot_detail, sizeof(slot_detail));
+                integral_client_ui_draw_text_fit(renderer, 48, y + 24, slot_detail, 1, value, 390);
             }
         }
     }
