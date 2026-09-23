@@ -163,7 +163,7 @@ if [ "$mode" != "windows" ]; then
   python3 "$project_root/scripts/write_release_manifest.py" "$linux_package" --platform linux --version "$version" --minimum-os "Ubuntu 24.04 LTS" ${formal_args[@]+"${formal_args[@]}"}
   COPYFILE_DISABLE=1 tar --no-xattrs -czf "$linux_archive" -C "$output_root" "$linux_name"
   python3 "$project_root/scripts/write_release_manifest.py" "$linux_package" --platform linux --version "$version" --minimum-os "Ubuntu 24.04 LTS" --archive "$linux_archive" ${formal_args[@]+"${formal_args[@]}"}
-  (cd "$output_root" && sha256sum "$(basename "$linux_archive")" > "$(basename "$linux_archive").sha256")
+  (cd "$output_root" && shasum -a 256 "$(basename "$linux_archive")" > "$(basename "$linux_archive").sha256")
   echo "Linux release: $linux_archive"
 fi
 
@@ -173,6 +173,6 @@ if [ "$mode" != "linux" ]; then
   python3 "$project_root/scripts/write_release_manifest.py" "$windows_package" --platform windows --version "$version" --minimum-os "Windows 11 x86-64" ${formal_args[@]+"${formal_args[@]}"}
   (cd "$output_root" && zip -qry "$windows_archive" "$windows_name")
   python3 "$project_root/scripts/write_release_manifest.py" "$windows_package" --platform windows --version "$version" --minimum-os "Windows 11 x86-64" --archive "$windows_archive" ${formal_args[@]+"${formal_args[@]}"}
-  (cd "$output_root" && sha256sum "$(basename "$windows_archive")" > "$(basename "$windows_archive").sha256")
+  (cd "$output_root" && shasum -a 256 "$(basename "$windows_archive")" > "$(basename "$windows_archive").sha256")
   echo "Windows release: $windows_archive"
 fi
