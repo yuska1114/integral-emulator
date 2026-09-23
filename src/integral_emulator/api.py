@@ -1645,6 +1645,22 @@ class LeagueApplication:
             result.pop("creator_username", None)
             result.pop("creator", None)
         if not (N64_ROOM_FIRST <= room.room_number <= N64_ROOM_LAST):
+            if not is_member:
+                return result
+            for user in result.get("users", []):
+                user["slot_rom_header_title"] = ""
+                slot_name = str(user.get("slot", ""))
+                if not slot_name:
+                    continue
+                try:
+                    slot = self.require_room_rom_slot(
+                        str(user.get("user_id", "")),
+                        slot_name,
+                        require_n64=False,
+                    )
+                except LeagueError:
+                    continue
+                user["slot_rom_header_title"] = str(slot.rom_header_title or "")
             return result
         if not is_member:
             return result
