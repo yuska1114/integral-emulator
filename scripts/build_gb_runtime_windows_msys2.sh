@@ -124,20 +124,15 @@ if cc --version 2>/dev/null | grep -qi gcc; then
     warning_flags="$warning_flags -Wno-maybe-uninitialized"
 fi
 
-# Match SameBoy's CONF=release core optimization policy. LTO is intentionally
-# omitted here because this script archives the Core objects for Integral's
-# separate final link rather than using SameBoy's own release link step.
-sameboy_release_flags="-O3 -ffast-math -DNDEBUG"
-
 objects=
 echo "Building SameBoy Core static library for GB Runtime..."
-cc -std=gnu11 $warning_flags $sameboy_release_flags -c "$GETLINE_SOURCE" -o "$GETLINE_OBJECT"
+cc -std=gnu11 $warning_flags -c "$GETLINE_SOURCE" -o "$GETLINE_OBJECT"
 objects="$objects $GETLINE_OBJECT"
 
 for source in "$SAMEBOY_DIR"/Core/*.c; do
     object="$SAMEBOY_OBJ_DIR/$(basename "$source" .c).o"
     echo "  CC $source"
-    cc -std=gnu11 $warning_flags $sameboy_release_flags \
+    cc -std=gnu11 $warning_flags \
         -D_GNU_SOURCE \
         -DGB_VERSION="\"$sameboy_version\"" \
         -DGB_COPYRIGHT_YEAR="\"$sameboy_copyright_year\"" \
