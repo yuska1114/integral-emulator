@@ -82,6 +82,7 @@ public:
 	// MupenPlus
 	void ResizeVideoOutput(int _Width, int _Height);
 	void ReadScreen2(void * _dest, int * _width, int * _height, int _front);
+	void ReadGameScreen2(void * _dest, int * _width, int * _height, int _front);
 
 	m64p_error PluginStartup(m64p_dynlib_handle _CoreLibHandle, void * Context, void (*DebugCallback)(void *, int, const char *));
 #ifdef M64P_GLIDENUI
