@@ -1,25 +1,90 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
-[ "$#" -ge 2 ] && [ "$#" -le 3 ] || { echo "Usage: $0 LINUX_BUILD_DIR WINDOWS_BUILD_DIR [OUTPUT_DIR]" >&2; exit 2; }
+usage() {
+  cat >&2 <<EOF
+Usage:
+  $0 LINUX_BUILD_DIR WINDOWS_BUILD_DIR [OUTPUT_DIR]
+  $0 --linux-only LINUX_BUILD_DIR [OUTPUT_DIR]
+  $0 --windows-only WINDOWS_BUILD_DIR [OUTPUT_DIR]
+EOF
+  exit 2
+}
+
+mode=both
+case "${1:-}" in
+  --linux-only)
+    mode=linux
+    shift
+    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
+    ;;
+  --windows-only)
+    mode=windows
+    shift
+    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
+    ;;
+  *)
+    [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
+    ;;
+esac
+
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 abs_dir() { [ -d "$1" ] || { echo "Directory not found: $1" >&2; exit 1; }; (CDPATH= cd -- "$1" && pwd); }
 copy_file() { [ -f "$1" ] || { echo "Required release file not found: $1" >&2; exit 1; }; mkdir -p "$(dirname "$2")"; cp -f "$1" "$2"; }
-linux_input=$(abs_dir "$1"); windows_input=$(abs_dir "$2")
-output_arg=${3:-"$project_root/dist/releases"}; mkdir -p "$output_arg"; output_root=$(abs_dir "$output_arg")
+
+linux_input=
+windows_input=
+case "$mode" in
+  both)
+    linux_input=$(abs_dir "$1")
+    windows_input=$(abs_dir "$2")
+    output_arg=${3:-"$project_root/dist/releases"}
+    ;;
+  linux)
+    linux_input=$(abs_dir "$1")
+    output_arg=${2:-"$project_root/dist/releases"}
+    ;;
+  windows)
+    windows_input=$(abs_dir "$1")
+    output_arg=${2:-"$project_root/dist/releases"}
+    ;;
+esac
+mkdir -p "$output_arg"
+output_root=$(abs_dir "$output_arg")
+
 python3 "$project_root/scripts/public_source_integrity.py" --source-identity "$project_root" --require-clean >/dev/null
-python3 "$project_root/scripts/build_artifact_provenance.py" "$linux_input" --platform linux --verify --project-root "$project_root" --match-source --require-clean
-python3 "$project_root/scripts/build_artifact_provenance.py" "$windows_input" --platform windows --verify --project-root "$project_root" --match-source --require-clean
+if [ "$mode" != "windows" ]; then
+  python3 "$project_root/scripts/build_artifact_provenance.py" "$linux_input" --platform linux --verify --project-root "$project_root" --match-source --require-clean
+fi
+if [ "$mode" != "linux" ]; then
+  python3 "$project_root/scripts/build_artifact_provenance.py" "$windows_input" --platform windows --verify --project-root "$project_root" --match-source --require-clean
+fi
+
 formal_args=()
-if [ "$output_root" = "$project_root/dist/releases" ]; then python3 "$project_root/scripts/write_release_manifest.py" --preflight-formal; formal_args=(--formal); fi
+if [ "$output_root" = "$project_root/dist/releases" ]; then
+  python3 "$project_root/scripts/write_release_manifest.py" --preflight-formal
+  formal_args=(--formal)
+fi
 release_date=${INTEGRAL_CLIENT_RELEASE_DATE:-$(date +%Y%m%d)}
 case "$release_date" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;; *) echo "Release date must be YYYYMMDD." >&2; exit 1;; esac
 version=$(sed -n 's/^#define INTEGRAL_CLIENT_VERSION "\([^"]*\)"/\1/p' "$project_root/c_client/client_version.h" | head -n 1)
-[ -n "$version" ] || { echo "Could not read client version." >&2; exit 1; }; version_tag=$(printf '%s' "$version" | tr -cd 'A-Za-z0-9._-')
-linux_name="INTEGRAL_EMULATOR_C_CLIENT_${version_tag}_LINUX_X86_64_${release_date}"; windows_name="INTEGRAL_EMULATOR_C_CLIENT_${version_tag}_WINDOWS_X86_64_${release_date}"
-linux_package="$output_root/$linux_name"; windows_package="$output_root/$windows_name"; linux_archive="$output_root/$linux_name.tar.gz"; windows_archive="$output_root/$windows_name.zip"
-rm -rf -- "$linux_package" "$windows_package"; rm -f -- "$linux_archive" "$linux_archive.sha256" "$windows_archive" "$windows_archive.sha256"
+[ -n "$version" ] || { echo "Could not read client version." >&2; exit 1; }
+version_tag=$(printf '%s' "$version" | tr -cd 'A-Za-z0-9._-')
+linux_name="INTEGRAL_EMULATOR_C_CLIENT_${version_tag}_LINUX_X86_64_${release_date}"
+windows_name="INTEGRAL_EMULATOR_C_CLIENT_${version_tag}_WINDOWS_X86_64_${release_date}"
+linux_package="$output_root/$linux_name"
+windows_package="$output_root/$windows_name"
+linux_archive="$output_root/$linux_name.tar.gz"
+windows_archive="$output_root/$windows_name.zip"
+if [ "$mode" != "windows" ]; then
+  rm -rf -- "$linux_package"
+  rm -f -- "$linux_archive" "$linux_archive.sha256"
+fi
+if [ "$mode" != "linux" ]; then
+  rm -rf -- "$windows_package"
+  rm -f -- "$windows_archive" "$windows_archive.sha256"
+fi
 
 copy_common_legal() {
   target=$1
@@ -48,7 +113,8 @@ copy_n64() {
   for data in GLideN64.custom.ini InputAutoCfg.ini mupen64plus.ini mupencheat.txt; do copy_file "$src/prefix/share/mupen64plus/$data" "$dst/prefix/share/mupen64plus/$data"; done
 }
 
-mkdir -p "$linux_package/roms" "$linux_package/export" "$windows_package/roms" "$windows_package/export"
+if [ "$mode" != "windows" ]; then
+mkdir -p "$linux_package/roms" "$linux_package/export"
 copy_file "$project_root/c_client/RELEASE_README.txt" "$linux_package/README.txt"; copy_file "$project_root/c_client/linux_release_launcher.sh" "$linux_package/INTEGRAL_EMULATOR.sh"
 copy_file "$linux_input/integral_client" "$linux_package/client/integral_client"
 copy_file "$linux_input/assets/integral_emulator_icon.bmp" "$linux_package/assets/integral_emulator_icon.bmp"
@@ -72,6 +138,10 @@ cat > "$linux_package/RUNTIME_DEPENDENCIES.md" <<'EOF'
 EOF
 chmod 0755 "$linux_package/INTEGRAL_EMULATOR.sh" "$linux_package/client/integral_client" "$linux_package/runtimes/gb/integral_gb_runtime_"* "$linux_package/runtimes/linux/lib/libopenh264.so."* "$linux_package/runtimes/n64/build/integral_n64_runtime_frontend"
 
+fi
+
+if [ "$mode" != "linux" ]; then
+mkdir -p "$windows_package/roms" "$windows_package/export"
 copy_file "$project_root/c_client/RELEASE_README.txt" "$windows_package/README.txt"; copy_file "$windows_input/INTEGRAL EMULATOR.exe" "$windows_package/INTEGRAL_EMULATOR.exe"
 copy_file "$windows_input/client/integral_client.exe" "$windows_package/client/integral_client.exe"
 for runtime in frontend dual_server fixed_host mobile_runtime; do copy_file "$windows_input/runtimes/gb/integral_gb_runtime_$runtime.exe" "$windows_package/runtimes/gb/integral_gb_runtime_$runtime.exe"; done
@@ -81,17 +151,28 @@ for dll in "${windows_dlls[@]}"; do copy_file "$windows_input/dll/$dll" "$window
 copy_common_legal "$windows_package"; copy_file "$windows_input/RUNTIME_DEPENDENCIES.md" "$windows_package/RUNTIME_DEPENDENCIES.md"
 while IFS= read -r relative; do [ -z "$relative" ] || copy_file "$windows_input/LICENSES/runtime-dependencies/$relative" "$windows_package/LICENSES/runtime-dependencies/$relative"; done < "$windows_input/RUNTIME_DEPENDENCY_LICENSE_FILES.txt"
 
-python3 "$project_root/scripts/verify_c_client_release_licenses.py" "$linux_package" --platform linux
-python3 "$project_root/scripts/verify_c_client_release_licenses.py" "$windows_package" --platform windows
+fi
 
-python3 "$project_root/scripts/build_artifact_provenance.py" "$linux_package" --platform linux --write --project-root "$project_root" --source-provenance-root "$linux_input"
-python3 "$project_root/scripts/build_artifact_provenance.py" "$windows_package" --platform windows --write --project-root "$project_root" --source-provenance-root "$windows_input"
+if [ "$mode" = "both" ]; then
+  cmp -s "$linux_package/README.txt" "$windows_package/README.txt" || { echo "Packaged README files differ." >&2; exit 1; }
+fi
 
-cmp -s "$linux_package/README.txt" "$windows_package/README.txt" || { echo "Packaged README files differ." >&2; exit 1; }
-python3 "$project_root/scripts/write_release_manifest.py" "$linux_package" --platform linux --version "$version" --minimum-os "Ubuntu 24.04 LTS" ${formal_args[@]+"${formal_args[@]}"}
-python3 "$project_root/scripts/write_release_manifest.py" "$windows_package" --platform windows --version "$version" --minimum-os "Windows 11 x86-64" ${formal_args[@]+"${formal_args[@]}"}
-COPYFILE_DISABLE=1 tar --no-xattrs -czf "$linux_archive" -C "$output_root" "$linux_name"; (cd "$output_root" && zip -qry "$windows_archive" "$windows_name")
-python3 "$project_root/scripts/write_release_manifest.py" "$linux_package" --platform linux --version "$version" --minimum-os "Ubuntu 24.04 LTS" --archive "$linux_archive" ${formal_args[@]+"${formal_args[@]}"}
-python3 "$project_root/scripts/write_release_manifest.py" "$windows_package" --platform windows --version "$version" --minimum-os "Windows 11 x86-64" --archive "$windows_archive" ${formal_args[@]+"${formal_args[@]}"}
-(cd "$output_root" && shasum -a 256 "$(basename "$linux_archive")" > "$(basename "$linux_archive").sha256" && shasum -a 256 "$(basename "$windows_archive")" > "$(basename "$windows_archive").sha256")
-echo "Linux release: $linux_archive"; echo "Windows release: $windows_archive"
+if [ "$mode" != "windows" ]; then
+  python3 "$project_root/scripts/verify_c_client_release_licenses.py" "$linux_package" --platform linux
+  python3 "$project_root/scripts/build_artifact_provenance.py" "$linux_package" --platform linux --write --project-root "$project_root" --source-provenance-root "$linux_input"
+  python3 "$project_root/scripts/write_release_manifest.py" "$linux_package" --platform linux --version "$version" --minimum-os "Ubuntu 24.04 LTS" ${formal_args[@]+"${formal_args[@]}"}
+  COPYFILE_DISABLE=1 tar --no-xattrs -czf "$linux_archive" -C "$output_root" "$linux_name"
+  python3 "$project_root/scripts/write_release_manifest.py" "$linux_package" --platform linux --version "$version" --minimum-os "Ubuntu 24.04 LTS" --archive "$linux_archive" ${formal_args[@]+"${formal_args[@]}"}
+  (cd "$output_root" && sha256sum "$(basename "$linux_archive")" > "$(basename "$linux_archive").sha256")
+  echo "Linux release: $linux_archive"
+fi
+
+if [ "$mode" != "linux" ]; then
+  python3 "$project_root/scripts/verify_c_client_release_licenses.py" "$windows_package" --platform windows
+  python3 "$project_root/scripts/build_artifact_provenance.py" "$windows_package" --platform windows --write --project-root "$project_root" --source-provenance-root "$windows_input"
+  python3 "$project_root/scripts/write_release_manifest.py" "$windows_package" --platform windows --version "$version" --minimum-os "Windows 11 x86-64" ${formal_args[@]+"${formal_args[@]}"}
+  (cd "$output_root" && zip -qry "$windows_archive" "$windows_name")
+  python3 "$project_root/scripts/write_release_manifest.py" "$windows_package" --platform windows --version "$version" --minimum-os "Windows 11 x86-64" --archive "$windows_archive" ${formal_args[@]+"${formal_args[@]}"}
+  (cd "$output_root" && sha256sum "$(basename "$windows_archive")" > "$(basename "$windows_archive").sha256")
+  echo "Windows release: $windows_archive"
+fi
