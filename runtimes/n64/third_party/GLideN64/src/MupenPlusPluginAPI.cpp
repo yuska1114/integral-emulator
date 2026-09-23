@@ -52,6 +52,11 @@ EXPORT void CALL ReadScreen2(void *dest, int *width, int *height, int front)
 	api().ReadScreen2(dest, width, height, front);
 }
 
+EXPORT void CALL IntegralReadGameScreen2(void *dest, int *width, int *height, int front)
+{
+	api().ReadGameScreen2(dest, width, height, front);
+}
+
 EXPORT void CALL SetRenderingCallback(void (*callback)(int))
 {
 	api().SetRenderingCallback(callback);
