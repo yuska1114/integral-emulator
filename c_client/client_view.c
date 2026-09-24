@@ -1402,7 +1402,6 @@ static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
     }
     else {
         integral_sdl_draw_text(renderer, 22, 442, "LEFT/RIGHT SET ROM  ENTER REGISTER  F2 EDIT  F4 LIST", 1, muted);
-        integral_sdl_draw_text(renderer, 22, 460, "", 1, muted);
     }
     SDL_RenderPresent(renderer);
 }
