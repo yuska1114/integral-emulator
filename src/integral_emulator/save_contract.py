@@ -9,7 +9,7 @@ import re
 
 
 GAME_TYPE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
-MAX_SAVE_BYTES = 128 * 1024
+MAX_SAVE_BYTES = 128 * 1024 + 48
 REQUEST_ID = re.compile(r"[A-Za-z0-9._:-]{1,192}\Z")
 
 
