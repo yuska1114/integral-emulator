@@ -3466,6 +3466,52 @@ class ApiTests(unittest.TestCase):
             )
         self.assertEqual(self.get("/saves", token=token)["saves"], [])
 
+    def test_rom_slot_apply_accepts_generated_gb_initial_save_when_import_policy_is_disabled(self) -> None:
+        self.post("/auth/register", {"username": "Generated_Save", "password": "correct horse battery staple"})
+        token = self.post(
+            "/auth/login",
+            {"username": "generated_save", "password": "correct horse battery staple"},
+        )["token"]["token"]
+        alpha = next(
+            rom for rom in allowed_roms()
+            if rom.game_type == "sample_alpha" and rom.display_name == "SAMPLE ALPHA"
+        )
+        generated = bytes([0xFF]) * (32 * 1024)
+        applied = self.post(
+            "/rom-slots/apply",
+            {"slots": [{
+                "slot": 1,
+                "filename": "alpha.gbc",
+                "sha256": alpha.sha256,
+                "sha1": alpha.sha1,
+                "game_type": "sample_alpha",
+                "platform": "gb",
+                "region": "JP",
+                "generated_initial_save_data": encode(generated),
+            }]},
+            token=token,
+        )
+        downloaded = self.get(
+            f"/saves/{applied['slots'][0]['save_id']}", token=token
+        )
+        self.assertEqual(decode(downloaded["save_data"]), generated)
+
+        with self.assertRaisesRegex(
+            ValidationError, "generated_initial_save_data is only valid for GB/GBC ROMs"
+        ):
+            self.post(
+                "/rom-slots/apply",
+                {"slots": [{
+                    "slot": 2,
+                    "filename": "bad.z64",
+                    "sha256": "f" * 64,
+                    "platform": "n64",
+                    "region": "JP",
+                    "generated_initial_save_data": encode(b"not-n64-save"),
+                }]},
+                token=token,
+            )
+
     def test_rom_slot_apply_default_initial_save_is_full_sized_zero_save(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
         token = self.post("/auth/login", {"username": "player_a", "password": "correct horse battery staple"})["token"]["token"]
