@@ -126,7 +126,7 @@ bool process_save_inflight(const char *server, const char *token, const char *ga
             unsigned char latest[INTEGRAL_MAX_SAVE_BYTES];
             size_t size = 0;
             char hash[65];
-            if (read_binary_file(slot->save_path, latest, sizeof(latest), &size) != 0 || !size) goto done;
+            if (read_binary_file(slot->save_path, latest, sizeof(latest), &size) != 0) goto done;
             data_hash(latest, size, hash);
             slot->revision = revision;
             if (!strcmp(hash, entry->hash)) {
