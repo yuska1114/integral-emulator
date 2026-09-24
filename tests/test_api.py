@@ -3542,7 +3542,10 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(decode(downloaded["save_data"]), b"")
         save = self.get("/saves", token=token)["saves"][0]
-        self.assertEqual(save["size_bytes"], 0)
+        self.assertEqual(
+            save["sha256"],
+            hashlib.sha256(b"").hexdigest(),
+        )
 
     def test_rom_slot_apply_default_initial_save_is_full_sized_zero_save(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
