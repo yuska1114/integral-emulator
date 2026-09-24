@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INTEGRAL_MAX_SAVE_BYTES (128u * 1024u)
+#define INTEGRAL_MAX_SAVE_BYTES (128u * 1024u + 48u)
 #define INTEGRAL_SAVE_RESPONSE_MAX (220u * 1024u)
 
 static int parse_rom_slots_response(const char *response,
@@ -384,6 +384,7 @@ int integral_api_apply_rom_slot(const char *server_url,
                            const char *rom_header_title,
                            const unsigned char *initial_save_data,
                            size_t initial_save_data_size,
+                           int initial_save_generated,
                            int confirm_delete_saves,
                            char *rom_id_out,
                            size_t rom_id_out_size,
@@ -423,9 +424,11 @@ int integral_api_apply_rom_slot(const char *server_url,
         return -1;
     }
     if (initial_save_encoded) {
+        const char *initial_save_key =
+            initial_save_generated ? "generated_initial_save_data" : "initial_save_data";
         snprintf(body,
                  body_size,
-                 "{\"confirm_delete_saves\":%s,\"slots\":[{\"slot\":%u,\"filename\":\"%s\",\"sha256\":\"%s\",\"sha1\":\"%s\",\"platform\":\"%s\",\"region\":\"%s\",\"rom_header_title\":\"%s\",\"initial_save_data\":\"%s\"}]}",
+                 "{\"confirm_delete_saves\":%s,\"slots\":[{\"slot\":%u,\"filename\":\"%s\",\"sha256\":\"%s\",\"sha1\":\"%s\",\"platform\":\"%s\",\"region\":\"%s\",\"rom_header_title\":\"%s\",\"%s\":\"%s\"}]}",
                  confirm_delete_saves ? "true" : "false",
                  slot,
                  escaped_filename,
@@ -434,6 +437,7 @@ int integral_api_apply_rom_slot(const char *server_url,
                  platform,
                  region,
                  escaped_header_title,
+                 initial_save_key,
                  initial_save_encoded);
     }
     else {
