@@ -186,12 +186,10 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
             copy_text(state->status, state->status_size, "INITIAL SAV GENERATION FAILED");
             return;
         }
-        if (initial_save_size > 0) {
-            initial_save_ptr = initial_save_data;
-            initial_save_generated = true;
-            registration_log(state, "rom_slot_initial_save_generated",
-                             "slot=%u bytes=%zu", slot_index + 1, initial_save_size);
-        }
+        initial_save_ptr = initial_save_data;
+        initial_save_generated = true;
+        registration_log(state, "rom_slot_initial_save_generated",
+                         "slot=%u bytes=%zu", slot_index + 1, initial_save_size);
     }
     if (integral_api_apply_rom_slot(state->server,
                                state->token,
