@@ -318,6 +318,13 @@ static IntegralRomEditorAction handle_rom_key(RomEditContext *state, const SDL_K
         switch (key->keysym.sym) {
             case SDLK_ESCAPE:
                 if (value) copy_text(value, rom_edit_capacity(state), state->editor->rom_edit_original);
+                if (state->editor->rom_edit_target == ROM_EDIT_ROM &&
+                    state->editor->rom_selected < INTEGRAL_ROM_SLOTS &&
+                    state->editor->pending_paths[state->editor->rom_selected] &&
+                    !strcmp(state->rom_slots[state->editor->rom_selected].rom_path,
+                            state->editor->confirmed_slots[state->editor->rom_selected].rom_path)) {
+                    state->editor->pending_paths[state->editor->rom_selected] = false;
+                }
                 state->editor->rom_edit_target = ROM_EDIT_NONE;
                 SDL_StopTextInput();
                 copy_text(state->status, state->status_size, "EDIT CANCELED");
