@@ -495,6 +495,74 @@ int integral_gb_runtime_slot_extract_battery(IntegralGBRuntimeSlot *slot,
     return 0;
 }
 
+int integral_gb_runtime_initial_battery_for_rom(const char *rom_path,
+                                                uint8_t *buffer,
+                                                size_t buffer_capacity,
+                                                size_t *buffer_size)
+{
+    if (!rom_path || !buffer || !buffer_size) {
+        return -1;
+    }
+    *buffer_size = 0;
+
+    GB_gameboy_t *gb = GB_alloc();
+    if (!gb) {
+        return -1;
+    }
+    GB_init(gb, GB_MODEL_CGB_E);
+
+    int load_result;
+#ifdef _WIN32
+    FILE *rom_file = integral_fopen(rom_path, "rb");
+    load_result = rom_file ? 0 : errno;
+    if (rom_file) {
+        long size;
+        if (fseek(rom_file, 0, SEEK_END) || (size = ftell(rom_file)) <= 0 ||
+            size > 0x2000000 || fseek(rom_file, 0, SEEK_SET)) {
+            load_result = EINVAL;
+        } else {
+            uint8_t *bytes = malloc((size_t)size);
+            if (!bytes) {
+                load_result = ENOMEM;
+            } else {
+                if (fread(bytes, 1, (size_t)size, rom_file) != (size_t)size) {
+                    load_result = EIO;
+                } else {
+                    GB_load_rom_from_buffer(gb, bytes, (size_t)size);
+                }
+                free(bytes);
+            }
+        }
+        fclose(rom_file);
+    }
+#else
+    load_result = GB_load_rom(gb, rom_path);
+#endif
+    if (load_result != 0) {
+        GB_free(gb);
+        GB_dealloc(gb);
+        return -1;
+    }
+
+    int save_size = GB_save_battery_size(gb);
+    if (save_size < 0 || (size_t)save_size > buffer_capacity) {
+        GB_free(gb);
+        GB_dealloc(gb);
+        return -1;
+    }
+    if (save_size > 0 &&
+        GB_save_battery_to_buffer(gb, buffer, (size_t)save_size) != 0) {
+        GB_free(gb);
+        GB_dealloc(gb);
+        return -1;
+    }
+
+    *buffer_size = (size_t)save_size;
+    GB_free(gb);
+    GB_dealloc(gb);
+    return 0;
+}
+
 static void free_slot(IntegralGBRuntimeSlot *slot, bool save_battery)
 {
     if (!slot || !slot->gb) {
