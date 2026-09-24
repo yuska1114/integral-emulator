@@ -3511,6 +3511,39 @@ class ApiTests(unittest.TestCase):
                 token=token,
             )
 
+    def test_rom_slot_apply_accepts_zero_byte_generated_gb_initial_save(self) -> None:
+        self.post(
+            "/auth/register",
+            {"username": "No_Battery", "password": "correct horse battery staple"},
+        )
+        token = self.post(
+            "/auth/login",
+            {"username": "no_battery", "password": "correct horse battery staple"},
+        )["token"]["token"]
+        alpha = next(
+            rom for rom in allowed_roms()
+            if rom.game_type == "sample_alpha" and rom.display_name == "SAMPLE ALPHA"
+        )
+        applied = self.post(
+            "/rom-slots/apply",
+            {"slots": [{
+                "slot": 1,
+                "filename": "alpha.gbc",
+                "sha256": alpha.sha256,
+                "sha1": alpha.sha1,
+                "platform": "gb",
+                "region": "JP",
+                "generated_initial_save_data": "",
+            }]},
+            token=token,
+        )
+        downloaded = self.get(
+            f"/saves/{applied['slots'][0]['save_id']}", token=token
+        )
+        self.assertEqual(decode(downloaded["save_data"]), b"")
+        save = self.get("/saves", token=token)["saves"][0]
+        self.assertEqual(save["size_bytes"], 0)
+
     def test_rom_slot_apply_default_initial_save_is_full_sized_zero_save(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
         token = self.post("/auth/login", {"username": "player_a", "password": "correct horse battery staple"})["token"]["token"]
