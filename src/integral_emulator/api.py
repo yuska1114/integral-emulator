@@ -829,13 +829,30 @@ class LeagueApplication:
                 desired = dict(item)
                 if "game_type" in desired:
                     raise ValidationError("game_type is assigned by the server")
-                if "initial_save_data" in desired:
+                has_imported_initial_save = "initial_save_data" in desired
+                has_generated_initial_save = "generated_initial_save_data" in desired
+                if has_imported_initial_save and has_generated_initial_save:
+                    raise ValidationError(
+                        "initial_save_data and generated_initial_save_data are mutually exclusive"
+                    )
+                if has_imported_initial_save:
                     if not self.allow_user_initial_save_import:
                         raise ValidationError(
                             "initial_save_data is disabled by server policy"
                         )
-                    desired["initial_save_bytes"] = decode_base64_field(desired, "initial_save_data")
+                    desired["initial_save_bytes"] = decode_base64_field(
+                        desired, "initial_save_data"
+                    )
                     desired.pop("initial_save_data", None)
+                elif has_generated_initial_save:
+                    if str(desired.get("platform", "")).strip().lower() != "gb":
+                        raise ValidationError(
+                            "generated_initial_save_data is only valid for GB/GBC ROMs"
+                        )
+                    desired["initial_save_bytes"] = decode_base64_field(
+                        desired, "generated_initial_save_data"
+                    )
+                    desired.pop("generated_initial_save_data", None)
                 desired_slots.append(desired)
             return self.rom_slots.apply_slots(
                 user.id,

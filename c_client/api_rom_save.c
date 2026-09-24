@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INTEGRAL_MAX_SAVE_BYTES (128u * 1024u)
+#define INTEGRAL_MAX_SAVE_BYTES (128u * 1024u + 48u)
 #define INTEGRAL_SAVE_RESPONSE_MAX (220u * 1024u)
 
 static int parse_rom_slots_response(const char *response,
@@ -170,7 +170,8 @@ static int download_save_path(const char *server_url,
         http_set_error(error_out, error_out_size, "OUT OF MEMORY");
         return -1;
     }
-    if (extract_json_string(response, "save_data", encoded, INTEGRAL_SAVE_RESPONSE_MAX) != 0 ||
+    if (extract_json_string_value(response, "save_data", encoded,
+                                  INTEGRAL_SAVE_RESPONSE_MAX, true) != 0 ||
         base64_decode(encoded, save_data_out, save_data_capacity, save_data_size_out) != 0) {
         free(encoded);
         free(response);
@@ -384,6 +385,7 @@ int integral_api_apply_rom_slot(const char *server_url,
                            const char *rom_header_title,
                            const unsigned char *initial_save_data,
                            size_t initial_save_data_size,
+                           int initial_save_generated,
                            int confirm_delete_saves,
                            char *rom_id_out,
                            size_t rom_id_out_size,
@@ -402,7 +404,7 @@ int integral_api_apply_rom_slot(const char *server_url,
     json_escape(rom_header_title ? rom_header_title : "", escaped_header_title, sizeof(escaped_header_title));
     char *initial_save_encoded = NULL;
     size_t initial_save_encoded_size = 0;
-    if (initial_save_data && initial_save_data_size > 0) {
+    if ((initial_save_data && initial_save_data_size > 0) || initial_save_generated) {
         if (initial_save_data_size > INTEGRAL_MAX_SAVE_BYTES) {
             http_set_error(error_out, error_out_size, "INITIAL SAVE DATA TOO LARGE");
             return -1;
@@ -423,9 +425,11 @@ int integral_api_apply_rom_slot(const char *server_url,
         return -1;
     }
     if (initial_save_encoded) {
+        const char *initial_save_key =
+            initial_save_generated ? "generated_initial_save_data" : "initial_save_data";
         snprintf(body,
                  body_size,
-                 "{\"confirm_delete_saves\":%s,\"slots\":[{\"slot\":%u,\"filename\":\"%s\",\"sha256\":\"%s\",\"sha1\":\"%s\",\"platform\":\"%s\",\"region\":\"%s\",\"rom_header_title\":\"%s\",\"initial_save_data\":\"%s\"}]}",
+                 "{\"confirm_delete_saves\":%s,\"slots\":[{\"slot\":%u,\"filename\":\"%s\",\"sha256\":\"%s\",\"sha1\":\"%s\",\"platform\":\"%s\",\"region\":\"%s\",\"rom_header_title\":\"%s\",\"%s\":\"%s\"}]}",
                  confirm_delete_saves ? "true" : "false",
                  slot,
                  escaped_filename,
@@ -434,6 +438,7 @@ int integral_api_apply_rom_slot(const char *server_url,
                  platform,
                  region,
                  escaped_header_title,
+                 initial_save_key,
                  initial_save_encoded);
     }
     else {

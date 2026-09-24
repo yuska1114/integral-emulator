@@ -454,8 +454,8 @@ class SaveCommitService:
 
     @staticmethod
     def _validate_save_bytes(save_bytes: bytes) -> None:
-        if not save_bytes:
-            raise ValidationError("save data is empty")
+        if not isinstance(save_bytes, bytes):
+            raise ValidationError("save data must be bytes")
         if len(save_bytes) > MAX_SAVE_BYTES:
             raise ValidationError("save data is too large")
 

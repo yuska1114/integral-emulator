@@ -11,7 +11,7 @@ int ensure_directory(const char *path);
 int create_export_directory(const char *root, const char *stamp, char *out, size_t capacity);
 void export_save_filename(const char *name, unsigned slot_index, char *out, size_t capacity);
 int ensure_private_runtime_directory(const char *path);
-#define INTEGRAL_MAX_SAVE_BYTES (128u * 1024u)
+#define INTEGRAL_MAX_SAVE_BYTES (128u * 1024u + 48u)
 int sha256_file_hex(const char *, char *, size_t);
 int sha1_file_hex(const char *, char *, size_t);
 int read_binary_file(const char *, unsigned char *, size_t, size_t *);

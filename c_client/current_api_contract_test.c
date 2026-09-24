@@ -63,7 +63,7 @@ int main(int argc, char **argv)
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "n64", "JP",
             "SAMPLE N64",
-            NULL, 0u, 0, applied_rom_id, sizeof(applied_rom_id),
+            NULL, 0u, 0, 0, applied_rom_id, sizeof(applied_rom_id),
             applied_save_id, sizeof(applied_save_id), &requires_confirmation,
             error, sizeof(error)) != 0 || requires_confirmation ||
         strcmp(applied_rom_id, "rom-slot6") != 0 ||

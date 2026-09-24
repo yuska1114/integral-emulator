@@ -634,9 +634,13 @@ int read_binary_file_alloc(const char *path, unsigned char **out, size_t *out_si
         return -1;
     }
     long size = ftell(file);
-    if (size <= 0 || (size_t)size > max_size || fseek(file, 0, SEEK_SET) != 0) {
+    if (size < 0 || (size_t)size > max_size || fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
         return -1;
+    }
+    if (size == 0) {
+        fclose(file);
+        return 0;
     }
     unsigned char *data = malloc((size_t)size);
     if (!data) {

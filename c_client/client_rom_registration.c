@@ -4,6 +4,7 @@
 #include "client_rom_catalog.h"
 #include "client_file_io.h"
 #include "rom_metadata.h"
+#include "../runtimes/gb/src/server/slot.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -144,6 +145,7 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
     unsigned char initial_save_data[INTEGRAL_MAX_SAVE_BYTES];
     unsigned char *initial_save_ptr = NULL;
     size_t initial_save_size = 0;
+    bool initial_save_generated = false;
     bool import_selected = state->allow_user_initial_save_import &&
                            state->editor->rom_initial_save_import_slot == (int)slot_index;
     const IntegralApiRomSlot *server_slot = &state->server_rom_slots[slot_index];
@@ -173,6 +175,22 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
                    "slot=%u path=%s bytes=%zu", slot_index + 1,
                    state->editor->rom_initial_save_import_path, initial_save_size);
     }
+    if (!import_selected &&
+        strcmp(header.platform, "gb") == 0 &&
+        !(server_slot->save_id[0] != '\0' && strcmp(server_slot->sha256, sha256) == 0)) {
+        if (integral_gb_runtime_initial_battery_for_rom(
+                slot->rom_path,
+                initial_save_data,
+                sizeof(initial_save_data),
+                &initial_save_size) != 0) {
+            copy_text(state->status, state->status_size, "INITIAL SAV GENERATION FAILED");
+            return;
+        }
+        initial_save_ptr = initial_save_data;
+        initial_save_generated = true;
+        registration_log(state, "rom_slot_initial_save_generated",
+                         "slot=%u bytes=%zu", slot_index + 1, initial_save_size);
+    }
     if (integral_api_apply_rom_slot(state->server,
                                state->token,
                                slot_index + 1,
@@ -184,6 +202,7 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
                                header.header_title,
                                initial_save_ptr,
                                initial_save_size,
+                               initial_save_generated ? 1 : 0,
                                confirm_delete_saves ? 1 : 0,
                                registered_rom_id,
                                sizeof(registered_rom_id),
