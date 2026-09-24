@@ -77,13 +77,16 @@ static void draw_local(SDL_Renderer *renderer, const AppState *state);
 static void draw_gb_mobile(SDL_Renderer *renderer, const AppState *state);
 static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state);
 static void draw_room(SDL_Renderer *renderer, const AppState *state);
-static void format_n64_room_selection_line(char *out,
-                                           size_t out_size,
+static void format_n64_room_selection_line(char *label_out,
+                                           size_t label_out_size,
+                                           char *detail_out,
+                                           size_t detail_out_size,
                                            const char *owner,
                                            const char *system,
                                            const char *slot,
                                            const char *filename,
-                                           const char *header_title);
+                                           const char *header_title,
+                                           bool local_user);
 static void draw_n64_room(SDL_Renderer *renderer, const AppState *state);
 static void draw_key_config(SDL_Renderer *renderer, const AppState *state);
 static unsigned format_rom_slot_summary(const IntegralConfigRomSlot *slot,
@@ -781,26 +784,43 @@ static void draw_room(SDL_Renderer *renderer, const AppState *state)
 }
 
 
-static void format_n64_room_selection_line(char *out,
-                                           size_t out_size,
+static void format_n64_room_selection_line(char *label_out,
+                                           size_t label_out_size,
+                                           char *detail_out,
+                                           size_t detail_out_size,
                                            const char *owner,
                                            const char *system,
                                            const char *slot,
                                            const char *filename,
-                                           const char *header_title)
+                                           const char *header_title,
+                                           bool local_user)
 {
     if (!slot || !slot[0]) {
-        snprintf(out, out_size, "%s %s SLOT : <EMPTY>", owner, system);
+        snprintf(label_out, label_out_size, "%s %s SLOT : <EMPTY>", owner, system);
+        detail_out[0] = '\0';
         return;
     }
-    snprintf(out,
-             out_size,
-             "%s %s SLOT : %s  %s (%s)",
-             owner,
-             system,
-             slot,
-             filename && filename[0] ? path_file_name(filename) : "<FILE UNKNOWN>",
-             header_title && header_title[0] ? header_title : "HEADER UNKNOWN");
+
+    snprintf(label_out, label_out_size, "%s %s SLOT : %s", owner, system, slot);
+    if (local_user) {
+        if (filename && filename[0] && header_title && header_title[0]) {
+            snprintf(detail_out, detail_out_size, "%s (%s)", path_file_name(filename), header_title);
+        }
+        else if (filename && filename[0]) {
+            copy_text(detail_out, detail_out_size, path_file_name(filename));
+        }
+        else if (header_title && header_title[0]) {
+            copy_text(detail_out, detail_out_size, header_title);
+        }
+        else {
+            copy_text(detail_out, detail_out_size, "<FILE UNKNOWN>");
+        }
+        return;
+    }
+
+    copy_text(detail_out,
+              detail_out_size,
+              header_title && header_title[0] ? header_title : "HEADER UNKNOWN");
 }
 
 
@@ -824,7 +844,7 @@ static void draw_n64_room(SDL_Renderer *renderer, const AppState *state)
     char subtitle[32];
     const IntegralApiRoom *header_room = state->room.common.room_number >= 65 && state->room.common.room_number <= 128
                                               ? &state->room.common.current_room : NULL;
-    snprintf(subtitle, sizeof(subtitle), "N64 CODE %s",
+    snprintf(subtitle, sizeof(subtitle), "ROOM CODE %s",
              header_room && header_room->room_code[0] ? header_room->room_code : "-----");
     draw_header(renderer, subtitle, state->login.username, state->login.server);
 
@@ -835,18 +855,21 @@ static void draw_n64_room(SDL_Renderer *renderer, const AppState *state)
     char user_line[128];
     snprintf(user_line,
              sizeof(user_line),
-             "USER1 : %s  HOST",
+             "USER1 : %s",
              room && room->user1[0] ? room->user1 : "PLAYER001");
     integral_client_ui_draw_text_fit(renderer, 48, 88, user_line, 2, value, 380);
     snprintf(user_line,
              sizeof(user_line),
-             "USER2 : %s  REMOTE",
+             "USER2 : %s",
              room && room->user2[0] ? room->user2 : "<EMPTY>");
     integral_client_ui_draw_text_fit(renderer, 48, 116, user_line, 2, value, 380);
 
-    char n64_label[384];
-    char user1_gb_label[384];
-    char user2_gb_label[384];
+    char n64_label[96];
+    char n64_detail[288];
+    char user1_gb_label[96];
+    char user1_gb_detail[288];
+    char user2_gb_label[96];
+    char user2_gb_detail[288];
     const char *n64_slot = room && room->n64_slot1[0] ? room->n64_slot1 : "";
     const char *n64_filename = room ? room->n64_slot_filename1 : "";
     const char *n64_header_title = room ? room->n64_slot_header_title1 : "";
@@ -886,27 +909,15 @@ static void draw_n64_room(SDL_Renderer *renderer, const AppState *state)
             user2_gb_header_title = fallback_header.header_title;
         }
     }
-    format_n64_room_selection_line(n64_label,
-                                   sizeof(n64_label),
-                                   "USER1",
-                                   "N64",
-                                   n64_slot,
-                                   n64_filename,
-                                   n64_header_title);
-    format_n64_room_selection_line(user1_gb_label,
-                                   sizeof(user1_gb_label),
-                                   "USER1",
-                                   "GB",
-                                   user1_gb_slot,
-                                   user1_gb_filename,
-                                   user1_gb_header_title);
-    format_n64_room_selection_line(user2_gb_label,
-                                   sizeof(user2_gb_label),
-                                   "USER2",
-                                   "GB",
-                                   user2_gb_slot,
-                                   user2_gb_filename,
-                                   user2_gb_header_title);
+
+    bool user1_is_local = local_user_index == 0;
+    bool user2_is_local = local_user_index == 1;
+    format_n64_room_selection_line(n64_label, sizeof(n64_label), n64_detail, sizeof(n64_detail),
+                                   "USER1", "N64", n64_slot, n64_filename, n64_header_title, user1_is_local);
+    format_n64_room_selection_line(user1_gb_label, sizeof(user1_gb_label), user1_gb_detail, sizeof(user1_gb_detail),
+                                   "USER1", "GB", user1_gb_slot, user1_gb_filename, user1_gb_header_title, user1_is_local);
+    format_n64_room_selection_line(user2_gb_label, sizeof(user2_gb_label), user2_gb_detail, sizeof(user2_gb_detail),
+                                   "USER2", "GB", user2_gb_slot, user2_gb_filename, user2_gb_header_title, user2_is_local);
 
     const char *labels[INTEGRAL_N64_RUNTIME_ROOM_ROWS] = {
         n64_label,
@@ -916,34 +927,45 @@ static void draw_n64_room(SDL_Renderer *renderer, const AppState *state)
         "CHAT LOG",
     };
     const char *details[INTEGRAL_N64_RUNTIME_ROOM_ROWS] = {
-        "",
-        "",
-        "",
-        state->room.n64.n64_room_ready ? "NO SAV OVERWRITE" : "ENTER READY",
+        n64_detail,
+        user1_gb_detail,
+        user2_gb_detail,
+        "ENTER READY",
         "LEFT/RIGHT SCROLL",
     };
-    for (unsigned i = 0; i < 4; i++) {
-        int y = 150 + (int)i * 32;
+    const bool rom_row_is_local[3] = {user1_is_local, user1_is_local, user2_is_local};
+    const int rom_y[3] = {150, 174, 198};
+
+    for (unsigned i = 0; i < 3; i++) {
+        int y = rom_y[i];
         if (state->room.common.room_selected == i) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-            SDL_Rect rect = {.x = 14, .y = y - 7, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 30};
+            SDL_Rect rect = {.x = 14, .y = y - 5, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 20};
             SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y + 1, ">", 2, selected);
+            integral_sdl_draw_text(renderer, 24, y, ">", 1, selected);
         }
-        if (i < 3) {
-            integral_client_ui_draw_text_fit(renderer,
-                                  48,
-                                  y,
-                                  labels[i],
-                                  1,
-                                  state->room.common.room_selected == i ? selected : value,
-                                  INTEGRAL_WINDOW_WIDTH - 70);
-        }
-        else {
-            integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 1, state->room.common.room_selected == i ? selected : label, 190);
-            integral_client_ui_draw_text_fit(renderer, 240, y, details[i], 1, muted, 210);
+        integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 1,
+                                         state->room.common.room_selected == i ? selected : value, 176);
+        if (details[i][0] != '\0') {
+            integral_client_ui_draw_text_fit(renderer, 230, y, details[i], 1,
+                                             rom_row_is_local[i] ? value : muted, 210);
         }
     }
+
+    const int save_y = 222;
+    integral_client_ui_draw_text_fit(renderer, 48, save_y, "SAVE OFF", 1, label, 176);
+    integral_client_ui_draw_text_fit(renderer, 240, save_y, "SAVE OFF ONLY", 1, muted, 200);
+
+    const int ready_y = 246;
+    if (state->room.common.room_selected == 3) {
+        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+        SDL_Rect rect = {.x = 14, .y = ready_y - 5, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 20};
+        SDL_RenderFillRect(renderer, &rect);
+        integral_sdl_draw_text(renderer, 24, ready_y, ">", 1, selected);
+    }
+    integral_client_ui_draw_text_fit(renderer, 48, ready_y, labels[3], 1,
+                                     state->room.common.room_selected == 3 ? selected : label, 190);
+    integral_client_ui_draw_text_fit(renderer, 240, ready_y, details[3], 1, muted, 200);
 
     int log_y = 294;
     if (state->room.common.room_selected == 4) {
