@@ -1289,17 +1289,13 @@ static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
                                        warning);
             }
         }
-        else if (i == INTEGRAL_ROM_REGISTER_ROW) {
-            integral_sdl_draw_text(renderer, 48, y, "REGISTER", 2, state->catalog.rom_editor.rom_selected == i ? selected : label);
-            integral_sdl_draw_text(renderer, 146, y + 4, "APPLY CHANGES", 1, value);
-        }
         else if (i == INTEGRAL_ROM_EXPORT_ROW) {
             integral_sdl_draw_text(renderer, 48, y, "EXPORT", 2, state->catalog.rom_editor.rom_selected == i ? selected : label);
-            integral_sdl_draw_text(renderer, 146, y + 4, "DOWNLOAD SAVS", 1, value);
+            integral_sdl_draw_text(renderer, 146, y + 4, "DOWNLOAD SAVS", 1, muted);
         }
         else {
             integral_sdl_draw_text(renderer, 48, y, "BACK", 2, state->catalog.rom_editor.rom_selected == i ? selected : label);
-            integral_sdl_draw_text(renderer, 146, y + 4, "RETURN MENU", 1, value);
+            integral_sdl_draw_text(renderer, 146, y + 4, "RETURN MENU", 1, muted);
         }
     }
 
@@ -1389,24 +1385,24 @@ static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
     integral_client_ui_draw_text_fit(renderer, 22, 424, state->login.status, 1, muted, INTEGRAL_WINDOW_WIDTH - 44);
     if (state->catalog.rom_editor.rom_edit_target != ROM_EDIT_NONE) {
         integral_sdl_draw_text(renderer, 22, 442, "ENTER APPLY INPUT  ESC CANCEL EDIT", 1, muted);
-        integral_sdl_draw_text(renderer, 22, 460, "BACKSPACE DELETE CHAR - REGISTER SENDS TO SERVER", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 460, "BACKSPACE DELETE CHAR", 1, muted);
     }
     else if (state->catalog.allow_user_initial_save_import) {
-        integral_sdl_draw_text(renderer, 22, 442, "LEFT/RIGHT SET ROM  ENTER EDIT  F4 LIST  F5 SAV", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 442, "LEFT/RIGHT SET ROM  ENTER REGISTER  F2 EDIT  F4 LIST", 1, muted);
         if (state->catalog.rom_editor.rom_initial_save_import_slot >= 0) {
             char import_status[64];
             snprintf(import_status, sizeof(import_status),
-                     "INITIAL SAV SELECTED FOR ROM%d  REGISTER APPLIES",
+                     "F5 SAV  INITIAL SAV SELECTED FOR ROM%d",
                      state->catalog.rom_editor.rom_initial_save_import_slot + 1);
             integral_sdl_draw_text(renderer, 22, 460, import_status, 1, muted);
         }
         else {
-            integral_sdl_draw_text(renderer, 22, 460, "REGISTER APPLIES  BACKSPACE CLEAR LOCAL PATH", 1, muted);
+            integral_sdl_draw_text(renderer, 22, 460, "F5 SAV", 1, muted);
         }
     }
     else {
-        integral_sdl_draw_text(renderer, 22, 442, "LEFT/RIGHT SET ROM  ENTER EDIT  F4 LIST", 1, muted);
-        integral_sdl_draw_text(renderer, 22, 460, "REGISTER APPLIES  BACKSPACE CLEAR LOCAL PATH", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 442, "LEFT/RIGHT SET ROM  ENTER REGISTER  F2 EDIT  F4 LIST", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 460, "", 1, muted);
     }
     SDL_RenderPresent(renderer);
 }
