@@ -3484,7 +3484,6 @@ class ApiTests(unittest.TestCase):
                 "filename": "alpha.gbc",
                 "sha256": alpha.sha256,
                 "sha1": alpha.sha1,
-                "game_type": "sample_alpha",
                 "platform": "gb",
                 "region": "JP",
                 "generated_initial_save_data": encode(generated),
