@@ -170,7 +170,8 @@ static int download_save_path(const char *server_url,
         http_set_error(error_out, error_out_size, "OUT OF MEMORY");
         return -1;
     }
-    if (extract_json_string(response, "save_data", encoded, INTEGRAL_SAVE_RESPONSE_MAX) != 0 ||
+    if (extract_json_string_value(response, "save_data", encoded,
+                                  INTEGRAL_SAVE_RESPONSE_MAX, true) != 0 ||
         base64_decode(encoded, save_data_out, save_data_capacity, save_data_size_out) != 0) {
         free(encoded);
         free(response);
@@ -403,7 +404,7 @@ int integral_api_apply_rom_slot(const char *server_url,
     json_escape(rom_header_title ? rom_header_title : "", escaped_header_title, sizeof(escaped_header_title));
     char *initial_save_encoded = NULL;
     size_t initial_save_encoded_size = 0;
-    if (initial_save_data && initial_save_data_size > 0) {
+    if ((initial_save_data && initial_save_data_size > 0) || initial_save_generated) {
         if (initial_save_data_size > INTEGRAL_MAX_SAVE_BYTES) {
             http_set_error(error_out, error_out_size, "INITIAL SAVE DATA TOO LARGE");
             return -1;
