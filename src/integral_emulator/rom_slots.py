@@ -297,7 +297,9 @@ class RomSlotManager:
                 user_id,
                 slot_number,
                 registration.game_type,
-                desired["initial_save_bytes"] or self._initial_save_bytes_for_rom(desired["filename"]),
+                (desired["initial_save_bytes"]
+                 if desired["initial_save_bytes"] is not None
+                 else self._initial_save_bytes_for_rom(desired["filename"])),
             )
             created.append(save)
             slot = RomSlot(
