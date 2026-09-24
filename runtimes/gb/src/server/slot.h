@@ -83,6 +83,10 @@ int integral_gb_runtime_slot_save_battery(IntegralGBRuntimeSlot *slot);
 int integral_gb_runtime_slot_extract_battery(IntegralGBRuntimeSlot *slot,
                                      uint8_t **buffer,
                                      size_t *buffer_size);
+int integral_gb_runtime_initial_battery_for_rom(const char *rom_path,
+                                                uint8_t *buffer,
+                                                size_t buffer_capacity,
+                                                size_t *buffer_size);
 void integral_gb_runtime_slot_free_without_save(IntegralGBRuntimeSlot *slot);
 void integral_gb_runtime_slot_free(IntegralGBRuntimeSlot *slot);
 
