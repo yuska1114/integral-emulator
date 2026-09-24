@@ -208,7 +208,7 @@ bool mobile_runtime_result_allows_commit(const LocalSyncSlot *sync_slot,
     errno = 0;
     char *size_end = NULL;
     unsigned long long reported_size = strtoull(size_text, &size_end, 10);
-    if (errno != 0 || !size_end || *size_end != '\0' || reported_size == 0u ||
+    if (errno != 0 || !size_end || *size_end != '\0' ||
         reported_size > INTEGRAL_MAX_SAVE_BYTES) {
         copy_text(reason_out, reason_out_size, "runtime save size invalid");
         return false;
