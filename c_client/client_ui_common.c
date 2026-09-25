@@ -82,9 +82,11 @@ void integral_client_ui_draw_header(SDL_Renderer *renderer,
     SDL_Color user = {160, 180, 196, 255};
 
     integral_sdl_draw_text(renderer, 22, 20, "INTEGRAL EMULATOR", 3, title);
-    char version_text[48];
-    snprintf(version_text, sizeof(version_text), "VER %s", version);
-    integral_sdl_draw_text(renderer, 330, 26, version_text, 2, muted);
+    enum { VERSION_DISPLAY_CHARS = 10 };
+    char version_text[VERSION_DISPLAY_CHARS + 1];
+    snprintf(version_text, sizeof(version_text), "%.*s", VERSION_DISPLAY_CHARS, version);
+    integral_sdl_draw_text(renderer, 330, 30, "VER", 1, muted);
+    integral_sdl_draw_text(renderer, 354, 26, version_text, 2, muted);
     if (login_id && login_id[0] != '\0') {
         char user_text[96];
         snprintf(user_text, sizeof(user_text), "ID %s", login_id);
