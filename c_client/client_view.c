@@ -1157,24 +1157,24 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
         integral_client_ui_draw_text_fit(renderer, 48, 126, util_line2, 1, value, 400);
         integral_client_ui_draw_text_fit(renderer, 48, 144, util_line3, 1, value, 400);
 
-        integral_sdl_draw_text(renderer, 48, 180, "CLIENT ALIAS", 2, label);
-        integral_client_ui_draw_text_fit(renderer, 48, 208, "RIGHT=[RIGHT],LEFT=[LEFT],UP=[UP],DOWN=[DOWN]", 1, muted, 400);
-        integral_sdl_draw_text(renderer, 22, 252, "FAST / TURBO: LOCAL GB 1P ONLY", 1, muted);
-        integral_sdl_draw_text(renderer, 22, 270, "RESET: LOCAL MODES", 1, muted);
-        integral_sdl_draw_text(renderer, 22, 288, "SCREENSHOT / ESCAPE: ALL MODES", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 162, "FAST / TURBO: LOCAL GB 1P ONLY", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 180, "RESET: LOCAL MODES", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 198, "SCREENSHOT / ESCAPE: ALL MODES", 1, muted);
+        integral_sdl_draw_text(renderer, 48, 226, "CLIENT ALIAS", 2, label);
+        integral_client_ui_draw_text_fit(renderer, 48, 254, "RIGHT=[RIGHT],LEFT=[LEFT],UP=[UP],DOWN=[DOWN]", 1, muted, 400);
     }
 
     for (unsigned row = reset_row; row <= back_row; row++) {
         const char *text = row == reset_row ? "RESET DEFAULTS" : "BACK";
-        int y = state->key_editor.page == KEY_CONFIG_PAGE_UTIL ? 344 + (int)(row - reset_row) * 30 :
+        int y = state->key_editor.page == KEY_CONFIG_PAGE_UTIL ? 284 + (int)(row - reset_row) * 34 :
                 300 + (int)(row - reset_row) * 34;
         if (state->key_editor.key_selected == row) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 5, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 26};
             SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 1, selected);
+            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
         }
-        integral_sdl_draw_text(renderer, 48, y, text, 1,
+        integral_sdl_draw_text(renderer, 48, y, text, 2,
                                state->key_editor.key_selected == row ? selected : label);
     }
 
