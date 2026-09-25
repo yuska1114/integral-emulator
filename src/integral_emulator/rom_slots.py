@@ -17,7 +17,7 @@ from .roms import RomRegistration
 
 MAX_ROM_SLOTS = 8
 INITIAL_SAVE_BYTES = bytes(32 * 1024)
-INITIAL_N64_SAVE_BYTES = bytes(128 * 1024)
+INITIAL_N64_SAVE_BYTES = bytes([0xFF]) * (128 * 1024)
 @dataclass(frozen=True)
 class RomSlot:
     user_id: str
