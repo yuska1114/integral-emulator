@@ -1610,54 +1610,6 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
             state->common.room_ready_peer = !state->common.room_ready_peer;
             update_room_ready_status(state);
             break;
-        case SDLK_m:
-            if (!current_room_is_user1(state)) {
-                copy_text(state->login->status, sizeof(state->login->status), "MODE SELECTED BY USER1");
-                client_room_log(state, "room_mode_blocked", "reason=user2 key=m");
-                break;
-            }
-            if (current_room_game_ended(state)) {
-        copy_text(state->login->status, sizeof(state->login->status), "GAME ENDED  ESC MAIN MENU");
-                break;
-            }
-            if (state->link.room_link_session_id[0] != '\0') {
-                copy_text(state->login->status, sizeof(state->login->status), "MODE LOCKED AFTER START");
-                client_room_log(state, "room_mode_blocked", "reason=session_active session=%s", state->link.room_link_session_id);
-                break;
-            }
-            cycle_room_link_mode(state, 1);
-            mark_room_link_mode_local_override(state);
-            client_room_log(state, "room_mode_changed", "direction=m mode=%s", room_link_mode_api_name(state->link.room_link_mode));
-            sync_room_state(state);
-            update_room_ready_status(state);
-            break;
-        case SDLK_t:
-        case SDLK_b:
-            if (!current_room_is_user1(state)) {
-                copy_text(state->login->status, sizeof(state->login->status), "MODE SELECTED BY USER1");
-                client_room_log(state, "room_mode_blocked", "reason=user2 key=%c", (char)key->keysym.sym);
-                break;
-            }
-            if (current_room_game_ended(state)) {
-        copy_text(state->login->status, sizeof(state->login->status), "GAME ENDED  ESC MAIN MENU");
-                break;
-            }
-            if (state->link.room_link_session_id[0] != '\0') {
-                copy_text(state->login->status, sizeof(state->login->status), "MODE LOCKED AFTER START");
-                client_room_log(state, "room_mode_blocked", "reason=session_active session=%s", state->link.room_link_session_id);
-                break;
-            }
-            if (key->keysym.sym == SDLK_t) {
-                set_room_link_mode(state, INTEGRAL_ROOM_MODE_TRADE);
-            }
-            else if (key->keysym.sym == SDLK_b) {
-                set_room_link_mode(state, INTEGRAL_ROOM_MODE_BATTLE);
-            }
-            mark_room_link_mode_local_override(state);
-            client_room_log(state, "room_mode_set", "key=%c mode=%s", (char)key->keysym.sym, room_link_mode_api_name(state->link.room_link_mode));
-            sync_room_state(state);
-            update_room_ready_status(state);
-            break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
             if (state->common.room_selected == 0) {

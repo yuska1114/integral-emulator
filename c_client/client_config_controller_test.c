@@ -59,6 +59,8 @@ int main(void)
     snprintf(expected.escape, sizeof(expected.escape), "Escape");
     snprintf(expected.turbo_hold, sizeof(expected.turbo_hold), "B");
     snprintf(expected.reset, sizeof(expected.reset), "O");
+    snprintf(expected.client_alias_right, sizeof(expected.client_alias_right), "PAD_A");
+    snprintf(expected.client_alias_left, sizeof(expected.client_alias_left), "M");
     IntegralConfigWindow expected_window = {.width = 777u, .height = 611u};
     if (integral_config_save_window(path, &expected_window) != 0) return 2;
     if (integral_config_save_keys(path, &expected) != 0) return 2;
@@ -87,7 +89,10 @@ int main(void)
     if (integral_config_save_keys(path, &actual) || integral_config_save_window(path, &expected_window) ||
         integral_config_load_keys(path, &actual) || strcmp(actual.n64_p4, expected.n64_p4)) return 7;
     integral_keys_defaults(&actual);
-    if (actual.n64_p2[0] || actual.n64_p3[0] || actual.n64_p4[0]) return 8;
+    if (actual.n64_p2[0] || actual.n64_p3[0] || actual.n64_p4[0] ||
+        actual.client_alias_right[0] || actual.client_alias_left[0] ||
+        actual.client_alias_up[0] || actual.client_alias_down[0] ||
+        actual.client_alias_enter[0] || actual.client_alias_escape[0]) return 8;
     (void)remove(path);
 #ifndef _WIN32
     (void)rmdir(directory);

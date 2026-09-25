@@ -8,10 +8,74 @@
 #include "client_diagnostics.h"
 #include "client_version.h"
 #include <stdio.h>
+#include <string.h>
 #include "../runtimes/gb/src/common/key_config.h"
 
 #define INTEGRAL_WINDOW_WIDTH INTEGRAL_CLIENT_UI_WIDTH
 #define INTEGRAL_WINDOW_HEIGHT 480
+
+static bool client_alias_enabled(const AppState *state)
+{
+    if (state->key_editor.key_capture_target != KEY_CAPTURE_NONE) return false;
+    if (state->local.local_monitor > 0) return false;
+    if (state->ui.screen == SCREEN_ROOM &&
+        (state->room.link.room_client_pid > 0 ||
+         state->room.link.room_gb_runtime_fixed_host_active)) return false;
+    if (state->ui.screen == SCREEN_N64_ROOM && n64_room_runtime_active(&state->room)) return false;
+    return true;
+}
+
+static void dispatch_client_key(AppState *state, const SDL_KeyboardEvent *key)
+{
+    if (state->ui.screen == SCREEN_LOGIN) {
+        handle_login_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_PASSWORD_CHANGE) {
+        handle_password_change_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_MAIN_MENU) {
+        handle_main_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_LOCAL_MODE) {
+        handle_local_mode_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_ROOM_MODE) {
+        handle_room_mode_key(&state->room, key);
+    }
+    else if (state->ui.screen == SCREEN_LOCAL || state->ui.screen == SCREEN_GB_MOBILE) {
+        handle_local_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_N64_RUNTIME) {
+        handle_n64_runtime_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_JOIN_ROOM) {
+        handle_join_room_key(&state->room, key);
+    }
+    else if (state->ui.screen == SCREEN_ROOM) {
+        handle_room_key(&state->room, key);
+    }
+    else if (state->ui.screen == SCREEN_N64_ROOM) {
+        handle_n64_room_key(&state->room, key);
+    }
+    else if (state->ui.screen == SCREEN_GB_KEY_CONFIG ||
+             state->ui.screen == SCREEN_N64_KEY_CONFIG ||
+             state->ui.screen == SCREEN_UTIL_KEY_CONFIG) {
+        handle_key_config_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_SETTINGS) {
+        handle_settings_key(state, key);
+    }
+    else if (state->ui.screen == SCREEN_SCREENSHOTS) {
+        if (integral_screenshots_key(state->screenshots, key)) {
+            integral_screenshots_close(state->screenshots);
+            state->screenshots = NULL;
+            state->ui.screen = SCREEN_MAIN_MENU;
+        }
+    }
+    else if (state->ui.screen == SCREEN_ROM_REGISTER) {
+        handle_rom_key(state, key);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -150,54 +214,14 @@ int main(int argc, char **argv)
                 state.ui.quit = true;
             }
             else if (event.type == SDL_KEYDOWN) {
-                if (state.ui.screen == SCREEN_LOGIN) {
-                    handle_login_key(&state, &event.key);
+                SDL_KeyboardEvent client_key = event.key;
+                bool translated = client_alias_enabled(&state) &&
+                    integral_client_alias_keyboard_event(&state.keys, &event.key, &client_key);
+                if (translated && SDL_IsTextInputActive() &&
+                    event.key.keysym.sym >= SDLK_SPACE && event.key.keysym.sym < SDLK_DELETE) {
+                    state.ui.suppress_text_input_once = true;
                 }
-                else if (state.ui.screen == SCREEN_PASSWORD_CHANGE) {
-                    handle_password_change_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_MAIN_MENU) {
-                    handle_main_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_LOCAL_MODE) {
-                    handle_local_mode_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_ROOM_MODE) {
-                    handle_room_mode_key(&state.room, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_LOCAL || state.ui.screen == SCREEN_GB_MOBILE) {
-                    handle_local_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_N64_RUNTIME) {
-                    handle_n64_runtime_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_JOIN_ROOM) {
-                    handle_join_room_key(&state.room, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_ROOM) {
-                    handle_room_key(&state.room, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_N64_ROOM) {
-                    handle_n64_room_key(&state.room, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_GB_KEY_CONFIG ||
-                         state.ui.screen == SCREEN_N64_KEY_CONFIG ||
-                         state.ui.screen == SCREEN_UTIL_KEY_CONFIG) {
-                    handle_key_config_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_SETTINGS) {
-                    handle_settings_key(&state, &event.key);
-                }
-                else if (state.ui.screen == SCREEN_SCREENSHOTS) {
-                    if (integral_screenshots_key(state.screenshots, &event.key)) {
-                        integral_screenshots_close(state.screenshots);
-                        state.screenshots = NULL;
-                        state.ui.screen = SCREEN_MAIN_MENU;
-                    }
-                }
-                else if (state.ui.screen == SCREEN_ROM_REGISTER) {
-                    handle_rom_key(&state, &event.key);
-                }
+                dispatch_client_key(&state, &client_key);
             }
             else if (state.ui.game_input_active &&
                      (event.type == SDL_CONTROLLERDEVICEADDED || event.type == SDL_JOYDEVICEADDED ||
@@ -207,14 +231,25 @@ int main(int argc, char **argv)
                     state.room.n64.util_escape_held = state.room.n64.util_screenshot_held = false;
                     state.key_editor.key_capture_wait_release = false;
                     state.key_editor.key_capture_release_binding = SDLK_UNKNOWN;
+                    memset(state.ui.client_alias_held, 0, sizeof(state.ui.client_alias_held));
                 }
                 client_log(&state, "controller_device_changed", "event=%u", event.type);
             }
             else if ((state.ui.screen == SCREEN_GB_KEY_CONFIG ||
                       state.ui.screen == SCREEN_N64_KEY_CONFIG ||
                       state.ui.screen == SCREEN_UTIL_KEY_CONFIG) &&
+                     state.key_editor.key_capture_target != KEY_CAPTURE_NONE &&
                      game_controller_input_event(event.type)) {
                 handle_key_config_controller_event(&state, &event);
+            }
+            else if (client_alias_enabled(&state) && game_controller_input_event(event.type)) {
+                SDL_KeyboardEvent client_key = {0};
+                if (integral_client_alias_controller_event(&state.keys,
+                                                           state.ui.client_alias_held,
+                                                           &event,
+                                                           &client_key)) {
+                    dispatch_client_key(&state, &client_key);
+                }
             }
             else if (event.type == SDL_WINDOWEVENT &&
                      event.window.event == SDL_WINDOWEVENT_CLOSE &&
@@ -244,6 +279,10 @@ int main(int argc, char **argv)
                 }
             }
             else if (event.type == SDL_TEXTINPUT) {
+                if (state.ui.suppress_text_input_once) {
+                    state.ui.suppress_text_input_once = false;
+                    continue;
+                }
                 if (state.ui.screen == SCREEN_LOGIN && state.login.editing) {
                     handle_text_input(&state.login, &event.text);
                     if (state.login.selected == FIELD_SERVER &&
