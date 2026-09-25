@@ -3578,6 +3578,38 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(decode(downloaded["save_data"]), generated)
 
+    def test_rom_slot_apply_accepts_rtc_only_generated_gb_initial_save(self) -> None:
+        self.post(
+            "/auth/register",
+            {"username": "Generated_Rtc_Only", "password": "correct horse battery staple"},
+        )
+        token = self.post(
+            "/auth/login",
+            {"username": "generated_rtc_only", "password": "correct horse battery staple"},
+        )["token"]["token"]
+        alpha = next(
+            rom for rom in allowed_roms()
+            if rom.game_type == "sample_alpha" and rom.display_name == "SAMPLE ALPHA"
+        )
+        generated = bytes(range(48))
+        applied = self.post(
+            "/rom-slots/apply",
+            {"slots": [{
+                "slot": 1,
+                "filename": "alpha.gbc",
+                "sha256": alpha.sha256,
+                "sha1": alpha.sha1,
+                "platform": "gb",
+                "region": "JP",
+                "generated_initial_save_data": encode(generated),
+            }]},
+            token=token,
+        )
+        downloaded = self.get(
+            f"/saves/{applied['slots'][0]['save_id']}", token=token
+        )
+        self.assertEqual(decode(downloaded["save_data"]), generated)
+
     def test_rom_slot_apply_accepts_zero_byte_generated_gb_initial_save(self) -> None:
         self.post(
             "/auth/register",
