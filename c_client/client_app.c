@@ -113,7 +113,8 @@ void handle_key_config_key(AppState *state, const SDL_KeyboardEvent *key)
 {
     if (integral_client_key_editor_keyboard(&state->key_editor, &state->keys,
             state->config_path, state->login.status, sizeof(state->login.status), key)) {
-        state->ui.screen = SCREEN_MAIN_MENU;
+        state->ui.screen = SCREEN_SETTINGS;
+        state->ui.settings_selected = (unsigned)state->key_editor.page;
     }
 }
 
@@ -591,6 +592,68 @@ static void move_main_selection(AppState *state, int delta)
 }
 
 
+static void move_settings_selection(AppState *state, int delta)
+{
+    int selected = (int)state->ui.settings_selected + delta;
+    if (selected < 0) selected = INTEGRAL_SETTINGS_ROWS - 1;
+    if (selected >= INTEGRAL_SETTINGS_ROWS) selected = 0;
+    state->ui.settings_selected = (unsigned)selected;
+}
+
+
+void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key)
+{
+    if (key->repeat) return;
+    switch (key->keysym.sym) {
+        case SDLK_ESCAPE:
+            state->ui.screen = SCREEN_MAIN_MENU;
+            copy_text(state->login.status, sizeof(state->login.status), "MAIN MENU");
+            break;
+        case SDLK_TAB:
+        case SDLK_DOWN:
+            move_settings_selection(state, 1);
+            break;
+        case SDLK_UP:
+            move_settings_selection(state, -1);
+            break;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            if (state->ui.settings_selected == 3u) {
+                /* OPTIONS is a focusable placeholder with no action yet. */
+            }
+            else if (state->ui.settings_selected == INTEGRAL_SETTINGS_ROWS - 1u) {
+                state->ui.screen = SCREEN_MAIN_MENU;
+                copy_text(state->login.status, sizeof(state->login.status), "MAIN MENU");
+            }
+            else {
+                if (state->ui.settings_selected == 0u) {
+                    state->key_editor.page = KEY_CONFIG_PAGE_GB;
+                    state->ui.screen = SCREEN_GB_KEY_CONFIG;
+                    copy_text(state->login.status, sizeof(state->login.status), "GB KEYS CONFIG");
+                }
+                else if (state->ui.settings_selected == 1u) {
+                    state->key_editor.page = KEY_CONFIG_PAGE_N64;
+                    state->ui.screen = SCREEN_N64_KEY_CONFIG;
+                    copy_text(state->login.status, sizeof(state->login.status), "N64 KEYS CONFIG");
+                }
+                else {
+                    state->key_editor.page = KEY_CONFIG_PAGE_UTIL;
+                    state->ui.screen = SCREEN_UTIL_KEY_CONFIG;
+                    copy_text(state->login.status, sizeof(state->login.status), "UTIL KEYS");
+                }
+                state->key_editor.key_selected = 0;
+                if (state->key_editor.page == KEY_CONFIG_PAGE_N64) {
+                    state->key_editor.n64_controller_index = 0;
+                }
+                state->key_editor.key_capture_target = KEY_CAPTURE_NONE;
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+
 void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
 {
     if (key->repeat) {
@@ -633,10 +696,9 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
                 enter_rom_register(state);
             }
             else if (state->ui.main_selected == 4) {
-                state->ui.screen = SCREEN_KEY_CONFIG;
-                state->key_editor.key_selected = 0;
-                state->key_editor.key_capture_target = KEY_CAPTURE_NONE;
-                copy_text(state->login.status, sizeof(state->login.status), "KEY CONFIG");
+                state->ui.screen = SCREEN_SETTINGS;
+                state->ui.settings_selected = 0;
+                copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
             }
             else {
                 integral_screenshots_close(state->screenshots);
@@ -672,7 +734,9 @@ bool set_game_input_active(AppState *state, bool active)
         int opened = integral_gb_runtime_key_config_open_game_controllers();
         state->ui.game_input_active = true;
         client_log(state, "controller_input_enabled", "opened=%d scope=%s", opened,
-                   state->ui.screen == SCREEN_KEY_CONFIG ? "key_config" : "game");
+                   (state->ui.screen == SCREEN_GB_KEY_CONFIG ||
+                    state->ui.screen == SCREEN_N64_KEY_CONFIG ||
+                    state->ui.screen == SCREEN_UTIL_KEY_CONFIG) ? "key_config" : "game");
         return true;
     }
     integral_gb_runtime_key_config_close_game_controllers();
@@ -685,7 +749,10 @@ bool set_game_input_active(AppState *state, bool active)
 
 bool client_game_input_required(const AppState *state)
 {
-    return state->ui.screen == SCREEN_KEY_CONFIG ||
+    return state->ui.screen == SCREEN_GB_KEY_CONFIG ||
+           state->ui.screen == SCREEN_N64_KEY_CONFIG ||
+           state->ui.screen == SCREEN_UTIL_KEY_CONFIG ||
+           integral_client_alias_has_controller_binding(&state->keys) ||
            (state->ui.screen == SCREEN_N64_ROOM && state->room.n64.n64_runtime_media_authenticated);
 }
 

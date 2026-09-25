@@ -29,6 +29,12 @@ typedef struct IntegralConfigKeys {
     char escape[INTEGRAL_CONFIG_KEY_NAME_MAX];
     char turbo_hold[INTEGRAL_CONFIG_KEY_NAME_MAX];
     char reset[INTEGRAL_CONFIG_KEY_NAME_MAX];
+    char client_alias_right[INTEGRAL_CONFIG_KEY_NAME_MAX];
+    char client_alias_left[INTEGRAL_CONFIG_KEY_NAME_MAX];
+    char client_alias_up[INTEGRAL_CONFIG_KEY_NAME_MAX];
+    char client_alias_down[INTEGRAL_CONFIG_KEY_NAME_MAX];
+    char client_alias_enter[INTEGRAL_CONFIG_KEY_NAME_MAX];
+    char client_alias_escape[INTEGRAL_CONFIG_KEY_NAME_MAX];
 } IntegralConfigKeys;
 
 typedef struct IntegralConfigLogin {

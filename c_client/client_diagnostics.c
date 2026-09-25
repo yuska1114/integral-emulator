@@ -1151,7 +1151,7 @@ int client_diagnostics_startup(int argc, char **argv, ClientDiagnostics *diag)
             navigation.room.n64.n64_runtime_media_authenticated = true;
             if (client_game_input_required(&navigation)) return 1;
         }
-        navigation.ui.screen = SCREEN_KEY_CONFIG;
+        navigation.ui.screen = SCREEN_GB_KEY_CONFIG;
         if (!client_game_input_required(&navigation)) return 1;
         navigation.ui.screen = SCREEN_N64_ROOM;
         navigation.room.n64.n64_runtime_media_authenticated = false;
@@ -1361,8 +1361,9 @@ void client_diagnostics_prepare_screen(AppState *state, int argc, char **argv)
                           "TEXT INPUT ACTIVE");
             }
             else if (strcmp(argv[i + 1], "keys") == 0) {
-                state->ui.screen = SCREEN_KEY_CONFIG;
-                copy_text(state->login.status, sizeof(state->login.status), "KEY CONFIG");
+                state->ui.screen = SCREEN_GB_KEY_CONFIG;
+                state->key_editor.page = KEY_CONFIG_PAGE_GB;
+                copy_text(state->login.status, sizeof(state->login.status), "GB KEYS CONFIG");
             }
             else if (strcmp(argv[i + 1], "rom") == 0 || strcmp(argv[i + 1], "rom-confirm") == 0 ||
                      strcmp(argv[i + 1], "rom-edit") == 0) {

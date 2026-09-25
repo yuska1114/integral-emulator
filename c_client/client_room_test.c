@@ -61,6 +61,16 @@ int main(int argc, char **argv)
         key.keysym.sym=SDLK_TAB;handle_main_key(&app,&key);assert(app.ui.main_selected==2);
         key.keysym.sym=SDLK_UP;handle_main_key(&app,&key);assert(app.ui.main_selected==1);
         key.keysym.sym=SDLK_RETURN;handle_main_key(&app,&key);assert(app.ui.screen==SCREEN_ROOM_MODE);
+        app.ui.screen=SCREEN_MAIN_MENU;app.ui.main_selected=4;
+        handle_main_key(&app,&key);assert(app.ui.screen==SCREEN_SETTINGS);
+        app.ui.settings_selected=3;handle_settings_key(&app,&key);
+        assert(app.ui.screen==SCREEN_SETTINGS && app.ui.settings_selected==3);
+        app.ui.settings_selected=0;handle_settings_key(&app,&key);
+        assert(app.ui.screen==SCREEN_GB_KEY_CONFIG && app.key_editor.page==KEY_CONFIG_PAGE_GB);
+        key.keysym.sym=SDLK_ESCAPE;handle_key_config_key(&app,&key);
+        assert(app.ui.screen==SCREEN_SETTINGS && app.ui.settings_selected==0);
+        app.ui.settings_selected=4;key.keysym.sym=SDLK_RETURN;handle_settings_key(&app,&key);
+        assert(app.ui.screen==SCREEN_MAIN_MENU);
         integral_room_destroy_resources(&app.room);SDL_DestroyWindow(main);SDL_Quit();
         puts("Remote window destroyed, MAIN focus restored, arrows/Tab/Enter PASS");
         return 0;

@@ -190,6 +190,30 @@ static int load_config_file(const char *path,
                 copy_text(keys->reset, sizeof(keys->reset), value);
                 continue;
             }
+            if (strncmp(line, "keys.client_alias_right=", 24) == 0) {
+                copy_text(keys->client_alias_right, sizeof(keys->client_alias_right), line + 24);
+                continue;
+            }
+            if (strncmp(line, "keys.client_alias_left=", 23) == 0) {
+                copy_text(keys->client_alias_left, sizeof(keys->client_alias_left), line + 23);
+                continue;
+            }
+            if (strncmp(line, "keys.client_alias_up=", 21) == 0) {
+                copy_text(keys->client_alias_up, sizeof(keys->client_alias_up), line + 21);
+                continue;
+            }
+            if (strncmp(line, "keys.client_alias_down=", 23) == 0) {
+                copy_text(keys->client_alias_down, sizeof(keys->client_alias_down), line + 23);
+                continue;
+            }
+            if (strncmp(line, "keys.client_alias_enter=", 24) == 0) {
+                copy_text(keys->client_alias_enter, sizeof(keys->client_alias_enter), line + 24);
+                continue;
+            }
+            if (strncmp(line, "keys.client_alias_escape=", 25) == 0) {
+                copy_text(keys->client_alias_escape, sizeof(keys->client_alias_escape), line + 25);
+                continue;
+            }
         }
         if (slots) {
             unsigned index = 0;
@@ -282,6 +306,12 @@ static int save_config_file(const char *path,
         fprintf(file, "keys.escape=%s\n", keys->escape);
         fprintf(file, "keys.turbo_hold=%s\n", keys->turbo_hold);
         fprintf(file, "keys.reset=%s\n", keys->reset);
+        fprintf(file, "keys.client_alias_right=%s\n", keys->client_alias_right);
+        fprintf(file, "keys.client_alias_left=%s\n", keys->client_alias_left);
+        fprintf(file, "keys.client_alias_up=%s\n", keys->client_alias_up);
+        fprintf(file, "keys.client_alias_down=%s\n", keys->client_alias_down);
+        fprintf(file, "keys.client_alias_enter=%s\n", keys->client_alias_enter);
+        fprintf(file, "keys.client_alias_escape=%s\n", keys->client_alias_escape);
     }
 
     for (size_t i = 0; i < slot_count; i++) {
@@ -409,6 +439,12 @@ void integral_keys_reset_editable_defaults(IntegralConfigKeys *keys)
     copy_text(keys->escape, sizeof(keys->escape), "ESCAPE");
     copy_text(keys->turbo_hold, sizeof(keys->turbo_hold), "B");
     copy_text(keys->reset, sizeof(keys->reset), "O");
+    keys->client_alias_right[0] = '\0';
+    keys->client_alias_left[0] = '\0';
+    keys->client_alias_up[0] = '\0';
+    keys->client_alias_down[0] = '\0';
+    keys->client_alias_enter[0] = '\0';
+    keys->client_alias_escape[0] = '\0';
 }
 
 void integral_keys_apply_defaults_for_missing(IntegralConfigKeys *keys)

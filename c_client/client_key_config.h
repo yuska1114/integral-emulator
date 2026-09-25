@@ -6,10 +6,13 @@
 #include <SDL.h>
 #include <stdbool.h>
 
-#define INTEGRAL_KEY_ROWS 5
+#define INTEGRAL_GB_KEY_ROWS 4
+#define INTEGRAL_N64_KEY_ROWS 4
+#define INTEGRAL_UTIL_KEY_ROWS 4
 #define INTEGRAL_KEY_BUTTONS 8
 #define INTEGRAL_N64_RUNTIME_KEY_BUTTONS 18
 #define INTEGRAL_UTIL_KEYS 5
+#define INTEGRAL_CLIENT_ALIAS_KEYS 6
 
 typedef enum KeyCaptureTarget {
     KEY_CAPTURE_NONE,
@@ -17,9 +20,17 @@ typedef enum KeyCaptureTarget {
     KEY_CAPTURE_SLOT2,
     KEY_CAPTURE_N64,
     KEY_CAPTURE_UTILS,
+    KEY_CAPTURE_CLIENT_ALIAS,
 } KeyCaptureTarget;
+typedef enum KeyConfigPage {
+    KEY_CONFIG_PAGE_GB,
+    KEY_CONFIG_PAGE_N64,
+    KEY_CONFIG_PAGE_UTIL,
+} KeyConfigPage;
 typedef struct IntegralClientKeyEditor {
     unsigned key_selected;
+    KeyConfigPage page;
+    unsigned n64_controller_index;
     KeyCaptureTarget key_capture_target;
     unsigned key_capture_step;
     bool key_capture_wait_release;
@@ -38,5 +49,12 @@ const char *key_config_step_label(KeyCaptureTarget, unsigned);
 unsigned n64_key_spec_index_for_capture_step(unsigned);
 void format_slot_key_summary(const char *, char *, size_t, char *, size_t);
 void format_util_key_summary(const IntegralConfigKeys *, char *, size_t, char *, size_t, char *, size_t);
+void format_client_alias_summary(const IntegralConfigKeys *, char *, size_t, char *, size_t);
 void format_n64_key_summary(const char *, char *, size_t, char *, size_t, char *, size_t);
+bool integral_client_alias_keyboard_event(const IntegralConfigKeys *, const SDL_KeyboardEvent *,
+                                          SDL_KeyboardEvent *);
+bool integral_client_alias_controller_event(const IntegralConfigKeys *,
+                                            bool held[INTEGRAL_CLIENT_ALIAS_KEYS],
+                                            const SDL_Event *, SDL_KeyboardEvent *);
+bool integral_client_alias_has_controller_binding(const IntegralConfigKeys *);
 #endif

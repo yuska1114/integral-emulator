@@ -15,7 +15,10 @@ typedef struct {
     unsigned window_height;
     bool window_size_dirty;
     unsigned main_selected;
+    unsigned settings_selected;
     bool game_input_active;
+    bool client_alias_held[INTEGRAL_CLIENT_ALIAS_KEYS];
+    bool suppress_text_input_once;
     bool quit;
 } IntegralClientUiState;
 
