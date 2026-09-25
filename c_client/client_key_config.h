@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 #define INTEGRAL_GB_KEY_ROWS 4
-#define INTEGRAL_N64_KEY_ROWS 3
+#define INTEGRAL_N64_KEY_ROWS 4
 #define INTEGRAL_UTIL_KEY_ROWS 3
 #define INTEGRAL_KEY_BUTTONS 8
 #define INTEGRAL_N64_RUNTIME_KEY_BUTTONS 18
@@ -28,6 +28,7 @@ typedef enum KeyConfigPage {
 typedef struct IntegralClientKeyEditor {
     unsigned key_selected;
     KeyConfigPage page;
+    unsigned n64_controller_index;
     KeyCaptureTarget key_capture_target;
     unsigned key_capture_step;
     bool key_capture_wait_release;

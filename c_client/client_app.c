@@ -642,6 +642,9 @@ void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key)
                     copy_text(state->login.status, sizeof(state->login.status), "UTIL KEYS");
                 }
                 state->key_editor.key_selected = 0;
+                if (state->key_editor.page == KEY_CONFIG_PAGE_N64) {
+                    state->key_editor.n64_controller_index = 0;
+                }
                 state->key_editor.key_capture_target = KEY_CAPTURE_NONE;
             }
             break;

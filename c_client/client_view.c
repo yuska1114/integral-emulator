@@ -1092,7 +1092,21 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
     char util_line3[192];
     format_slot_key_summary(state->keys.slot1, slot1_line1, sizeof(slot1_line1), slot1_line2, sizeof(slot1_line2));
     format_slot_key_summary(state->keys.slot2, slot2_line1, sizeof(slot2_line1), slot2_line2, sizeof(slot2_line2));
-    format_n64_key_summary(state->keys.n64_p1,
+    const char *n64_key_spec = state->keys.n64_p1;
+    switch (state->key_editor.n64_controller_index) {
+        case 1u:
+            n64_key_spec = state->keys.n64_p2;
+            break;
+        case 2u:
+            n64_key_spec = state->keys.n64_p3;
+            break;
+        case 3u:
+            n64_key_spec = state->keys.n64_p4;
+            break;
+        default:
+            break;
+    }
+    format_n64_key_summary(n64_key_spec,
                            n64_line1,
                            sizeof(n64_line1),
                            n64_line2,
@@ -1107,7 +1121,8 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
                             util_line3,
                             sizeof(util_line3));
 
-    unsigned reset_row = state->key_editor.page == KEY_CONFIG_PAGE_GB ? 2u : 1u;
+    unsigned reset_row = state->key_editor.page == KEY_CONFIG_PAGE_GB ? 2u :
+        (state->key_editor.page == KEY_CONFIG_PAGE_N64 ? 2u : 1u);
     unsigned back_row = reset_row + 1u;
     const char *group_label = state->key_editor.page == KEY_CONFIG_PAGE_GB ? NULL :
         (state->key_editor.page == KEY_CONFIG_PAGE_N64 ? "N64 KEYS" : "UTIL KEYS");
@@ -1131,15 +1146,27 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
         }
     }
     else if (state->key_editor.page == KEY_CONFIG_PAGE_N64) {
-        integral_sdl_draw_text(renderer, 48, 100, "N64 CONTROLLER 1P", 2, label);
-        if (state->key_editor.key_selected == 0) {
+        char controller_label[32];
+        snprintf(controller_label,
+                 sizeof(controller_label),
+                 "N64 CONTROLLER < %uP >",
+                 state->key_editor.n64_controller_index + 1u);
+        if (state->key_editor.key_selected == 0u) {
+            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+            SDL_Rect rect = {.x = 14, .y = 94, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 26};
+            SDL_RenderFillRect(renderer, &rect);
+            integral_sdl_draw_text(renderer, 24, 99, ">", 2, selected);
+        }
+        integral_sdl_draw_text(renderer, 48, 100, controller_label, 2,
+                               state->key_editor.key_selected == 0u ? selected : label);
+        if (state->key_editor.key_selected == 1u) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = 143, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 88};
             SDL_RenderFillRect(renderer, &rect);
             integral_sdl_draw_text(renderer, 24, 148, ">", 2, selected);
         }
         integral_sdl_draw_text(renderer, 48, 146, group_label,
-                               2, state->key_editor.key_selected == 0 ? selected : label);
+                               2, state->key_editor.key_selected == 1u ? selected : label);
         integral_client_ui_draw_text_fit(renderer, 48, 174, n64_line1, 1, value, 400);
         integral_client_ui_draw_text_fit(renderer, 48, 192, n64_line2, 1, value, 400);
         integral_client_ui_draw_text_fit(renderer, 48, 210, n64_line3, 1, value, 400);
