@@ -108,6 +108,28 @@ int main(int argc, char **argv)
     raw.type = SDL_KEYDOWN; raw.keysym.sym = SDLK_m; raw.keysym.scancode = SDL_SCANCODE_M;
     CHECK(integral_client_alias_keyboard_event(&keys, &raw, &translated));
     CHECK(translated.keysym.sym == SDLK_RIGHT);
+
+    bool held[INTEGRAL_CLIENT_ALIAS_KEYS] = {false};
+    SDL_Event alias_event = {0};
+    SDL_KeyboardEvent alias_translated = {0};
+    snprintf(keys.client_alias_right, sizeof(keys.client_alias_right), "PAD_LEFTX_POS");
+    snprintf(keys.client_alias_left, sizeof(keys.client_alias_left), "PAD_LEFTX_NEG");
+    alias_event.type = SDL_CONTROLLERAXISMOTION;
+    alias_event.caxis.axis = SDL_CONTROLLER_AXIS_LEFTX;
+    alias_event.caxis.value = -INTEGRAL_GB_RUNTIME_CONTROLLER_AXIS_THRESHOLD - 1;
+    CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
+    CHECK(alias_translated.keysym.sym == SDLK_LEFT);
+
+    memset(held, 0, sizeof(held));
+    snprintf(keys.client_alias_right, sizeof(keys.client_alias_right), "JOY_HAT_0_RIGHT");
+    snprintf(keys.client_alias_left, sizeof(keys.client_alias_left), "JOY_HAT_0_LEFT");
+    snprintf(keys.client_alias_up, sizeof(keys.client_alias_up), "JOY_HAT_0_UP");
+    snprintf(keys.client_alias_down, sizeof(keys.client_alias_down), "JOY_HAT_0_DOWN");
+    alias_event.type = SDL_JOYHATMOTION;
+    alias_event.jhat.hat = 0;
+    alias_event.jhat.value = SDL_HAT_LEFT;
+    CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
+    CHECK(alias_translated.keysym.sym == SDLK_LEFT);
     IntegralConfigKeys defaults; integral_keys_defaults(&defaults);
     editor.key_selected = 2; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     CHECK(strcmp(keys.fast, defaults.fast) == 0 && strcmp(keys.reset, defaults.reset) == 0);
