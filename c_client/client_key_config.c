@@ -496,6 +496,10 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
             else if (state->editor->page == KEY_CONFIG_PAGE_UTIL && state->editor->key_selected == 0) {
                 begin_key_capture(state, KEY_CAPTURE_UTILS);
             }
+            else if (state->editor->page == KEY_CONFIG_PAGE_N64 &&
+                     state->editor->key_selected == 0u) {
+                /* Controller selection is changed with Left/Right only. */
+            }
             else if ((state->editor->page == KEY_CONFIG_PAGE_GB &&
                       state->editor->key_selected == 2u) ||
                      (state->editor->page == KEY_CONFIG_PAGE_N64 &&
