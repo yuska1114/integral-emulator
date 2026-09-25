@@ -53,7 +53,6 @@ static const char *integral_gb_runtime_fixed_host_ca_file(void);
 static const char *room_link_mode_api_name(IntegralRoomLinkMode mode);
 static bool room_link_mode_from_api(const char *mode, IntegralRoomLinkMode *mode_out);
 static void cycle_room_link_mode(IntegralRoomContext *state, int delta);
-static void set_room_link_mode(IntegralRoomContext *state, IntegralRoomLinkMode mode);
 static void mark_room_link_mode_local_override(IntegralRoomContext *state);
 static void cycle_room_rom_slot(IntegralRoomContext *state, int delta);
 static void sync_room_state(IntegralRoomContext *state);
@@ -166,14 +165,6 @@ static void cycle_room_link_mode(IntegralRoomContext *state, int delta)
     }
     next %= 2;
     state->link.room_link_mode = order[next];
-    state->common.room_ready_self = false;
-    state->common.room_ready_peer = false;
-}
-
-
-static void set_room_link_mode(IntegralRoomContext *state, IntegralRoomLinkMode mode)
-{
-    state->link.room_link_mode = mode;
     state->common.room_ready_self = false;
     state->common.room_ready_peer = false;
 }
