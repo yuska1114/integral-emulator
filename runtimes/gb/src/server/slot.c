@@ -85,6 +85,12 @@ int integral_gb_runtime_slot_model_for_rom(const char *rom_path,
     return 0;
 }
 
+GB_model_t integral_gb_runtime_slot_apply_sgb_policy(GB_model_t model, bool sgb_enabled)
+{
+    if (!sgb_enabled && model == GB_MODEL_SGB2) return GB_MODEL_DMG_B;
+    return model;
+}
+
 const char *integral_gb_runtime_slot_model_name(GB_model_t model)
 {
     switch (model) {

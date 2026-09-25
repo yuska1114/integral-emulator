@@ -46,6 +46,7 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
     options->scale = integral_display_scale_from_environment(
         "INTEGRAL_EMULATOR_DISPLAY_SCALE");
     options->skip_boot_rom = true;
+    options->sgb_disabled = false;
     options->link_enabled = true;
     options->ir_off_delay_ticks = 32;
     options->audio_max_ms = 120;
@@ -99,6 +100,15 @@ int integral_gb_runtime_server_parse_options(int argc, char **argv, ServerOption
         }
         else if (strcmp(argv[i], "--no-skip-boot-rom") == 0) {
             options->skip_boot_rom = false;
+        }
+        else if (strcmp(argv[i], "--sgb") == 0 && i + 1 < argc) {
+            const char *value = argv[++i];
+            if (strcmp(value, "enable") == 0) options->sgb_disabled = false;
+            else if (strcmp(value, "disable") == 0) options->sgb_disabled = true;
+            else {
+                fprintf(stderr, "Invalid --sgb value\n");
+                return -1;
+            }
         }
         else if (strcmp(argv[i], "--no-link") == 0) {
             options->link_enabled = false;

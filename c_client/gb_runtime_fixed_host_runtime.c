@@ -44,6 +44,7 @@ int integral_gb_runtime_fixed_host_runtime_init(
         .rtc_offset_seconds = config->rtc_offset_seconds,
         .rtc_target_unix = config->rtc_target_unix,
         .ir_off_delay_ticks = config->ir_off_delay_ticks,
+        .sgb_disabled = config->sgb_disabled,
         .preserve_both_audio = config->preserve_both_audio,
     };
     result = integral_gb_runtime_link_engine_init(&runtime->engine, &engine_config);

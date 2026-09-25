@@ -159,6 +159,7 @@ void integral_gb_local_run(const IntegralGbLocalRequest *request)
         .save2 = slot2_save_path, .port = request->port,
         .rtc_offset = rtc_offset_text,
         .ir_off_delay_ticks = ir_off_delay_text,
+        .sgb = integral_config_sgb_enabled(request->config_path) ? "enable" : "disable",
         .window_width = gb_window_width_text, .window_height = gb_window_height_text,
         .keys = request->keys,
     };
@@ -180,6 +181,8 @@ void integral_gb_local_arguments(const IntegralGbLocalLaunch *launch,
     argv[n++] = launch->rom1;
     argv[n++] = "--save1";
     argv[n++] = launch->save1;
+    argv[n++] = "--sgb";
+    argv[n++] = launch->sgb ? launch->sgb : "enable";
     if (launch->rom2) {
         argv[n++] = "--rom2";
         argv[n++] = launch->rom2;

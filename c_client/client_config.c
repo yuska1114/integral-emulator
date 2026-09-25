@@ -254,6 +254,29 @@ static int replace_file(const char *temporary_path, const char *path)
 #endif
 }
 
+int integral_config_sgb_enabled(const char *path)
+{
+    if (!path) return 1;
+    FILE *file = fopen(path, "r");
+    if (!file) return 1;
+
+    int enabled = 1;
+    char line[128];
+    while (fgets(line, sizeof(line), file)) {
+        strip_newline(line);
+        if (strcmp(line, "sgb=disable") == 0) {
+            enabled = 0;
+            break;
+        }
+        if (strcmp(line, "sgb=enable") == 0) {
+            enabled = 1;
+            break;
+        }
+    }
+    fclose(file);
+    return enabled;
+}
+
 static int save_config_file(const char *path,
                             const IntegralConfigLogin *login,
                             const IntegralConfigLocal *local,
@@ -262,6 +285,7 @@ static int save_config_file(const char *path,
                             const IntegralConfigRomSlot *slots,
                             size_t slot_count)
 {
+    int sgb_enabled = integral_config_sgb_enabled(path);
     ensure_parent_directory(path);
     char temporary_path[INTEGRAL_CONFIG_PATH_MAX * 2u];
     if (snprintf(temporary_path, sizeof(temporary_path), "%s.part", path) >=
@@ -274,6 +298,7 @@ static int save_config_file(const char *path,
     }
 
     fprintf(file, "# INTEGRAL EMULATOR client config\n");
+    fprintf(file, "sgb=%s\n", sgb_enabled ? "enable" : "disable");
     if (login) {
         fprintf(file, "login.server=%s\n", login->server);
         fprintf(file, "login.server_id=%s\n", login->server_id[0] ? login->server_id : "primary");

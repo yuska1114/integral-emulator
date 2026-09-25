@@ -13,6 +13,7 @@ typedef struct IntegralGBRuntimeFixedHostChildConfig {
     IntegralGBRuntimeFixedHostProductRole role;
     int64_t rtc_offset_seconds;
     uint64_t rtc_target_unix;
+    bool sgb_disabled;
 } IntegralGBRuntimeFixedHostChildConfig;
 
 typedef struct IntegralGBRuntimeFixedHostChildRuntime {

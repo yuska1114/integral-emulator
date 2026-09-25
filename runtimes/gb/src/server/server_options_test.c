@@ -45,6 +45,26 @@ int main(int argc, char **argv)
         (int)(sizeof(normal_play) / sizeof(normal_play[0])), normal_play,
         &auto_a_options) == 0);
     CHECK(auto_a_options.auto_a_frames == 0);
+    CHECK(!auto_a_options.sgb_disabled);
+
+    char *sgb_disabled_play[] = {
+        "server", "--self", "--rom1", "normal.gbc", "--save1", "normal.sav",
+        "--sgb", "disable",
+    };
+    ServerOptions sgb_options = {0};
+    CHECK(integral_gb_runtime_server_parse_options(
+        (int)(sizeof(sgb_disabled_play) / sizeof(sgb_disabled_play[0])),
+        sgb_disabled_play, &sgb_options) == 0);
+    CHECK(sgb_options.sgb_disabled);
+    sgb_disabled_play[7] = "enable";
+    CHECK(integral_gb_runtime_server_parse_options(
+        (int)(sizeof(sgb_disabled_play) / sizeof(sgb_disabled_play[0])),
+        sgb_disabled_play, &sgb_options) == 0);
+    CHECK(!sgb_options.sgb_disabled);
+    sgb_disabled_play[7] = "invalid";
+    CHECK(parse((int)(sizeof(sgb_disabled_play) / sizeof(sgb_disabled_play[0])),
+                sgb_disabled_play) != 0);
+
     char *automatic_play[] = {
         "server", "--self", "--rom1", "normal.gbc", "--save1", "normal.sav",
         "--auto-a-frames", "3", "--auto-a-pulse", "2",

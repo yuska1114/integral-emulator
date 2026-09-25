@@ -63,6 +63,7 @@ int integral_gb_runtime_slot_model_for_rom(const char *rom_path,
                                    GB_model_t *model,
                                    IntegralGBRuntimeRomProfile *profile,
                                    IntegralGBRuntimeRomModelReason *reason);
+GB_model_t integral_gb_runtime_slot_apply_sgb_policy(GB_model_t model, bool sgb_enabled);
 const char *integral_gb_runtime_slot_model_name(GB_model_t model);
 int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBRuntimeSlotConfig *config);
 unsigned integral_gb_runtime_slot_run_until_sync(IntegralGBRuntimeSlot *slot);
