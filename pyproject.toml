@@ -1,6 +1,6 @@
 [project]
 name = "integral-emulator"
-version = "0.1.1"
+version = "0.2.0-dev"
 description = "INTEGRAL EMULATOR client and online service foundation"
 authors = [{ name = "yuska (GitHub: @yuska1114)" }]
 license = "AGPL-3.0-or-later"
