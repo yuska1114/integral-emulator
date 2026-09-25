@@ -13,6 +13,7 @@ import os
 import sys
 import tarfile
 import tempfile
+import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -21,7 +22,18 @@ from public_source_integrity import (
 )
 
 
-VERSION = "0.1.1"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def read_project_version(root: Path = PROJECT_ROOT) -> str:
+    with (root / "pyproject.toml").open("rb") as stream:
+        value = tomllib.load(stream).get("project", {}).get("version")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("pyproject.toml must define project.version")
+    return value.strip()
+
+
+VERSION = read_project_version()
 PACKAGE_ROOT = f"integral-server-{VERSION}"
 INCLUDE = (
     Path("install.sh"),
@@ -135,7 +147,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
+    root = PROJECT_ROOT
     output = (
         args.output
         or root / "dist/server" / f"INTEGRAL_SERVER_{VERSION}_UBUNTU.tar.gz"
