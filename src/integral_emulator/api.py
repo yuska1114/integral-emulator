@@ -119,6 +119,42 @@ ROOM_LEAVE_CANCEL_STATUSES = {
     LinkSessionStatus.RUNNING.value,
 }
 
+# SameBoy initializes fresh cartridge RAM to 0xFF. The generated initial SAV
+# may append an RTC trailer, which is intentionally outside this validation.
+GENERATED_GB_RAM_SIZES = frozenset((
+    0x100,    # MBC7
+    0x200,    # MBC2
+    0x800,    # 2 KiB
+    0x2000,   # 8 KiB
+    0x4000,   # 16 KiB (TPP1)
+    0x8000,   # 32 KiB
+    0x10000,  # 64 KiB
+    0x20000,  # 128 KiB
+))
+GENERATED_GB_RTC_TRAILER_SIZES = (0, 17, 20, 48)
+
+
+def validate_generated_gb_initial_save(save_bytes: bytes) -> None:
+    if not save_bytes:
+        return
+
+    ram_sizes = tuple(
+        len(save_bytes) - trailer_size
+        for trailer_size in GENERATED_GB_RTC_TRAILER_SIZES
+        if len(save_bytes) >= trailer_size
+        and len(save_bytes) - trailer_size in GENERATED_GB_RAM_SIZES
+    )
+    if not ram_sizes:
+        ram_sizes = (len(save_bytes),)
+
+    if not any(
+        all(byte == 0xFF for byte in save_bytes[:ram_size])
+        for ram_size in ram_sizes
+    ):
+        raise ValidationError(
+            "generated_initial_save_data RAM must be initialized to 0xFF"
+        )
+
 
 class RequestBodyTooLarge(Exception):
     pass
@@ -863,6 +899,9 @@ class LeagueApplication:
                         )
                     desired["initial_save_bytes"] = decode_base64_field(
                         desired, "generated_initial_save_data"
+                    )
+                    validate_generated_gb_initial_save(
+                        desired["initial_save_bytes"]
                     )
                     desired.pop("generated_initial_save_data", None)
                 desired_slots.append(desired)
