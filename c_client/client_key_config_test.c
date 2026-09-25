@@ -25,7 +25,8 @@ int main(int argc, char **argv)
     snprintf(path, sizeof(path), "%s/keys.conf", argv[1]);
     CHECK(SDL_Init(SDL_INIT_EVENTS | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) == 0);
     integral_keys_defaults(&keys);
-    CHECK(!press(SDLK_UP, SDL_SCANCODE_UP, 0) && editor.key_selected == 4);
+    editor.page = KEY_CONFIG_PAGE_GB;
+    CHECK(!press(SDLK_UP, SDL_SCANCODE_UP, 0) && editor.key_selected == 3);
     CHECK(!press(SDLK_DOWN, SDL_SCANCODE_DOWN, 0) && editor.key_selected == 0);
     press(SDLK_DOWN, SDL_SCANCODE_DOWN, 1); CHECK(editor.key_selected == 0);
     CHECK(!press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0));
@@ -44,27 +45,41 @@ int main(int argc, char **argv)
     CHECK(strstr(keys.slot2, ",Z,") != NULL); /* Existing partial edits stay in memory, not saved. */
     CHECK(integral_config_load_keys(path, &restored) == 0 && strstr(restored.slot2, ",G,") != NULL);
     CHECK(press(SDLK_ESCAPE, SDL_SCANCODE_ESCAPE, 0));
+    editor.key_selected = 3;
+    CHECK(press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0) && strcmp(status, "SETTINGS") == 0);
 
-    editor.key_selected = 2; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    editor.page = KEY_CONFIG_PAGE_N64;
+    editor.key_selected = 0; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     for (unsigned i = 0; i < 18; i++) press(SDLK_z, SDL_SCANCODE_A + i, 0);
     CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
     CHECK(editor.key_capture_target == KEY_CAPTURE_NONE);
     CHECK(integral_config_load_keys(path, &restored) == 0 && strcmp(restored.n64_p1, keys.n64_p1) == 0);
-    editor.key_selected = 3; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    editor.page = KEY_CONFIG_PAGE_UTIL;
+    editor.key_selected = 0; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     press(SDLK_b, SDL_SCANCODE_B, 0);
     CHECK(editor.key_capture_step == 0 && !strcmp(status, "KEY ALREADY ASSIGNED"));
     press(SDLK_e, SDL_SCANCODE_E, 0);
     CHECK(editor.key_capture_step == 0 && !strcmp(status, "KEY ALREADY ASSIGNED"));
     for (unsigned i = 0; i < 5; i++) press(SDLK_F1 + (int)i, SDL_SCANCODE_F1 + i, 0);
     CHECK(strcmp(keys.fast, "F1") == 0 && strcmp(keys.reset, "F5") == 0);
-    editor.key_selected = 4; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     IntegralConfigKeys defaults; integral_keys_defaults(&defaults);
-    CHECK(strcmp(keys.slot1, defaults.slot1) == 0 && strcmp(keys.n64_p1, defaults.n64_p1) == 0);
+    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    CHECK(strcmp(keys.fast, defaults.fast) == 0 && strcmp(keys.reset, defaults.reset) == 0);
+    CHECK(strcmp(keys.slot1, "E,F,G,H,A,B,C,D") == 0);
+    CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
+    editor.page = KEY_CONFIG_PAGE_GB;
+    editor.key_selected = 2; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    CHECK(strcmp(keys.slot1, defaults.slot1) == 0 && strcmp(keys.slot2, defaults.slot2) == 0);
+    CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
+    editor.page = KEY_CONFIG_PAGE_N64;
+    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    CHECK(strcmp(keys.n64_p1, defaults.n64_p1) == 0);
 
     int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 2, 16, 1);
     CHECK(device >= 0 && integral_gb_runtime_key_config_open_game_controllers() >= 1);
     SDL_Event event = {0}; event.type = SDL_JOYBUTTONDOWN;
     event.jbutton.which = SDL_JoystickGetDeviceInstanceID(device); event.jbutton.button = 0; event.jbutton.state = SDL_PRESSED;
+    editor.page = KEY_CONFIG_PAGE_GB;
     editor.key_selected = 0; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     controller(&event); CHECK(editor.key_capture_step == 1 && editor.key_capture_wait_release);
     controller(&event); CHECK(editor.key_capture_step == 1);
@@ -77,7 +92,8 @@ int main(int argc, char **argv)
     }
     CHECK(editor.key_capture_target == KEY_CAPTURE_NONE && !editor.key_capture_wait_release);
     CHECK(integral_config_load_keys(path, &restored) == 0 && strcmp(restored.slot1, keys.slot1) == 0);
-    editor.key_selected = 3; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    editor.page = KEY_CONFIG_PAGE_UTIL;
+    editor.key_selected = 0; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     event.type = SDL_JOYBUTTONDOWN; event.jbutton.state = SDL_PRESSED; controller(&event);
     CHECK(editor.key_capture_step == 0 && !strcmp(status, "KEY ALREADY ASSIGNED"));
     event.type = SDL_JOYBUTTONUP; event.jbutton.state = SDL_RELEASED; controller(&event);
@@ -88,7 +104,8 @@ int main(int argc, char **argv)
     integral_gb_runtime_key_config_close_game_controllers();
     CHECK(SDL_JoystickDetachVirtual(device) == 0);
     snprintf(path, sizeof(path), "%s/keys.conf/blocked.conf", argv[1]);
-    editor.key_selected = 4; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    editor.page = KEY_CONFIG_PAGE_UTIL;
+    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     CHECK(strcmp(status, "KEY CONFIG SAVE FAILED") == 0);
     snprintf(path, sizeof(path), "%s/keys.conf", argv[1]);
     CHECK(remove(path) == 0);

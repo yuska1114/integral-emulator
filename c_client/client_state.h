@@ -15,6 +15,7 @@ typedef struct {
     unsigned window_height;
     bool window_size_dirty;
     unsigned main_selected;
+    unsigned settings_selected;
     bool game_input_active;
     bool quit;
 } IntegralClientUiState;

@@ -6,7 +6,9 @@
 #include <SDL.h>
 #include <stdbool.h>
 
-#define INTEGRAL_KEY_ROWS 5
+#define INTEGRAL_GB_KEY_ROWS 4
+#define INTEGRAL_N64_KEY_ROWS 3
+#define INTEGRAL_UTIL_KEY_ROWS 3
 #define INTEGRAL_KEY_BUTTONS 8
 #define INTEGRAL_N64_RUNTIME_KEY_BUTTONS 18
 #define INTEGRAL_UTIL_KEYS 5
@@ -18,8 +20,14 @@ typedef enum KeyCaptureTarget {
     KEY_CAPTURE_N64,
     KEY_CAPTURE_UTILS,
 } KeyCaptureTarget;
+typedef enum KeyConfigPage {
+    KEY_CONFIG_PAGE_GB,
+    KEY_CONFIG_PAGE_N64,
+    KEY_CONFIG_PAGE_UTIL,
+} KeyConfigPage;
 typedef struct IntegralClientKeyEditor {
     unsigned key_selected;
+    KeyConfigPage page;
     KeyCaptureTarget key_capture_target;
     unsigned key_capture_step;
     bool key_capture_wait_release;

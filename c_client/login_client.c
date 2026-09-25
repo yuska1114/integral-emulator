@@ -180,8 +180,13 @@ int main(int argc, char **argv)
                 else if (state.ui.screen == SCREEN_N64_ROOM) {
                     handle_n64_room_key(&state.room, &event.key);
                 }
-                else if (state.ui.screen == SCREEN_KEY_CONFIG) {
+                else if (state.ui.screen == SCREEN_GB_KEY_CONFIG ||
+                         state.ui.screen == SCREEN_N64_KEY_CONFIG ||
+                         state.ui.screen == SCREEN_UTIL_KEY_CONFIG) {
                     handle_key_config_key(&state, &event.key);
+                }
+                else if (state.ui.screen == SCREEN_SETTINGS) {
+                    handle_settings_key(&state, &event.key);
                 }
                 else if (state.ui.screen == SCREEN_SCREENSHOTS) {
                     if (integral_screenshots_key(state.screenshots, &event.key)) {
@@ -205,7 +210,10 @@ int main(int argc, char **argv)
                 }
                 client_log(&state, "controller_device_changed", "event=%u", event.type);
             }
-            else if (state.ui.screen == SCREEN_KEY_CONFIG && game_controller_input_event(event.type)) {
+            else if ((state.ui.screen == SCREEN_GB_KEY_CONFIG ||
+                      state.ui.screen == SCREEN_N64_KEY_CONFIG ||
+                      state.ui.screen == SCREEN_UTIL_KEY_CONFIG) &&
+                     game_controller_input_event(event.type)) {
                 handle_key_config_controller_event(&state, &event);
             }
             else if (event.type == SDL_WINDOWEVENT &&

@@ -235,11 +235,13 @@ unsigned n64_key_spec_index_for_capture_step(unsigned step)
 
 static void move_key_selection(KeyEditContext *state, int delta)
 {
+    unsigned row_count = state->editor->page == KEY_CONFIG_PAGE_GB ? INTEGRAL_GB_KEY_ROWS :
+        (state->editor->page == KEY_CONFIG_PAGE_N64 ? INTEGRAL_N64_KEY_ROWS : INTEGRAL_UTIL_KEY_ROWS);
     int selected = (int)state->editor->key_selected + delta;
     if (selected < 0) {
-        selected = INTEGRAL_KEY_ROWS - 1;
+        selected = (int)row_count - 1;
     }
-    if (selected >= INTEGRAL_KEY_ROWS) {
+    if (selected >= (int)row_count) {
         selected = 0;
     }
     state->editor->key_selected = (unsigned)selected;
@@ -394,7 +396,22 @@ static void apply_captured_binding(KeyEditContext *state,
 
 static void reset_key_defaults(KeyEditContext *state)
 {
-    integral_keys_reset_editable_defaults(state->keys);
+    IntegralConfigKeys defaults;
+    integral_keys_defaults(&defaults);
+    if (state->editor->page == KEY_CONFIG_PAGE_GB) {
+        copy_text(state->keys->slot1, sizeof(state->keys->slot1), defaults.slot1);
+        copy_text(state->keys->slot2, sizeof(state->keys->slot2), defaults.slot2);
+    }
+    else if (state->editor->page == KEY_CONFIG_PAGE_N64) {
+        copy_text(state->keys->n64_p1, sizeof(state->keys->n64_p1), defaults.n64_p1);
+    }
+    else {
+        copy_text(state->keys->fast, sizeof(state->keys->fast), defaults.fast);
+        copy_text(state->keys->screenshot, sizeof(state->keys->screenshot), defaults.screenshot);
+        copy_text(state->keys->escape, sizeof(state->keys->escape), defaults.escape);
+        copy_text(state->keys->turbo_hold, sizeof(state->keys->turbo_hold), defaults.turbo_hold);
+        copy_text(state->keys->reset, sizeof(state->keys->reset), defaults.reset);
+    }
     save_key_config(state);
 }
 
@@ -419,7 +436,7 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
             /* Caller owns screen transition. */
-            copy_text(state->status, state->status_size, "MAIN MENU");
+            copy_text(state->status, state->status_size, "SETTINGS");
             return true;
         case SDLK_TAB:
         case SDLK_DOWN:
@@ -430,20 +447,25 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
-            if (state->editor->key_selected == 0) {
+            if (state->editor->page == KEY_CONFIG_PAGE_GB && state->editor->key_selected == 0) {
                 begin_key_capture(state, KEY_CAPTURE_SLOT1);
             }
-            else if (state->editor->key_selected == 1) {
+            else if (state->editor->page == KEY_CONFIG_PAGE_GB && state->editor->key_selected == 1) {
                 begin_key_capture(state, KEY_CAPTURE_SLOT2);
             }
-            else if (state->editor->key_selected == 2) {
+            else if (state->editor->page == KEY_CONFIG_PAGE_N64 && state->editor->key_selected == 0) {
                 begin_key_capture(state, KEY_CAPTURE_N64);
             }
-            else if (state->editor->key_selected == 3) {
+            else if (state->editor->page == KEY_CONFIG_PAGE_UTIL && state->editor->key_selected == 0) {
                 begin_key_capture(state, KEY_CAPTURE_UTILS);
             }
-            else {
+            else if ((state->editor->page == KEY_CONFIG_PAGE_GB && state->editor->key_selected == 2u) ||
+                     (state->editor->page != KEY_CONFIG_PAGE_GB && state->editor->key_selected == 1u)) {
                 reset_key_defaults(state);
+            }
+            else {
+                copy_text(state->status, state->status_size, "SETTINGS");
+                return true;
             }
             break;
         default:
