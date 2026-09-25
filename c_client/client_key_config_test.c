@@ -78,7 +78,14 @@ int main(int argc, char **argv)
     CHECK(editor.key_capture_step == 0 && !strcmp(status, "KEY ALREADY ASSIGNED"));
     press(SDLK_e, SDL_SCANCODE_E, 0);
     CHECK(editor.key_capture_step == 0 && !strcmp(status, "KEY ALREADY ASSIGNED"));
-    for (unsigned i = 0; i < 5; i++) press(SDLK_F1 + (int)i, SDL_SCANCODE_F1 + i, 0);
+    press(SDLK_F1, SDL_SCANCODE_F1, 0);
+    press(SDLK_F2, SDL_SCANCODE_F2, 0);
+    CHECK(editor.key_capture_step == 2u);
+    CHECK(!press(SDLK_ESCAPE, SDL_SCANCODE_ESCAPE, 0));
+    CHECK(editor.key_capture_target == KEY_CAPTURE_UTILS && editor.key_capture_step == 3u);
+    CHECK(integral_gb_runtime_key_config_key_from_name(keys.escape) == SDLK_ESCAPE);
+    press(SDLK_F4, SDL_SCANCODE_F4, 0);
+    press(SDLK_F5, SDL_SCANCODE_F5, 0);
     CHECK(strcmp(keys.fast, "F1") == 0 && strcmp(keys.reset, "F5") == 0);
     editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     CHECK(editor.key_capture_target == KEY_CAPTURE_CLIENT_ALIAS);
