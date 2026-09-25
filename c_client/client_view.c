@@ -1131,18 +1131,18 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
         }
     }
     else if (state->key_editor.page == KEY_CONFIG_PAGE_N64) {
-        integral_sdl_draw_text(renderer, 48, 82, "N64 CONTROLLER 1P", 2, label);
+        integral_sdl_draw_text(renderer, 48, 100, "N64 CONTROLLER 1P", 2, label);
         if (state->key_editor.key_selected == 0) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-            SDL_Rect rect = {.x = 14, .y = 107, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 88};
+            SDL_Rect rect = {.x = 14, .y = 143, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 88};
             SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, 112, ">", 2, selected);
+            integral_sdl_draw_text(renderer, 24, 148, ">", 2, selected);
         }
-        integral_sdl_draw_text(renderer, 48, 110, group_label,
+        integral_sdl_draw_text(renderer, 48, 146, group_label,
                                2, state->key_editor.key_selected == 0 ? selected : label);
-        integral_client_ui_draw_text_fit(renderer, 48, 138, n64_line1, 1, value, 400);
-        integral_client_ui_draw_text_fit(renderer, 48, 156, n64_line2, 1, value, 400);
-        integral_client_ui_draw_text_fit(renderer, 48, 174, n64_line3, 1, value, 400);
+        integral_client_ui_draw_text_fit(renderer, 48, 174, n64_line1, 1, value, 400);
+        integral_client_ui_draw_text_fit(renderer, 48, 192, n64_line2, 1, value, 400);
+        integral_client_ui_draw_text_fit(renderer, 48, 210, n64_line3, 1, value, 400);
     }
     else {
         if (state->key_editor.key_selected == 0) {
