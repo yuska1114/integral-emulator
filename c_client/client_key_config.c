@@ -136,6 +136,26 @@ void format_util_key_summary(const IntegralConfigKeys *keys,
              keys->reset[0] ? keys->reset : "UNKNOWN");
 }
 
+void format_client_alias_summary(const IntegralConfigKeys *keys,
+                                        char *line1,
+                                        size_t line1_size,
+                                        char *line2,
+                                        size_t line2_size)
+{
+    snprintf(line1,
+             line1_size,
+             "RIGHT=[%s],LEFT=[%s],UP=[%s],DOWN=[%s]",
+             keys->client_alias_right[0] ? keys->client_alias_right : "NONE",
+             keys->client_alias_left[0] ? keys->client_alias_left : "NONE",
+             keys->client_alias_up[0] ? keys->client_alias_up : "NONE",
+             keys->client_alias_down[0] ? keys->client_alias_down : "NONE");
+    snprintf(line2,
+             line2_size,
+             "ENTER=[%s],ESCAPE=[%s]",
+             keys->client_alias_enter[0] ? keys->client_alias_enter : "NONE",
+             keys->client_alias_escape[0] ? keys->client_alias_escape : "NONE");
+}
+
 void format_n64_key_summary(const char *spec,
                                    char *line1,
                                    size_t line1_size,
@@ -211,6 +231,12 @@ const char *key_config_step_label(KeyCaptureTarget target, unsigned step)
         "ANALOG UP", "ANALOG DOWN",
     };
     static const char *utils[] = {"FAST", "SCREENSHOT", "ESCAPE", "TURBO HOLD", "RESET"};
+    static const char *client_aliases[] = {
+        "RIGHT ALIAS", "LEFT ALIAS", "UP ALIAS", "DOWN ALIAS", "ENTER ALIAS", "ESCAPE ALIAS"
+    };
+    if (target == KEY_CAPTURE_CLIENT_ALIAS) {
+        return step < INTEGRAL_CLIENT_ALIAS_KEYS ? client_aliases[step] : "DONE";
+    }
     if (target == KEY_CAPTURE_UTILS) {
         return step < INTEGRAL_UTIL_KEYS ? utils[step] : "DONE";
     }
@@ -259,6 +285,131 @@ static char *n64_key_spec_for_controller(IntegralConfigKeys *keys, unsigned cont
         default:
             return keys->n64_p1;
     }
+}
+
+static const char *client_alias_name(const IntegralConfigKeys *keys, unsigned index)
+{
+    switch (index) {
+        case 0u: return keys->client_alias_right;
+        case 1u: return keys->client_alias_left;
+        case 2u: return keys->client_alias_up;
+        case 3u: return keys->client_alias_down;
+        case 4u: return keys->client_alias_enter;
+        default: return keys->client_alias_escape;
+    }
+}
+
+static char *client_alias_name_mut(IntegralConfigKeys *keys, unsigned index)
+{
+    switch (index) {
+        case 0u: return keys->client_alias_right;
+        case 1u: return keys->client_alias_left;
+        case 2u: return keys->client_alias_up;
+        case 3u: return keys->client_alias_down;
+        case 4u: return keys->client_alias_enter;
+        default: return keys->client_alias_escape;
+    }
+}
+
+static SDL_Keycode client_alias_operation_key(unsigned index)
+{
+    static const SDL_Keycode operations[INTEGRAL_CLIENT_ALIAS_KEYS] = {
+        SDLK_RIGHT, SDLK_LEFT, SDLK_UP, SDLK_DOWN, SDLK_RETURN, SDLK_ESCAPE
+    };
+    return index < INTEGRAL_CLIENT_ALIAS_KEYS ? operations[index] : SDLK_UNKNOWN;
+}
+
+static bool client_alias_reserved_key(SDL_Keycode key)
+{
+    switch (key) {
+        case SDLK_UP:
+        case SDLK_DOWN:
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+        case SDLK_ESCAPE:
+        case SDLK_TAB:
+        case SDLK_BACKSPACE:
+        case SDLK_DELETE:
+        case SDLK_F2:
+        case SDLK_F3:
+        case SDLK_F4:
+        case SDLK_F5:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool integral_client_alias_keyboard_event(const IntegralConfigKeys *keys,
+                                          const SDL_KeyboardEvent *event,
+                                          SDL_KeyboardEvent *translated)
+{
+    if (!keys || !event || !translated || event->type != SDL_KEYDOWN) return false;
+    for (unsigned i = 0; i < INTEGRAL_CLIENT_ALIAS_KEYS; i++) {
+        const char *name = client_alias_name(keys, i);
+        if (!name[0]) continue;
+        SDL_Keycode binding = integral_gb_runtime_key_config_key_from_name(name);
+        if (binding == SDLK_UNKNOWN ||
+            integral_gb_runtime_key_config_is_controller_code(binding) ||
+            client_alias_reserved_key(binding)) {
+            continue;
+        }
+        if (event->keysym.sym == binding) {
+            *translated = *event;
+            translated->keysym.sym = client_alias_operation_key(i);
+            translated->keysym.scancode = SDL_GetScancodeFromKey(translated->keysym.sym);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool integral_client_alias_controller_event(const IntegralConfigKeys *keys,
+                                            bool held[INTEGRAL_CLIENT_ALIAS_KEYS],
+                                            const SDL_Event *event,
+                                            SDL_KeyboardEvent *translated)
+{
+    if (!keys || !held || !event || !translated) return false;
+    for (unsigned i = 0; i < INTEGRAL_CLIENT_ALIAS_KEYS; i++) {
+        const char *name = client_alias_name(keys, i);
+        if (!name[0]) continue;
+        SDL_Keycode binding = integral_gb_runtime_key_config_key_from_name(name);
+        if (binding == SDLK_UNKNOWN ||
+            !integral_gb_runtime_key_config_is_controller_code(binding)) {
+            continue;
+        }
+        bool pressed = false;
+        if (!integral_gb_runtime_key_config_binding_matches_event(binding, event, &pressed)) {
+            continue;
+        }
+        bool rising = pressed && !held[i];
+        held[i] = pressed;
+        if (!rising) return false;
+        memset(translated, 0, sizeof(*translated));
+        translated->type = SDL_KEYDOWN;
+        translated->state = SDL_PRESSED;
+        translated->keysym.sym = client_alias_operation_key(i);
+        translated->keysym.scancode = SDL_GetScancodeFromKey(translated->keysym.sym);
+        return true;
+    }
+    return false;
+}
+
+bool integral_client_alias_has_controller_binding(const IntegralConfigKeys *keys)
+{
+    if (!keys) return false;
+    for (unsigned i = 0; i < INTEGRAL_CLIENT_ALIAS_KEYS; i++) {
+        const char *name = client_alias_name(keys, i);
+        if (!name[0]) continue;
+        SDL_Keycode binding = integral_gb_runtime_key_config_key_from_name(name);
+        if (binding != SDLK_UNKNOWN &&
+            integral_gb_runtime_key_config_is_controller_code(binding)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void save_key_config(KeyEditContext *state)
@@ -317,6 +468,40 @@ static void apply_captured_binding(KeyEditContext *state,
     }
     if (strcmp(name, "UNKNOWN") == 0) {
         copy_text(state->status, state->status_size, "UNKNOWN KEY");
+        return;
+    }
+
+    if (state->editor->key_capture_target == KEY_CAPTURE_CLIENT_ALIAS) {
+        SDL_Keycode captured = integral_gb_runtime_key_config_key_from_name(name);
+        if (captured == SDLK_UNKNOWN) {
+            copy_text(state->status, state->status_size, "UNKNOWN KEY");
+            return;
+        }
+        if (client_alias_reserved_key(captured)) {
+            copy_text(state->status, state->status_size, "RESERVED CLIENT KEY");
+            return;
+        }
+        for (unsigned i = 0; i < INTEGRAL_CLIENT_ALIAS_KEYS; i++) {
+            const char *configured = client_alias_name(state->keys, i);
+            if (i != state->editor->key_capture_step && configured[0] &&
+                captured == integral_gb_runtime_key_config_key_from_name(configured)) {
+                copy_text(state->status, state->status_size, "KEY ALREADY ASSIGNED");
+                return;
+            }
+        }
+        copy_text(client_alias_name_mut(state->keys, state->editor->key_capture_step),
+                  INTEGRAL_CONFIG_KEY_NAME_MAX, name);
+        state->editor->key_capture_step++;
+        if (state->editor->key_capture_step >= INTEGRAL_CLIENT_ALIAS_KEYS) {
+            finish_key_capture(state);
+        }
+        else {
+            snprintf(state->status,
+                     state->status_size,
+                     "NEXT %s",
+                     key_config_step_label(state->editor->key_capture_target,
+                                           state->editor->key_capture_step));
+        }
         return;
     }
 
@@ -432,6 +617,12 @@ static void reset_key_defaults(KeyEditContext *state)
         copy_text(state->keys->escape, sizeof(state->keys->escape), defaults.escape);
         copy_text(state->keys->turbo_hold, sizeof(state->keys->turbo_hold), defaults.turbo_hold);
         copy_text(state->keys->reset, sizeof(state->keys->reset), defaults.reset);
+        state->keys->client_alias_right[0] = '\0';
+        state->keys->client_alias_left[0] = '\0';
+        state->keys->client_alias_up[0] = '\0';
+        state->keys->client_alias_down[0] = '\0';
+        state->keys->client_alias_enter[0] = '\0';
+        state->keys->client_alias_escape[0] = '\0';
     }
     save_key_config(state);
 }
@@ -496,6 +687,9 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
             else if (state->editor->page == KEY_CONFIG_PAGE_UTIL && state->editor->key_selected == 0) {
                 begin_key_capture(state, KEY_CAPTURE_UTILS);
             }
+            else if (state->editor->page == KEY_CONFIG_PAGE_UTIL && state->editor->key_selected == 1u) {
+                begin_key_capture(state, KEY_CAPTURE_CLIENT_ALIAS);
+            }
             else if (state->editor->page == KEY_CONFIG_PAGE_N64 &&
                      state->editor->key_selected == 0u) {
                 /* Controller selection is changed with Left/Right only. */
@@ -505,7 +699,7 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
                      (state->editor->page == KEY_CONFIG_PAGE_N64 &&
                       state->editor->key_selected == 2u) ||
                      (state->editor->page == KEY_CONFIG_PAGE_UTIL &&
-                      state->editor->key_selected == 1u)) {
+                      state->editor->key_selected == 2u)) {
                 reset_key_defaults(state);
             }
             else {

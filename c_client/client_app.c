@@ -752,6 +752,7 @@ bool client_game_input_required(const AppState *state)
     return state->ui.screen == SCREEN_GB_KEY_CONFIG ||
            state->ui.screen == SCREEN_N64_KEY_CONFIG ||
            state->ui.screen == SCREEN_UTIL_KEY_CONFIG ||
+           integral_client_alias_has_controller_binding(&state->keys) ||
            (state->ui.screen == SCREEN_N64_ROOM && state->room.n64.n64_runtime_media_authenticated);
 }
 

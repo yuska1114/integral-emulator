@@ -1090,6 +1090,8 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
     char util_line1[192];
     char util_line2[192];
     char util_line3[192];
+    char alias_line1[192];
+    char alias_line2[192];
     format_slot_key_summary(state->keys.slot1, slot1_line1, sizeof(slot1_line1), slot1_line2, sizeof(slot1_line2));
     format_slot_key_summary(state->keys.slot2, slot2_line1, sizeof(slot2_line1), slot2_line2, sizeof(slot2_line2));
     const char *n64_key_spec = state->keys.n64_p1;
@@ -1120,9 +1122,14 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
                             sizeof(util_line2),
                             util_line3,
                             sizeof(util_line3));
+    format_client_alias_summary(&state->keys,
+                                alias_line1,
+                                sizeof(alias_line1),
+                                alias_line2,
+                                sizeof(alias_line2));
 
     unsigned reset_row = state->key_editor.page == KEY_CONFIG_PAGE_GB ? 2u :
-        (state->key_editor.page == KEY_CONFIG_PAGE_N64 ? 2u : 1u);
+        (state->key_editor.page == KEY_CONFIG_PAGE_N64 ? 2u : 2u);
     unsigned back_row = reset_row + 1u;
     const char *group_label = state->key_editor.page == KEY_CONFIG_PAGE_GB ? NULL :
         (state->key_editor.page == KEY_CONFIG_PAGE_N64 ? "N64 KEYS" : "UTIL KEYS");
@@ -1187,13 +1194,21 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
         integral_sdl_draw_text(renderer, 22, 162, "FAST / TURBO: LOCAL GB 1P ONLY", 1, muted);
         integral_sdl_draw_text(renderer, 22, 180, "RESET: LOCAL MODES", 1, muted);
         integral_sdl_draw_text(renderer, 22, 198, "SCREENSHOT / ESCAPE: ALL MODES", 1, muted);
-        integral_sdl_draw_text(renderer, 48, 226, "CLIENT ALIAS", 2, label);
-        integral_client_ui_draw_text_fit(renderer, 48, 254, "RIGHT=[RIGHT],LEFT=[LEFT],UP=[UP],DOWN=[DOWN]", 1, muted, 400);
+        if (state->key_editor.key_selected == 1u) {
+            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+            SDL_Rect rect = {.x = 14, .y = 220, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 66};
+            SDL_RenderFillRect(renderer, &rect);
+            integral_sdl_draw_text(renderer, 24, 227, ">", 2, selected);
+        }
+        integral_sdl_draw_text(renderer, 48, 226, "CLIENT ALIAS", 2,
+                               state->key_editor.key_selected == 1u ? selected : label);
+        integral_client_ui_draw_text_fit(renderer, 48, 254, alias_line1, 1, value, 400);
+        integral_client_ui_draw_text_fit(renderer, 48, 272, alias_line2, 1, value, 400);
     }
 
     for (unsigned row = reset_row; row <= back_row; row++) {
         const char *text = row == reset_row ? "RESET DEFAULTS" : "BACK";
-        int y = state->key_editor.page == KEY_CONFIG_PAGE_UTIL ? 284 + (int)(row - reset_row) * 34 :
+        int y = state->key_editor.page == KEY_CONFIG_PAGE_UTIL ? 310 + (int)(row - reset_row) * 34 :
                 300 + (int)(row - reset_row) * 34;
         if (state->key_editor.key_selected == row) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
