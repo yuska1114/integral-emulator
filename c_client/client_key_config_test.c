@@ -56,6 +56,8 @@ int main(int argc, char **argv)
     CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 2u);
     CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 3u);
     CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 0u);
+    CHECK(!press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0));
+    CHECK(editor.key_capture_target == KEY_CAPTURE_NONE && editor.key_selected == 0u);
     editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     for (unsigned i = 0; i < 18; i++) press(SDLK_z, SDL_SCANCODE_A + i, 0);
     CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
