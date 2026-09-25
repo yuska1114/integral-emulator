@@ -142,7 +142,10 @@ def validate_generated_gb_initial_save(save_bytes: bytes) -> None:
         len(save_bytes) - trailer_size
         for trailer_size in GENERATED_GB_RTC_TRAILER_SIZES
         if len(save_bytes) >= trailer_size
-        and len(save_bytes) - trailer_size in GENERATED_GB_RAM_SIZES
+        and (
+            len(save_bytes) - trailer_size in GENERATED_GB_RAM_SIZES
+            or (trailer_size > 0 and len(save_bytes) == trailer_size)
+        )
     )
     if not ram_sizes:
         ram_sizes = (len(save_bytes),)
