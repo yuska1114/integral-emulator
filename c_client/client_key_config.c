@@ -386,7 +386,7 @@ bool integral_client_alias_controller_event(const IntegralConfigKeys *keys,
         }
         bool rising = pressed && !held[i];
         held[i] = pressed;
-        if (!rising) return false;
+        if (!rising) continue;
         memset(translated, 0, sizeof(*translated));
         translated->type = SDL_KEYDOWN;
         translated->state = SDL_PRESSED;
