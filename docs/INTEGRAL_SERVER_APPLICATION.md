@@ -12,12 +12,12 @@
 
 ```dotenv
 INTEGRAL_EMULATOR_CLIENT_VERSION_CHECK_ENABLED=0
-INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS=0.3.0-beta
+INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS=0.4.0-dev
 ```
 
 照合する場合は前者を`1`にし、後者へ許可する機械判定値をカンマ区切りで記載して
-`sudo integral-server restart`を実行します。例：`0.2.0-beta,0.3.0-beta`。
-画面表記`0.3BETA`ではなく、機械判定値`0.3.0-beta`を使用します。
+`sudo integral-server restart`を実行します。例：`0.3.0-beta,0.4.0-dev`。
+現在は画面表記・機械判定値ともに`0.4.0-dev`を使用します。
 大文字・小文字や接頭辞を含め完全一致で比較し、範囲指定やワイルドカードは使えません。
 有効時にリストが空なら全版を拒否します。照合無効時にはリストを適用しません。
 
@@ -134,6 +134,7 @@ curl http://127.0.0.1:8080/health
 ## 運用コマンド
 
 ```text
+integral-server version
 sudo integral-server doctor
 sudo integral-server start
 sudo integral-server stop
@@ -153,6 +154,7 @@ sudo integral-server uninstall
 
 ### サービス操作
 
+- `version`: インストール済みServerのバージョンを表示します。設定ファイルやサービス起動は不要です。
 - `doctor`: Python、設定ファイル、保存領域、管理者パスワード、ROM登録ポリシー、
   GB Mobileパッケージ、起動中のHTTPヘルスを確認します。
 - `start`、`stop`、`restart`: APIとMedia Relayのsystemdサービスを操作します。

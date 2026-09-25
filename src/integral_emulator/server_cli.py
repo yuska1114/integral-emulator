@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 from collections.abc import Mapping
 from urllib.error import URLError
@@ -44,6 +45,23 @@ DEFAULT_CERT_RELOAD_INTERVAL_SECONDS = 60.0
 
 class ConfigurationError(ValueError):
     pass
+
+
+def read_project_version() -> str:
+    project_file = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        with project_file.open("rb") as stream:
+            value = tomllib.load(stream).get("project", {}).get("version")
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ConfigurationError(f"cannot read server version from {project_file}: {error}") from error
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigurationError(f"{project_file} must define project.version")
+    return value.strip()
+
+
+def command_version(_args: argparse.Namespace) -> int:
+    print(f"INTEGRAL EMULATOR Server {read_project_version()}")
+    return 0
 
 
 def command_uninstall(_args: argparse.Namespace) -> int:
@@ -224,7 +242,7 @@ def write_initial_configuration(path: Path, storage: Path) -> bool:
             "INTEGRAL_EMULATOR_ALLOW_SELF_REGISTRATION=0",
             "# Optional compatibility check; exact comma-separated versions, not authentication.",
             "INTEGRAL_EMULATOR_CLIENT_VERSION_CHECK_ENABLED=0",
-            "INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS=0.2.0-beta",
+            "INTEGRAL_EMULATOR_ALLOWED_CLIENT_VERSIONS=0.4.0-dev",
             "# Set to 1 to allow an explicit user-selected initial SAV during ROM registration.",
             "INTEGRAL_EMULATOR_ALLOW_USER_INITIAL_SAVE_IMPORT=0",
             "# Total game durations in seconds. Heartbeats do not extend them.",
@@ -809,6 +827,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    version_parser = subparsers.add_parser(
+        "version", help="show the installed server version"
+    )
+    version_parser.set_defaults(handler=command_version)
+
     run_parser = subparsers.add_parser("run", help="run the HTTP API in the foreground")
     run_parser.add_argument("--host")
     run_parser.add_argument("--port", type=int)
@@ -898,7 +921,7 @@ def normalized_argv(argv: list[str]) -> list[str]:
     if not argv:
         return ["run"]
     commands = {
-        "run", "media-relay", "init", "doctor", "start", "stop", "restart", "status", "logs",
+        "run", "version", "media-relay", "init", "doctor", "start", "stop", "restart", "status", "logs",
         "mobile-package", "user-issue", "user-password-reset", "open-admin",
         "edit-config", "uninstall",
     }

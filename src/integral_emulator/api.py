@@ -16,6 +16,7 @@ import struct
 import threading
 import time
 import traceback
+import tomllib
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -92,6 +93,17 @@ from .runtime_repositories import SQLiteRuntimeRepositories
 from .ui import render_admin_html, render_admin_login_html
 from .user_issuance import issue_user, reset_user_password
 
+
+def read_project_version() -> str:
+    project_file = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    with project_file.open("rb") as stream:
+        value = tomllib.load(stream).get("project", {}).get("version")
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError("pyproject.toml must define project.version")
+    return value.strip()
+
+
+SERVER_VERSION = read_project_version()
 
 GSC_ROOM_BASE_PORT = 25100
 GSC_ROOM_PORTS_PER_ROOM = 2
@@ -2880,7 +2892,7 @@ class LeagueApplication:
 
 def create_handler(application: LeagueApplication) -> type[BaseHTTPRequestHandler]:
     class LeagueRequestHandler(BaseHTTPRequestHandler):
-        server_version = "IntegralEmulatorHTTP/0.1"
+        server_version = f"IntegralEmulatorHTTP/{SERVER_VERSION}"
 
         def setup(self) -> None:
             super().setup()
