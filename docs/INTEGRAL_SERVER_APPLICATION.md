@@ -134,6 +134,7 @@ curl http://127.0.0.1:8080/health
 ## 運用コマンド
 
 ```text
+integral-server version
 sudo integral-server doctor
 sudo integral-server start
 sudo integral-server stop
@@ -153,6 +154,7 @@ sudo integral-server uninstall
 
 ### サービス操作
 
+- `version`: インストール済みServerのバージョンを表示します。設定ファイルやサービス起動は不要です。
 - `doctor`: Python、設定ファイル、保存領域、管理者パスワード、ROM登録ポリシー、
   GB Mobileパッケージ、起動中のHTTPヘルスを確認します。
 - `start`、`stop`、`restart`: APIとMedia Relayのsystemdサービスを操作します。
