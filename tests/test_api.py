@@ -3188,7 +3188,7 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(slot["save_id"].startswith("save_"))
         downloaded = self.get(f"/saves/{slot['save_id']}", token=token)
         self.assertEqual(downloaded["save"]["game_type"], "n64_console_sample")
-        self.assertEqual(decode(downloaded["save_data"]), bytes(128 * 1024))
+        self.assertEqual(decode(downloaded["save_data"]), bytes([0xFF]) * (128 * 1024))
 
     def test_rom_registration_rejects_hash_outside_allowlist(self) -> None:
         self.enforce_rom_allowlist()
