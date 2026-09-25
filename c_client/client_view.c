@@ -1149,7 +1149,7 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
         char controller_label[32];
         snprintf(controller_label,
                  sizeof(controller_label),
-                 "N64 CONTROLLER %uP",
+                 "N64 CONTROLLER < %uP >",
                  state->key_editor.n64_controller_index + 1u);
         if (state->key_editor.key_selected == 0u) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
