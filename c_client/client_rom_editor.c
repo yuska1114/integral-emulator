@@ -174,20 +174,6 @@ static void cycle_rom_for_selected_slot(RomEditContext *state, int delta)
     apply_rom_path_to_slot_index(state, slot_index, state->editor->rom_browser_entries[next]);
 }
 
-static void clear_selected_rom_slot(RomEditContext *state)
-{
-    if (state->editor->rom_selected >= INTEGRAL_ROM_SLOTS) {
-        return;
-    }
-    if (state->editor->rom_initial_save_import_slot == (int)state->editor->rom_selected) {
-        state->editor->rom_initial_save_import_slot = -1;
-        state->editor->rom_initial_save_import_path[0] = '\0';
-    }
-    preserve_registration(state, state->editor->rom_selected);
-    state->rom_slots[state->editor->rom_selected].rom_path[0] = '\0';
-    snprintf(state->status, state->status_size, "ROM%u LOCAL PATH CLEARED - SERVER DATA UNCHANGED", state->editor->rom_selected + 1);
-}
-
 static void move_rom_selection(RomEditContext *state, int delta)
 {
     int selected = (int)state->editor->rom_selected + delta;
@@ -332,6 +318,13 @@ static IntegralRomEditorAction handle_rom_key(RomEditContext *state, const SDL_K
         switch (key->keysym.sym) {
             case SDLK_ESCAPE:
                 if (value) copy_text(value, rom_edit_capacity(state), state->editor->rom_edit_original);
+                if (state->editor->rom_edit_target == ROM_EDIT_ROM &&
+                    state->editor->rom_selected < INTEGRAL_ROM_SLOTS &&
+                    state->editor->pending_paths[state->editor->rom_selected] &&
+                    !strcmp(state->rom_slots[state->editor->rom_selected].rom_path,
+                            state->editor->confirmed_slots[state->editor->rom_selected].rom_path)) {
+                    state->editor->pending_paths[state->editor->rom_selected] = false;
+                }
                 state->editor->rom_edit_target = ROM_EDIT_NONE;
                 SDL_StopTextInput();
                 copy_text(state->status, state->status_size, "EDIT CANCELED");
@@ -397,6 +390,11 @@ static IntegralRomEditorAction handle_rom_key(RomEditContext *state, const SDL_K
         case SDLK_LEFT:
             cycle_rom_for_selected_slot(state, -1);
             break;
+        case SDLK_F2:
+            if (state->editor->rom_selected < INTEGRAL_ROM_SLOTS) {
+                if (!begin_rom_edit(state, ROM_EDIT_ROM)) return ROM_ACTION_MAIN;
+            }
+            break;
         case SDLK_F4:
             scan_rom_folder(state);
             break;
@@ -419,22 +417,29 @@ static IntegralRomEditorAction handle_rom_key(RomEditContext *state, const SDL_K
                 if (!begin_rom_edit(state, ROM_EDIT_INITIAL_SAVE)) return ROM_ACTION_MAIN;
             }
             break;
-        case SDLK_BACKSPACE:
-            clear_selected_rom_slot(state);
-            break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
-            if (state->editor->rom_selected == INTEGRAL_ROM_REGISTER_ROW) {
-                return ROM_ACTION_REGISTER;
-            }
-            else if (state->editor->rom_selected == INTEGRAL_ROM_EXPORT_ROW) {
+            if (state->editor->rom_selected == INTEGRAL_ROM_EXPORT_ROW) {
                 return ROM_ACTION_EXPORT;
             }
             else if (state->editor->rom_selected == INTEGRAL_ROM_BACK_ROW) {
                 return ROM_ACTION_LEAVE;
             }
-            else {
-                if (!begin_rom_edit(state, ROM_EDIT_ROM)) return ROM_ACTION_MAIN;
+            else if (state->editor->rom_selected < INTEGRAL_ROM_SLOTS) {
+                unsigned index = state->editor->rom_selected;
+                IntegralConfigRomSlot *slot = &state->rom_slots[index];
+                if (slot->rom_path[0] == '\0') {
+                    break;
+                }
+                bool import_selected =
+                    state->allow_user_initial_save_import &&
+                    state->editor->rom_initial_save_import_slot == (int)index;
+                if (slot_has_server_registration(slot) &&
+                    !state->editor->pending_paths[index] &&
+                    !import_selected) {
+                    break;
+                }
+                return ROM_ACTION_REGISTER;
             }
             break;
         default:

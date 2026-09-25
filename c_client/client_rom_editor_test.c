@@ -113,10 +113,12 @@ int main(int argc, char **argv)
     press(SDLK_F5, 0); CHECK(editor.rom_edit_target == ROM_EDIT_NONE);
     allow_import = true; press(SDLK_F5, 0);
     CHECK(strcmp(status, "SELECT A ROM SLOT FIRST") == 0);
-    press(SDLK_RETURN, 0); text("roms/sample.gbc");
+    CHECK(press(SDLK_RETURN, 0) == ROM_ACTION_NONE);
+    CHECK(slots[0].rom_path[0] == 0 && editor.rom_edit_target == ROM_EDIT_NONE);
+    press(SDLK_F2, 0); text("roms/sample.gbc");
     CHECK(press(SDLK_ESCAPE, 0) == ROM_ACTION_NONE);
-    CHECK(slots[0].rom_path[0] == 0 && strcmp(status, "EDIT CANCELED") == 0);
-    press(SDLK_RETURN, 0); text("roms/sample.gbc"); press(SDLK_RETURN, 0);
+    CHECK(slots[0].rom_path[0] == 0 && !editor.pending_paths[0] && strcmp(status, "EDIT CANCELED") == 0);
+    press(SDLK_F2, 0); text("roms/sample.gbc"); press(SDLK_RETURN, 0);
     CHECK(strcmp(slots[0].rom_path, "roms/sample.gbc") == 0 && editor.rom_edit_target == ROM_EDIT_NONE);
     press(SDLK_F5, 0); text("missing.sav"); press(SDLK_RETURN, 0);
     CHECK(editor.rom_initial_save_import_slot == -1 && strcmp(status, "INITIAL SAV FILE REQUIRED") == 0);
@@ -124,7 +126,6 @@ int main(int argc, char **argv)
     CHECK(fputs("synthetic", file) >= 0 && fclose(file) == 0);
     press(SDLK_F5, 0); text("sample.sav"); press(SDLK_RETURN, 0);
     CHECK(editor.rom_initial_save_import_slot == 0);
-    editor.rom_selected = INTEGRAL_ROM_REGISTER_ROW;
     CHECK(press(SDLK_RETURN, 0) == ROM_ACTION_REGISTER);
     editor.rom_confirm_initial_save_import = true;
     CHECK(press(SDLK_ESCAPE, 0) == ROM_ACTION_NONE && !editor.rom_confirm_initial_save_import);
@@ -146,9 +147,12 @@ int main(int argc, char **argv)
     strcpy(slots[0].rom_id, "same-rom"); strcpy(slots[0].save_id, "save-one");
     editor.pending_paths[0] = false;
     slots[1] = slots[0]; strcpy(slots[1].save_id, "save-two");
-    press(SDLK_RETURN, 0); text("x"); press(SDLK_BACKSPACE, 0); press(SDLK_RETURN, 0);
-    CHECK(strcmp(status, "LOCAL ROM PATH SAVED") == 0);
-    press(SDLK_RETURN, 0); text(".missing"); press(SDLK_RETURN, 0);
+    strcpy(status, "UNCHANGED");
+    CHECK(press(SDLK_RETURN, 0) == ROM_ACTION_NONE);
+    CHECK(strcmp(status, "UNCHANGED") == 0 && !editor.pending_paths[0]);
+    press(SDLK_F2, 0); text("x"); press(SDLK_BACKSPACE, 0); press(SDLK_RETURN, 0);
+    CHECK(strcmp(status, "LOCAL ROM PATH SAVED") == 0 && !editor.pending_paths[0]);
+    press(SDLK_F2, 0); text(".missing"); press(SDLK_RETURN, 0);
     CHECK(strcmp(status, "FILE NOT FOUND - EDIT ROM PATH") == 0);
     CHECK(!strcmp(slots[0].rom_id, "same-rom") && !strcmp(slots[0].save_id, "save-one"));
     editor.rom_confirm_delete = true;
@@ -160,7 +164,9 @@ int main(int argc, char **argv)
     IntegralConfigRomSlot loaded[INTEGRAL_ROM_SLOTS] = {0};
     CHECK(integral_config_load_rom_slots("config.conf", loaded, INTEGRAL_ROM_SLOTS) == 0);
     CHECK(strcmp(loaded[0].save_id, "save-one") == 0 && strcmp(loaded[1].save_id, "save-two") == 0);
-    press(SDLK_BACKSPACE, 0); CHECK(!strcmp(slots[0].save_id, "save-one") && strcmp(slots[1].save_id, "save-two") == 0);
+    press(SDLK_BACKSPACE, 0);
+    CHECK(!strcmp(slots[0].rom_path, "roms/sample.gbc") &&
+          !strcmp(slots[0].save_id, "save-one") && strcmp(slots[1].save_id, "save-two") == 0);
     CHECK(integral_config_load_rom_slots("config.conf", loaded, INTEGRAL_ROM_SLOTS) == 0);
     CHECK(!strcmp(loaded[0].save_id, "save-one") && strcmp(loaded[1].save_id, "save-two") == 0);
     press(SDLK_RIGHT, 0); CHECK(strcmp(slots[0].rom_path, "roms/sample.gbc") == 0);
