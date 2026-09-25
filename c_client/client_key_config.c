@@ -633,7 +633,10 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
         return false;
     }
     if (state->editor->key_capture_target != KEY_CAPTURE_NONE) {
-        if (key->keysym.sym == SDLK_ESCAPE) {
+        bool capturing_util_escape =
+            state->editor->key_capture_target == KEY_CAPTURE_UTILS &&
+            state->editor->key_capture_step == 2u;
+        if (key->keysym.sym == SDLK_ESCAPE && !capturing_util_escape) {
             state->editor->key_capture_target = KEY_CAPTURE_NONE;
             state->editor->key_capture_step = 0;
             state->editor->key_capture_wait_release = false;
