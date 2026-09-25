@@ -247,6 +247,20 @@ static void move_key_selection(KeyEditContext *state, int delta)
     state->editor->key_selected = (unsigned)selected;
 }
 
+static char *n64_key_spec_for_controller(IntegralConfigKeys *keys, unsigned controller_index)
+{
+    switch (controller_index) {
+        case 1u:
+            return keys->n64_p2;
+        case 2u:
+            return keys->n64_p3;
+        case 3u:
+            return keys->n64_p4;
+        default:
+            return keys->n64_p1;
+    }
+}
+
 static void save_key_config(KeyEditContext *state)
 {
     if (integral_config_save_keys(state->config_path, state->keys) == 0) {
@@ -359,10 +373,13 @@ static void apply_captured_binding(KeyEditContext *state,
     }
     if (state->editor->key_capture_target == KEY_CAPTURE_N64) {
         char names[INTEGRAL_N64_RUNTIME_KEY_BUTTONS][INTEGRAL_CONFIG_KEY_NAME_MAX];
-        key_spec_to_names_count(state->keys->n64_p1, names, INTEGRAL_N64_RUNTIME_KEY_BUTTONS);
+        char *target_spec = n64_key_spec_for_controller(
+            state->keys, state->editor->n64_controller_index);
+        key_spec_to_names_count(target_spec, names, INTEGRAL_N64_RUNTIME_KEY_BUTTONS);
         unsigned index = n64_key_spec_index_for_capture_step(state->editor->key_capture_step);
         copy_text(names[index], sizeof(names[index]), name);
-        key_names_to_spec_count(names, INTEGRAL_N64_RUNTIME_KEY_BUTTONS, state->keys->n64_p1, sizeof(state->keys->n64_p1));
+        key_names_to_spec_count(names, INTEGRAL_N64_RUNTIME_KEY_BUTTONS,
+                                target_spec, INTEGRAL_CONFIG_KEY_SPEC_MAX);
         state->editor->key_capture_step++;
         if (state->editor->key_capture_step >= INTEGRAL_N64_RUNTIME_KEY_BUTTONS) {
             finish_key_capture(state);
@@ -403,7 +420,11 @@ static void reset_key_defaults(KeyEditContext *state)
         copy_text(state->keys->slot2, sizeof(state->keys->slot2), defaults.slot2);
     }
     else if (state->editor->page == KEY_CONFIG_PAGE_N64) {
-        copy_text(state->keys->n64_p1, sizeof(state->keys->n64_p1), defaults.n64_p1);
+        char *target_spec = n64_key_spec_for_controller(
+            state->keys, state->editor->n64_controller_index);
+        char *default_spec = n64_key_spec_for_controller(
+            &defaults, state->editor->n64_controller_index);
+        copy_text(target_spec, INTEGRAL_CONFIG_KEY_SPEC_MAX, default_spec);
     }
     else {
         copy_text(state->keys->fast, sizeof(state->keys->fast), defaults.fast);
@@ -445,6 +466,22 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
         case SDLK_UP:
             move_key_selection(state, -1);
             break;
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+            if (state->editor->page == KEY_CONFIG_PAGE_N64 &&
+                state->editor->key_selected == 0u) {
+                if (key->keysym.sym == SDLK_LEFT) {
+                    state->editor->n64_controller_index =
+                        state->editor->n64_controller_index == 0u
+                            ? 3u : state->editor->n64_controller_index - 1u;
+                }
+                else {
+                    state->editor->n64_controller_index =
+                        state->editor->n64_controller_index == 3u
+                            ? 0u : state->editor->n64_controller_index + 1u;
+                }
+            }
+            break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
             if (state->editor->page == KEY_CONFIG_PAGE_GB && state->editor->key_selected == 0) {
@@ -453,14 +490,18 @@ static bool handle_key_config_key_context(KeyEditContext *state, const SDL_Keybo
             else if (state->editor->page == KEY_CONFIG_PAGE_GB && state->editor->key_selected == 1) {
                 begin_key_capture(state, KEY_CAPTURE_SLOT2);
             }
-            else if (state->editor->page == KEY_CONFIG_PAGE_N64 && state->editor->key_selected == 0) {
+            else if (state->editor->page == KEY_CONFIG_PAGE_N64 && state->editor->key_selected == 1u) {
                 begin_key_capture(state, KEY_CAPTURE_N64);
             }
             else if (state->editor->page == KEY_CONFIG_PAGE_UTIL && state->editor->key_selected == 0) {
                 begin_key_capture(state, KEY_CAPTURE_UTILS);
             }
-            else if ((state->editor->page == KEY_CONFIG_PAGE_GB && state->editor->key_selected == 2u) ||
-                     (state->editor->page != KEY_CONFIG_PAGE_GB && state->editor->key_selected == 1u)) {
+            else if ((state->editor->page == KEY_CONFIG_PAGE_GB &&
+                      state->editor->key_selected == 2u) ||
+                     (state->editor->page == KEY_CONFIG_PAGE_N64 &&
+                      state->editor->key_selected == 2u) ||
+                     (state->editor->page == KEY_CONFIG_PAGE_UTIL &&
+                      state->editor->key_selected == 1u)) {
                 reset_key_defaults(state);
             }
             else {

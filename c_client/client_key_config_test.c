@@ -49,11 +49,27 @@ int main(int argc, char **argv)
     CHECK(press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0) && strcmp(status, "SETTINGS") == 0);
 
     editor.page = KEY_CONFIG_PAGE_N64;
-    editor.key_selected = 0; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    editor.key_selected = 0;
+    CHECK(!press(SDLK_LEFT, SDL_SCANCODE_LEFT, 0) && editor.n64_controller_index == 3u);
+    CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 0u);
+    CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 1u);
+    CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 2u);
+    CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 3u);
+    CHECK(!press(SDLK_RIGHT, SDL_SCANCODE_RIGHT, 0) && editor.n64_controller_index == 0u);
+    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     for (unsigned i = 0; i < 18; i++) press(SDLK_z, SDL_SCANCODE_A + i, 0);
     CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
     CHECK(editor.key_capture_target == KEY_CAPTURE_NONE);
     CHECK(integral_config_load_keys(path, &restored) == 0 && strcmp(restored.n64_p1, keys.n64_p1) == 0);
+    editor.n64_controller_index = 1u;
+    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    for (unsigned i = 0; i < 18; i++) press(SDLK_z, SDL_SCANCODE_F1 + i, 0);
+    CHECK(keys.n64_p2[0] != '\0');
+    CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
+    CHECK(integral_config_load_keys(path, &restored) == 0 && strcmp(restored.n64_p2, keys.n64_p2) == 0);
+    editor.key_selected = 2; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    CHECK(keys.n64_p2[0] == '\0');
+    CHECK(integral_config_load_keys(path, &restored) == 0 && restored.n64_p2[0] == '\0');
     editor.page = KEY_CONFIG_PAGE_UTIL;
     editor.key_selected = 0; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     press(SDLK_b, SDL_SCANCODE_B, 0);
@@ -72,7 +88,8 @@ int main(int argc, char **argv)
     CHECK(strcmp(keys.slot1, defaults.slot1) == 0 && strcmp(keys.slot2, defaults.slot2) == 0);
     CHECK(strcmp(keys.n64_p1, "A,B,C,D,E,F,H,G,I,J,K,L,M,N,O,P,Q,R") == 0);
     editor.page = KEY_CONFIG_PAGE_N64;
-    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    editor.n64_controller_index = 0u;
+    editor.key_selected = 2; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     CHECK(strcmp(keys.n64_p1, defaults.n64_p1) == 0);
 
     int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 2, 16, 1);
