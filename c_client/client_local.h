@@ -6,6 +6,7 @@
 
 void init_n64_runtime_selection(AppState *state);
 void clear_local_launch_notice(AppState *state);
+void poll_local_runtime_monitor(AppState *state);
 void poll_local_save_notice(AppState *state);
 const IntegralConfigRomSlot *local_selected_rom_slot(const AppState *state, unsigned local_slot);
 const IntegralConfigRomSlot *selected_n64_rom_slot(const AppState *state);
