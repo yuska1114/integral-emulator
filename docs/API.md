@@ -97,6 +97,9 @@ ROM枠の置換は旧SAVの削除確認後に行います。終了済みの利�
 
 新しいGB/GBC ROMスロットでは、C ClientがローカルROMをSameBoyへ読み込み、
 カートリッジRAM容量とRTC形式に合った初期SAVを生成して登録時に送信します。
+同一hashでもファイル名が変わる場合はSAV置換になるため、初期SAVを再生成して送信します。
+GB/GBCの新規・置換登録で初期SAVが送信されない場合、サーバーは登録を拒否し、
+旧来の32 KiB全ゼロSAVへfallbackしません。
 バッテリーセーブを持たないROMでは、SameBoyのSAVサイズ0をそのまま0 byte SAVとして保持します。
 `generated_initial_save_data`では、SameBoyが新規生成時にカートリッジRAMを`0xFF`で
 初期化する性質に合わせ、通常RAM部分がすべて`0xFF`であることをサーバーでも検証します。
