@@ -63,6 +63,7 @@ static void move_main_selection(AppState *state, int delta);
 static void apply_selected_rom_slot_to_server(AppState *state,
                                               bool confirm_delete_saves,
                                               bool confirm_initial_save_import);
+static void enter_options(AppState *state);
 
 static size_t field_capacity(LoginField field)
 {
@@ -619,9 +620,7 @@ void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key)
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
             if (state->ui.settings_selected == 3u) {
-                state->ui.screen = SCREEN_OPTIONS;
-                state->ui.options_selected = 0u;
-                copy_text(state->login.status, sizeof(state->login.status), "OPTIONS");
+                enter_options(state);
             }
             else if (state->ui.settings_selected == INTEGRAL_SETTINGS_ROWS - 1u) {
                 state->ui.screen = SCREEN_MAIN_MENU;
@@ -665,6 +664,16 @@ static void move_options_selection(AppState *state, int delta)
 }
 
 
+static void enter_options(AppState *state)
+{
+    state->ui.screen = SCREEN_OPTIONS;
+    state->ui.options_selected = 0u;
+    state->ui.options_ir_off_delay_ticks = integral_config_ir_off_delay(state->config_path);
+    state->ui.options_sgb_enabled = integral_config_sgb_enabled(state->config_path) != 0;
+    copy_text(state->login.status, sizeof(state->login.status), "OPTIONS");
+}
+
+
 static void adjust_ir_release_delay_option(AppState *state, int delta)
 {
     IntegralConfigLocal local;
@@ -674,7 +683,7 @@ static void adjust_ir_release_delay_option(AppState *state, int delta)
         return;
     }
 
-    unsigned next = local.ir_off_delay_ticks;
+    unsigned next = state->ui.options_ir_off_delay_ticks;
     if (delta < 0) {
         if (next == 0u) {
             copy_text(state->login.status, sizeof(state->login.status),
@@ -701,6 +710,7 @@ static void adjust_ir_release_delay_option(AppState *state, int delta)
                   "IR RELEASE DELAY SAVE FAILED");
         return;
     }
+    state->ui.options_ir_off_delay_ticks = next;
     snprintf(state->login.status, sizeof(state->login.status),
              "IR RELEASE DELAY %u TICK", next);
 }
@@ -708,11 +718,12 @@ static void adjust_ir_release_delay_option(AppState *state, int delta)
 
 static void toggle_sgb_option(AppState *state)
 {
-    int enabled = integral_config_sgb_enabled(state->config_path);
+    bool enabled = state->ui.options_sgb_enabled;
     if (integral_config_save_sgb(state->config_path, !enabled) != 0) {
         copy_text(state->login.status, sizeof(state->login.status), "SGB OPTION SAVE FAILED");
         return;
     }
+    state->ui.options_sgb_enabled = !enabled;
     copy_text(state->login.status, sizeof(state->login.status),
               enabled ? "SGB DISABLED" : "SGB ENABLED");
 }
