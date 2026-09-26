@@ -200,6 +200,7 @@ int main(int argc, char **argv)
          * has focus. Other screens retain foreground-only controller events. */
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,
             state.room.n64.n64_runtime_media_host_pid ? "1" : "0");
+        poll_local_runtime_monitor(&state);
         (void)set_game_input_active(
             &state, client_game_input_required(&state) && !state.room.n64.runtime_exit_confirming);
         SDL_Event event;
