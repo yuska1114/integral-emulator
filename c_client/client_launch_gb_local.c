@@ -10,6 +10,7 @@
 #include <stdint.h>
 #ifdef _WIN32
 #include <process.h>
+#include <windows.h>
 #include <io.h>
 #ifndef X_OK
 #define X_OK 0
