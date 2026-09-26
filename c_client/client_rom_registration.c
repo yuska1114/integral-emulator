@@ -37,7 +37,7 @@ static bool server_slot_matches_registration(const IntegralApiRomSlot *server_sl
                                              const char *filename,
                                              const char *sha256)
 {
-    return server_slot->save_id[0] != '\\0' &&
+    return server_slot->save_id[0] != '\0' &&
            strcmp(server_slot->sha256, sha256) == 0 &&
            strcmp(server_slot->filename, filename) == 0;
 }
@@ -158,8 +158,10 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
     bool import_selected = state->allow_user_initial_save_import &&
                            state->editor->rom_initial_save_import_slot == (int)slot_index;
     const IntegralApiRomSlot *server_slot = &state->server_rom_slots[slot_index];
-    if (import_selected && server_slot->save_id[0] != '\0' &&
-        strcmp(server_slot->sha256, sha256) == 0) {
+    const char *filename = path_file_name(slot->rom_path);
+    bool same_server_registration =
+        server_slot_matches_registration(server_slot, filename, sha256);
+    if (import_selected && same_server_registration) {
         state->editor->rom_confirm_initial_save_import = false;
         copy_text(state->status, state->status_size,
                   "INITIAL SAV REJECTED USE ADMIN SAV REPLACE");
@@ -186,7 +188,7 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
     }
     if (!import_selected &&
         strcmp(header.platform, "gb") == 0 &&
-        !(server_slot->save_id[0] != '\0' && strcmp(server_slot->sha256, sha256) == 0)) {
+        !same_server_registration) {
         if (integral_gb_runtime_initial_battery_for_rom(
                 slot->rom_path,
                 initial_save_data,
