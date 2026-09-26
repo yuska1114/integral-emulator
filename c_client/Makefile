@@ -81,7 +81,7 @@ CLIENT_CONFIG_CONTROLLER_TEST_TARGET := $(BUILD_DIR)/client_config_controller_te
 CREDENTIAL_STORE_TEST_TARGET := $(BUILD_DIR)/credential_store_test$(EXEEXT)
 HTTP_SOURCES := http_client.c http_payload_codec.c http_transport.c api_account.c api_rom_save.c api_room.c api_mobile.c api_fixed_host.c
 HTTP_HEADERS := http_client.h http_client_internal.h http_payload_codec.h http_transport.h client_version.h
-SOURCES := login_client.c client_event.c client_input_alias.c client_settings.c client_app.c client_local.c client_view.c client_ui_key_config.c client_ui_rom_register.c client_ui_room_link.c client_ui_room_n64.c client_ui_room_common.c client_runtime_support.c client_log.c client_diagnostics.c client_save_sync.c client_save_outbox.c client_launch_n64_local.c client_launch_gb_mobile_prepare.c client_launch_gb_mobile.c client_launch_gb_local.c client_account.c client_user_config.c client_rom_catalog.c client_rom_editor.c client_rom_registration.c client_file_io.c client_key_config.c client_ui_common.c client_ui_account.c client_ui_menu.c sdl_text.c sdl_unicode_text.c $(HTTP_SOURCES) client_config.c credential_store.c rom_metadata.c \
+SOURCES := login_client.c client_event.c client_input_alias.c client_settings.c client_process.c client_app.c client_local.c client_view.c client_ui_key_config.c client_ui_rom_register.c client_ui_room_link.c client_ui_room_n64.c client_ui_room_common.c client_runtime_support.c client_room_link_state.c client_log.c client_diagnostics.c client_save_sync.c client_save_outbox.c client_launch_n64_local.c client_launch_gb_mobile_prepare.c client_launch_gb_mobile.c client_launch_gb_local.c client_account.c client_user_config.c client_rom_catalog.c client_rom_editor.c client_rom_registration.c client_file_io.c client_key_config.c client_ui_common.c client_ui_account.c client_ui_menu.c sdl_text.c sdl_unicode_text.c $(HTTP_SOURCES) client_config.c credential_store.c rom_metadata.c \
 	client_room_common.c client_room_link.c client_room_n64.c ../runtimes/common/transfer_sav_ipc.c \
 	media_relay_client.c media_codec.c media_h264.c n64_runtime_media_stream.c room_poll_worker.c \
 	mobile_session_contract.c gb_runtime_fixed_host_rom_resolver.c gb_runtime_fixed_host_runtime.c gb_runtime_fixed_host_product_runtime.c gb_runtime_fixed_host_snapshot_ipc.c gb_runtime_fixed_host_result_ipc.c gb_runtime_fixed_host_child_runtime.c \
@@ -101,7 +101,7 @@ GB_ENGINE_HEADERS := ../runtimes/common/screenshot.h ../runtimes/common/screensh
 	../runtimes/gb/src/server/slot.h ../runtimes/gb/src/serial/serial_peripheral.h \
 	../runtimes/n64/src/remote_media_ipc.h $(SAMEBOY_HEADERS)
 GB_ENGINE_HEADERS += ../runtimes/gb/src/common/utf8_file.h
-CLIENT_HEADERS := client_state.h client_version.h client_app.h client_event.h client_input_alias.h client_settings.h client_local.h client_view.h client_runtime_support.h client_log.h client_diagnostics.h client_save_outbox.h client_launch_n64_local.h client_launch_gb_mobile.h client_save_sync.h client_launch_gb_local.h client_config.h client_account.h client_user_config.h client_rom_catalog.h client_rom_editor.h client_rom_registration.h client_file_io.h client_key_config.h client_ui_common.h client_ui_account.h client_ui_menu.h client_ui_room_common.h credential_store.h $(HTTP_HEADERS) mobile_session_contract.h \
+CLIENT_HEADERS := client_state.h client_version.h client_app.h client_event.h client_input_alias.h client_settings.h client_process.h client_local.h client_view.h client_runtime_support.h client_log.h client_diagnostics.h client_save_outbox.h client_launch_n64_local.h client_launch_gb_mobile.h client_save_sync.h client_launch_gb_local.h client_config.h client_account.h client_user_config.h client_rom_catalog.h client_rom_editor.h client_rom_registration.h client_file_io.h client_key_config.h client_ui_common.h client_ui_account.h client_ui_menu.h client_ui_room_common.h credential_store.h $(HTTP_HEADERS) mobile_session_contract.h \
 	client_room_common.h client_room_link.h client_room_n64.h \
 	room_poll_worker.h media_relay_client.h n64_runtime_media_stream.h media_codec.h media_h264.h \
 	rom_metadata.h sdl_text.h sdl_unicode_text.h gb_runtime_fixed_host_rom_resolver.h \
@@ -111,7 +111,7 @@ CLIENT_HEADERS := client_state.h client_version.h client_app.h client_event.h cl
 CLIENT_HEADERS += client_screenshots.h windows_process.h ../runtimes/gb/src/common/utf8_file.h
 CLIENT_HEADERS += ../runtimes/common/transfer_sav_ipc.h
 
-.PHONY: all gb-runtime-fixed-host-product gb-runtime-fixed-host-product-smoke gb-runtime-fixed-host-trade-terminal-smoke gb-runtime-fixed-host-runtime-test gb-runtime-fixed-host-product-runtime-test gb-runtime-fixed-host-snapshot-ipc-test gb-runtime-fixed-host-result-ipc-test gb-runtime-fixed-host-scheduler-test gb-runtime-fixed-host-rom-resolver-test rom-metadata-test client-config-controller-test credential-store-test client-ui-common-test client-event-test clean smoke media-relay-smoke media-codec-test media-foundation-probe media-h264-test media-h264-interop room-poll-worker-test current-api-contract-test room-matching-response-test mobile-session-contract-test n64-runtime-stop-process-test
+.PHONY: all gb-runtime-fixed-host-product gb-runtime-fixed-host-product-smoke gb-runtime-fixed-host-trade-terminal-smoke gb-runtime-fixed-host-runtime-test gb-runtime-fixed-host-product-runtime-test gb-runtime-fixed-host-snapshot-ipc-test gb-runtime-fixed-host-result-ipc-test gb-runtime-fixed-host-scheduler-test gb-runtime-fixed-host-rom-resolver-test rom-metadata-test client-config-controller-test credential-store-test client-ui-common-test client-event-test client-process-test clean smoke media-relay-smoke media-codec-test media-foundation-probe media-h264-test media-h264-interop room-poll-worker-test current-api-contract-test room-matching-response-test mobile-session-contract-test n64-runtime-stop-process-test
 
 all: $(TARGET) $(GB_RUNTIME_FIXED_HOST_PRODUCT_TARGET)
 
@@ -474,6 +474,12 @@ endif
 
 client-event-test: $(BUILD_DIR)/client_room_test$(EXEEXT)
 	SDL_VIDEODRIVER=dummy ./$(BUILD_DIR)/client_room_test$(EXEEXT) --input-pipeline
+
+$(BUILD_DIR)/client_process_test$(EXEEXT): client_process_test.c client_process.c client_process.h client_save_sync.h client_config.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ client_process_test.c client_process.c
+
+client-process-test: $(BUILD_DIR)/client_process_test$(EXEEXT)
+	./$(BUILD_DIR)/client_process_test$(EXEEXT)
 
 .PHONY: n64-transfer-memory-test
 n64-transfer-memory-test:

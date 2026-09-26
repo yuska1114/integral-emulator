@@ -50,12 +50,8 @@
 #endif
 static const char *integral_gb_runtime_fixed_host_runtime_path(void);
 static const char *integral_gb_runtime_fixed_host_ca_file(void);
-static const char *room_link_mode_api_name(IntegralRoomLinkMode mode);
-static bool room_link_mode_from_api(const char *mode, IntegralRoomLinkMode *mode_out);
 static void cycle_room_link_mode(IntegralRoomContext *state, int delta);
 static void mark_room_link_mode_local_override(IntegralRoomContext *state);
-static void cycle_room_rom_slot(IntegralRoomContext *state, int delta);
-static void sync_room_state(IntegralRoomContext *state);
 static bool room_link_session_is_active_on_server(IntegralRoomContext *state, const char *session_id);
 #ifndef _WIN32
 static ptrdiff_t gb_runtime_fixed_host_fd_write(void *context, const uint8_t *source, size_t size);
@@ -106,18 +102,6 @@ static const char *integral_gb_runtime_fixed_host_ca_file(void)
 }
 
 
-static const char *room_link_mode_api_name(IntegralRoomLinkMode mode)
-{
-    switch (mode) {
-        case INTEGRAL_ROOM_MODE_BATTLE:
-            return "battle";
-        case INTEGRAL_ROOM_MODE_TRADE:
-            return "trade";
-    }
-    return "trade";
-}
-
-
 const char *room_link_mode_label(IntegralRoomLinkMode mode)
 {
     switch (mode) {
@@ -127,23 +111,6 @@ const char *room_link_mode_label(IntegralRoomLinkMode mode)
             return "SAVE ON";
     }
     return "SAVE ON";
-}
-
-
-static bool room_link_mode_from_api(const char *mode, IntegralRoomLinkMode *mode_out)
-{
-    if (!mode_out) {
-        return false;
-    }
-    if (mode && strcmp(mode, "battle") == 0) {
-        *mode_out = INTEGRAL_ROOM_MODE_BATTLE;
-        return true;
-    }
-    if (mode && strcmp(mode, "trade") == 0) {
-        *mode_out = INTEGRAL_ROOM_MODE_TRADE;
-        return true;
-    }
-    return false;
 }
 
 
@@ -179,234 +146,10 @@ static void mark_room_link_mode_local_override(IntegralRoomContext *state)
 }
 
 
-void set_room_link_session_id(IntegralRoomContext *state, const char *session_id)
-{
-    if (!session_id || session_id[0] == '\0') {
-        return;
-    }
-    if (strcmp(state->link.room_link_session_id, session_id) == 0) {
-        return;
-    }
-    if (state->link.room_client_pid > 0 && !stop_room_client(state)) return;
-    client_room_log(state,
-               "room_session_set",
-               "old_session=%s new_session=%s",
-               state->link.room_link_session_id[0] ? state->link.room_link_session_id : "-",
-               session_id);
-    copy_text(state->link.room_link_session_id, sizeof(state->link.room_link_session_id), session_id);
-    state->link.room_game_session_id[0] = '\0';
-    state->link.room_fencing_token = 0;
-    state->link.room_client_started = false;
-    state->link.room_gb_runtime_save_preflight_blocked = false;
-    state->link.preflight_block_pending[0] = '\0';
-    state->link.room_gb_runtime_fixed_host_active = false;
-    state->link.room_gb_runtime_fixed_host_role[0] = '\0';
-    state->link.room_gb_runtime_fixed_host_result_read = -1;
-    state->link.room_gb_runtime_fixed_host_ticket_write = -1;
-    SDL_AtomicSet(&state->link.room_gb_runtime_fixed_host_ticket_requested, 0);
-    state->link.room_gb_runtime_fixed_host_save_policy[0] = '\0';
-    state->link.room_game_ended = false;
-    state->link.room_link_mode_local_override = false;
-    state->link.room_client_pid = 0;
-    state->link.room_session_missing_since_ticks = 0;
-    state->common.room_heartbeat_failures = 0;
-    state->common.room_heartbeat_attempted = false;
-    state->common.room_lifecycle_status[0] = '\0';
-    state->common.room_termination_reason[0] = '\0';
-    state->common.room_remaining_seconds = -1;
-}
-
-
-void clear_room_link_session_id(IntegralRoomContext *state)
-{
-    if (state->link.room_client_pid > 0) {
-        monitor_room_gb_runtime_client_exit(state);
-        if (state->link.room_client_pid > 0 && !stop_room_client(state)) return;
-    }
-    if (state->link.room_link_session_id[0] == '\0') {
-        return;
-    }
-    client_room_log(state, "room_session_clear", "session=%s", state->link.room_link_session_id);
-    state->link.room_link_session_id[0] = '\0';
-    state->link.room_game_session_id[0] = '\0';
-    state->link.room_fencing_token = 0;
-    state->link.room_start_requested = false;
-    state->link.room_client_started = false;
-    state->link.room_gb_runtime_save_preflight_blocked = false;
-    state->link.preflight_block_pending[0] = '\0';
-    state->link.room_gb_runtime_fixed_host_active = false;
-    state->link.room_gb_runtime_fixed_host_role[0] = '\0';
-    state->link.room_gb_runtime_fixed_host_result_read = -1;
-    state->link.room_gb_runtime_fixed_host_save_policy[0] = '\0';
-    state->link.room_game_ended = false;
-    state->link.room_link_mode_local_override = false;
-    state->link.room_client_pid = 0;
-    state->link.room_session_missing_since_ticks = 0;
-}
-
-
-bool link_session_status_is_active(const char *status)
-{
-    return strcmp(status, "CREATED") == 0 || strcmp(status, "WAITING_PLAYER_A") == 0 ||
-           strcmp(status, "WAITING_PLAYER_B") == 0 || strcmp(status, "PREPARING") == 0 ||
-           strcmp(status, "RUNNING") == 0 ||
-           strcmp(status, "FINALIZING") == 0 || strcmp(status, "RECOVERING") == 0;
-}
-
-
-void sync_room_ready_flags_from_api(IntegralRoomContext *state)
-{
-    if (state->common.room_number < 1 || state->common.room_number > INTEGRAL_API_ROOMS || state->login->username[0] == '\0') {
-        return;
-    }
-    const IntegralApiRoom *room = &state->common.current_room;
-    int user_position = current_room_user_position(state);
-    if (user_position != 1) {
-        state->link.room_link_mode_local_override = false;
-    }
-    if (room->link_mode[0] != '\0') {
-        IntegralRoomLinkMode server_mode;
-        if (!room_link_mode_from_api(room->link_mode, &server_mode)) {
-            copy_text(state->login->status, sizeof(state->login->status), "ROOM MODE INVALID");
-            client_room_log(state, "room_mode_invalid", "value=%s", room->link_mode);
-            return;
-        }
-        if (state->link.room_link_mode_local_override && server_mode == state->link.room_link_mode) {
-            state->link.room_link_mode_local_override = false;
-        }
-        if (!state->link.room_link_mode_local_override || current_room_game_ended(state) || room->link_session_id[0] != '\0') {
-            state->link.room_link_mode = server_mode;
-        }
-    }
-    if (user_position == 1) {
-        state->common.room_ready_self = room->ready1 != 0;
-        state->common.room_ready_peer = room->ready2 != 0;
-    }
-    else if (user_position == 2) {
-        state->common.room_ready_self = room->ready2 != 0;
-        state->common.room_ready_peer = room->ready1 != 0;
-    }
-    if (state->common.room_number >= 65 && state->common.room_number <= 128) {
-        state->n64.n64_room_ready = state->common.room_ready_self;
-    }
-}
-
-
-bool current_room_game_ended(const IntegralRoomContext *state)
-{
-    if (state->link.room_game_ended) {
-        return true;
-    }
-    if (state->common.room_number < 1 || state->common.room_number > INTEGRAL_API_ROOMS) {
-        return false;
-    }
-    const IntegralApiRoom *room = &state->common.current_room;
-    return room->game_started && room->link_session_id[0] == '\0';
-}
-
-
-void mark_room_game_ended_if_used(IntegralRoomContext *state)
-{
-    if (state->common.room_number < 1 || state->common.room_number > INTEGRAL_API_ROOMS) {
-        return;
-    }
-    const IntegralApiRoom *room = &state->common.current_room;
-    if ((*state->screen) == SCREEN_N64_ROOM || strcmp(room->room_type, "n64") == 0) {
-        /* N64 media sessions do not use a Link Session ID. Their terminal
-         * lifecycle is fenced by the media session ID in the heartbeat. */
-        return;
-    }
-    if (!room->game_started || room->link_session_id[0] != '\0') {
-        return;
-    }
-    if (state->link.room_link_session_id[0] != '\0') {
-        clear_room_link_session_id(state);
-    }
-    if (!state->link.room_game_ended) {
-        client_room_log(state, "room_mark_game_ended", "room=%u", state->common.room_number);
-    }
-    state->link.room_game_ended = true;
-    state->link.room_start_requested = false;
-    copy_text(state->login->status, sizeof(state->login->status), "GAME ENDED  USE ANOTHER ROOM");
-}
-
-
 static void cycle_room_rom_slot(IntegralRoomContext *state, int delta)
 {
     integral_rom_cycle_room(state->rom_slots, &state->link.room_slot_index,
         state->login->status, sizeof(state->login->status), delta);
-}
-
-
-bool gb_runtime_fixed_host_may_start_for_control_state(
-    const char *role, const char *control_state)
-{
-    if (!role || !control_state) return false;
-    if (strcmp(role, "host") == 0) {
-        return strcmp(control_state, "READY") == 0;
-    }
-    if (strcmp(role, "remote") == 0) {
-        return strcmp(control_state, "WAITING_PEER") == 0 ||
-               strcmp(control_state, "PAUSED_REMOTE") == 0;
-    }
-    return false;
-}
-
-
-static void sync_room_state(IntegralRoomContext *state)
-{
-    if (state->common.room_number < 1 || state->common.room_number > INTEGRAL_API_ROOMS || state->login->token[0] == '\0') {
-        return;
-    }
-    char slot_label[32];
-    if (room_registered_rom_slot_at(state, state->link.room_slot_index)) {
-        snprintf(slot_label, sizeof(slot_label), "ROM%d", state->link.room_slot_index + 1);
-    }
-    else {
-        slot_label[0] = '\0';
-    }
-    char error[160];
-    if (integral_api_update_room_state(state->login->server,
-                                        state->login->token,
-                                        state->common.room_number,
-                                        slot_label,
-                                        state->common.room_ready_self ? 1 : 0,
-                                        current_room_is_user1(state)
-                                            ? room_link_mode_api_name(state->link.room_link_mode)
-                                            : NULL,
-                                        error,
-                                        sizeof(error)) != 0) {
-        snprintf(state->login->status, sizeof(state->login->status), "ROOM SYNC FAILED %s", error);
-        client_room_log(state,
-                   "room_sync_failed",
-                   "room=%u slot=%s ready=%d mode=%s error=%s",
-                   state->common.room_number,
-                   slot_label[0] ? slot_label : "-",
-                   state->common.room_ready_self ? 1 : 0,
-                   room_link_mode_api_name(state->link.room_link_mode),
-                   error);
-        return;
-    }
-    client_room_log(state,
-               "room_sync_ok",
-               "room=%u slot=%s ready=%d mode=%s",
-               state->common.room_number,
-               slot_label[0] ? slot_label : "-",
-               state->common.room_ready_self ? 1 : 0,
-               room_link_mode_api_name(state->link.room_link_mode));
-    if ((*state->screen) != SCREEN_ROOM) {
-        refresh_room_quiet(state);
-    }
-}
-
-
-bool current_room_has_link_session(const IntegralRoomContext *state)
-{
-    if (state->common.room_number < 1 || state->common.room_number > INTEGRAL_API_ROOMS) {
-        return false;
-    }
-    const IntegralApiRoom *room = &state->common.current_room;
-    return room->link_session_id[0] != '\0';
 }
 
 
@@ -1330,7 +1073,7 @@ void activate_link_room(IntegralRoomContext *state, const IntegralApiRoom *match
     state->link.room_link_mode_local_override = false;
     state->link.room_client_pid = 0;
     state->link.room_session_missing_since_ticks = 0;
-    sync_room_state(state);
+    room_link_sync_state(state);
     mark_room_game_ended_if_used(state);
     if (!current_room_game_ended(state) && strncmp(state->login->status, "ROOM SYNC FAILED", 16) != 0) {
         copy_text(state->login->status, sizeof(state->login->status), "ENTERED ROOM");
@@ -1527,7 +1270,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                 }
                 cycle_room_rom_slot(state, 1);
                 client_room_log(state, "room_slot_changed", "direction=right slot_index=%d", state->link.room_slot_index);
-                sync_room_state(state);
+                room_link_sync_state(state);
             }
             else if (state->common.room_selected == 1 || state->common.room_selected == 2) {
                 if (!current_room_is_user1(state)) {
@@ -1547,7 +1290,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                 cycle_room_link_mode(state, 1);
                 mark_room_link_mode_local_override(state);
                 client_room_log(state, "room_mode_changed", "direction=right mode=%s", room_link_mode_api_name(state->link.room_link_mode));
-                sync_room_state(state);
+                room_link_sync_state(state);
                 update_room_ready_status(state);
             }
             else if (state->common.room_selected == 3 && state->common.room_chat_scroll > 0) {
@@ -1564,7 +1307,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                 }
                 cycle_room_rom_slot(state, -1);
                 client_room_log(state, "room_slot_changed", "direction=left slot_index=%d", state->link.room_slot_index);
-                sync_room_state(state);
+                room_link_sync_state(state);
             }
             else if (state->common.room_selected == 1 || state->common.room_selected == 2) {
                 if (!current_room_is_user1(state)) {
@@ -1584,7 +1327,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                 cycle_room_link_mode(state, -1);
                 mark_room_link_mode_local_override(state);
                 client_room_log(state, "room_mode_changed", "direction=left mode=%s", room_link_mode_api_name(state->link.room_link_mode));
-                sync_room_state(state);
+                room_link_sync_state(state);
                 update_room_ready_status(state);
             }
             else if (state->common.room_selected == 3) {
@@ -1639,7 +1382,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                 cycle_room_link_mode(state, 1);
                 mark_room_link_mode_local_override(state);
                 client_room_log(state, "room_mode_changed", "direction=enter mode=%s", room_link_mode_api_name(state->link.room_link_mode));
-                sync_room_state(state);
+                room_link_sync_state(state);
                 update_room_ready_status(state);
             }
             else if (state->common.room_selected == 2) {
@@ -1668,7 +1411,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                            "ready_self=%d slot_index=%d",
                            state->common.room_ready_self ? 1 : 0,
                            state->link.room_slot_index);
-                sync_room_state(state);
+                room_link_sync_state(state);
                 update_room_ready_status(state);
             }
             else if (state->common.room_selected == 4) {
