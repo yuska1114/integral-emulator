@@ -809,11 +809,19 @@ bool set_game_input_active(AppState *state, bool active)
 
 bool client_game_input_required(const AppState *state)
 {
+    bool client_alias_runtime_available =
+        state->local.local_monitor <= 0 &&
+        !(state->ui.screen == SCREEN_ROOM &&
+          (state->room.link.room_client_pid > 0 ||
+           state->room.link.room_gb_runtime_fixed_host_active)) &&
+        !(state->ui.screen == SCREEN_N64_ROOM && n64_room_runtime_active(&state->room));
     return state->ui.screen == SCREEN_GB_KEY_CONFIG ||
            state->ui.screen == SCREEN_N64_KEY_CONFIG ||
            state->ui.screen == SCREEN_UTIL_KEY_CONFIG ||
-           integral_client_alias_has_controller_binding(&state->keys) ||
-           (state->ui.screen == SCREEN_N64_ROOM && state->room.n64.n64_runtime_media_authenticated);
+           (client_alias_runtime_available &&
+            integral_client_alias_has_controller_binding(&state->keys)) ||
+           (state->ui.screen == SCREEN_N64_ROOM &&
+            state->room.n64.n64_runtime_media_authenticated);
 }
 
 
