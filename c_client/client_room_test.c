@@ -43,6 +43,11 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--focus-return")) {
         assert(SDL_Init(SDL_INIT_VIDEO) == 0);
         AppState app={0};bind_room_context(&app);
+        snprintf(app.config_path,sizeof(app.config_path),"build/client_options_test.conf");
+        FILE *option_config=fopen(app.config_path,"w");
+        assert(option_config);
+        fputs("gb.ir_off_delay_ticks=12\nsgb=disable\n",option_config);
+        fclose(option_config);
         SDL_Window *main=SDL_CreateWindow("Main focus regression",0,0,360,360,SDL_WINDOW_SHOWN);
         assert(main);
         assert(integral_room_create_media(&app.room,main,NULL));
@@ -65,8 +70,16 @@ int main(int argc, char **argv)
         handle_main_key(&app,&key);assert(app.ui.screen==SCREEN_SETTINGS);
         app.ui.settings_selected=3;handle_settings_key(&app,&key);
         assert(app.ui.screen==SCREEN_OPTIONS && app.ui.options_selected==0);
+        assert(app.ui.options_ir_off_delay_ticks==12 && !app.ui.options_sgb_enabled);
+        key.keysym.sym=SDLK_RIGHT;handle_options_key(&app,&key);
+        assert(app.ui.options_ir_off_delay_ticks==13);
+        app.ui.options_selected=1;key.keysym.sym=SDLK_RETURN;handle_options_key(&app,&key);
+        assert(app.ui.options_sgb_enabled);
         key.keysym.sym=SDLK_ESCAPE;handle_options_key(&app,&key);
         assert(app.ui.screen==SCREEN_SETTINGS && app.ui.settings_selected==3);
+        key.keysym.sym=SDLK_RETURN;handle_settings_key(&app,&key);
+        assert(app.ui.options_ir_off_delay_ticks==13 && app.ui.options_sgb_enabled);
+        key.keysym.sym=SDLK_ESCAPE;handle_options_key(&app,&key);
         key.keysym.sym=SDLK_RETURN;
         app.ui.settings_selected=0;handle_settings_key(&app,&key);
         assert(app.ui.screen==SCREEN_GB_KEY_CONFIG && app.key_editor.page==KEY_CONFIG_PAGE_GB);
@@ -74,6 +87,7 @@ int main(int argc, char **argv)
         assert(app.ui.screen==SCREEN_SETTINGS && app.ui.settings_selected==0);
         app.ui.settings_selected=4;key.keysym.sym=SDLK_RETURN;handle_settings_key(&app,&key);
         assert(app.ui.screen==SCREEN_MAIN_MENU);
+        remove(app.config_path);
         integral_room_destroy_resources(&app.room);SDL_DestroyWindow(main);SDL_Quit();
         puts("Remote window destroyed, MAIN focus restored, arrows/Tab/Enter PASS");
         return 0;
