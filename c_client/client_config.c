@@ -283,9 +283,10 @@ static int save_config_file(const char *path,
                             const IntegralConfigWindow *window,
                             const IntegralConfigKeys *keys,
                             const IntegralConfigRomSlot *slots,
-                            size_t slot_count)
+                            size_t slot_count,
+                            int sgb_override)
 {
-    int sgb_enabled = integral_config_sgb_enabled(path);
+    int sgb_enabled = sgb_override >= 0 ? (sgb_override != 0) : integral_config_sgb_enabled(path);
     ensure_parent_directory(path);
     char temporary_path[INTEGRAL_CONFIG_PATH_MAX * 2u];
     if (snprintf(temporary_path, sizeof(temporary_path), "%s.part", path) >=
@@ -367,7 +368,7 @@ int integral_config_save_login(const char *path, const IntegralConfigLogin *logi
     IntegralConfigLocal local;
     IntegralConfigWindow window;
     (void)load_config_file(path, NULL, &local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
-    return save_config_file(path, login, &local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
+    return save_config_file(path, login, &local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS, -1);
 }
 
 int integral_config_load_local(const char *path, IntegralConfigLocal *local)
@@ -385,7 +386,20 @@ int integral_config_save_local(const char *path, const IntegralConfigLocal *loca
     IntegralConfigWindow window;
     IntegralConfigRomSlot slots[INTEGRAL_CONFIG_ROM_SLOTS];
     (void)load_config_file(path, &login, NULL, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
-    return save_config_file(path, &login, local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
+    return save_config_file(path, &login, local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS, -1);
+}
+
+int integral_config_save_sgb(const char *path, int enabled)
+{
+    IntegralConfigLogin login;
+    IntegralConfigLocal local;
+    IntegralConfigWindow window;
+    IntegralConfigKeys keys;
+    IntegralConfigRomSlot slots[INTEGRAL_CONFIG_ROM_SLOTS];
+    if (!path) return -1;
+    (void)load_config_file(path, &login, &local, &window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
+    return save_config_file(path, &login, &local, &window, &keys,
+                            slots, INTEGRAL_CONFIG_ROM_SLOTS, enabled ? 1 : 0);
 }
 
 unsigned integral_config_ir_off_delay(const char *path)
@@ -411,7 +425,7 @@ int integral_config_save_window(const char *path, const IntegralConfigWindow *wi
     IntegralConfigKeys keys;
     IntegralConfigRomSlot slots[INTEGRAL_CONFIG_ROM_SLOTS];
     (void)load_config_file(path, &login, &local, NULL, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
-    return save_config_file(path, &login, &local, window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
+    return save_config_file(path, &login, &local, window, &keys, slots, INTEGRAL_CONFIG_ROM_SLOTS, -1);
 }
 
 int integral_config_load_keys(const char *path, IntegralConfigKeys *keys)
@@ -429,7 +443,7 @@ int integral_config_save_keys(const char *path, const IntegralConfigKeys *keys)
     IntegralConfigWindow window;
     IntegralConfigRomSlot slots[INTEGRAL_CONFIG_ROM_SLOTS];
     (void)load_config_file(path, &login, &local, &window, NULL, slots, INTEGRAL_CONFIG_ROM_SLOTS);
-    return save_config_file(path, &login, &local, &window, keys, slots, INTEGRAL_CONFIG_ROM_SLOTS);
+    return save_config_file(path, &login, &local, &window, keys, slots, INTEGRAL_CONFIG_ROM_SLOTS, -1);
 }
 
 int integral_config_load_rom_slots(const char *path, IntegralConfigRomSlot *slots, size_t slot_count)
@@ -445,7 +459,7 @@ int integral_config_save_rom_slots(const char *path, const IntegralConfigRomSlot
     IntegralConfigLocal local;
     IntegralConfigWindow window;
     (void)load_config_file(path, &login, &local, &window, &keys, NULL, 0);
-    return save_config_file(path, &login, &local, &window, &keys, slots, slot_count);
+    return save_config_file(path, &login, &local, &window, &keys, slots, slot_count, -1);
 }
 
 void integral_keys_defaults(IntegralConfigKeys *keys)
