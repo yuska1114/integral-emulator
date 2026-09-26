@@ -9,6 +9,35 @@ void integral_client_ui_draw_text_fit(SDL_Renderer *, int, int, const char *, in
 
 #define INTEGRAL_CLIENT_UI_WIDTH 480
 
+typedef struct IntegralClientUiTheme {
+    SDL_Color background;
+    SDL_Color panel_fill;
+    SDL_Color panel_border;
+    SDL_Color label;
+    SDL_Color value;
+    SDL_Color title;
+    SDL_Color selected;
+    SDL_Color selected_bright;
+    SDL_Color muted;
+    SDL_Color body_text;
+    SDL_Color warning;
+    SDL_Color warning_error;
+    SDL_Color cursor;
+    SDL_Color selection_background;
+    SDL_Color active_background;
+    SDL_Color modal_background;
+} IntegralClientUiTheme;
+
+const IntegralClientUiTheme *integral_client_ui_theme(void);
+void integral_client_ui_clear_screen(SDL_Renderer *renderer);
+void integral_client_ui_fill_selection(SDL_Renderer *renderer, SDL_Rect bounds, bool editing);
+void integral_client_ui_draw_selection(SDL_Renderer *renderer,
+                                      SDL_Rect bounds,
+                                      int cursor_x,
+                                      int cursor_y,
+                                      int cursor_scale,
+                                      bool editing);
+
 typedef enum AppScreen {
     SCREEN_LOGIN,
     SCREEN_PASSWORD_CHANGE,

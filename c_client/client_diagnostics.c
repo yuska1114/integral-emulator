@@ -1197,6 +1197,20 @@ void client_diagnostics_prepare_screen(AppState *state, int argc, char **argv)
                 state->ui.screen = SCREEN_MAIN_MENU;
                 copy_text(state->login.status, sizeof(state->login.status), "SELECT A MENU ITEM");
             }
+            else if (strcmp(argv[i + 1], "settings") == 0) {
+                state->ui.screen = SCREEN_SETTINGS;
+                state->ui.settings_selected = 0;
+                copy_text(state->login.username, sizeof(state->login.username), "TESTUSER1");
+                copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
+            }
+            else if (strcmp(argv[i + 1], "options") == 0) {
+                state->ui.screen = SCREEN_OPTIONS;
+                state->ui.options_selected = 0;
+                state->ui.options_ir_off_delay_ticks = 32u;
+                state->ui.options_sgb_enabled = true;
+                copy_text(state->login.username, sizeof(state->login.username), "TESTUSER1");
+                copy_text(state->login.status, sizeof(state->login.status), "OPTIONS");
+            }
             else if (strcmp(argv[i + 1], "screenshots") == 0) {
                 state->screenshots = integral_screenshots_open(".");
                 state->ui.screen = SCREEN_SCREENSHOTS;

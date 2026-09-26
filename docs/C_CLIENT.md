@@ -30,6 +30,10 @@ ROMヘッダー情報とローカルファイル有無は、ROMパス単位のCl
 それぞれ`client_ui_key_config.c`、`client_ui_rom_register.c`、`client_ui_room_link.c`、
 `client_ui_room_n64.c`に分けています。
 
+共通パレット、画面背景、選択行、入力欄、ヘッダー、パネル描画は`client_ui_common.c`に集約しています。
+Link／N64 ROOMのチャットログ行描画は`client_ui_room_common.c`で共有し、画面固有の配置と状態表示は各ROOM画面に残します。
+`make -C c_client client-ui-common-test`は共通描画部品の色とSDLレンダリング結果を検証します。
+
 ## GBのIR受信調整（実験的設定）
 
 Clientを終了して、アカウント別設定ファイル
