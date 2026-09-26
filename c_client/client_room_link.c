@@ -81,7 +81,8 @@ static void gb_runtime_fixed_host_set_child_environment(
     const IntegralConfigKeys *keys,
     unsigned window_width, unsigned window_height,
     intptr_t result_handle, const char *save_policy,
-    const char *rtc_target_unix, unsigned ir_off_delay_ticks);
+    const char *rtc_target_unix, unsigned ir_off_delay_ticks,
+    int sgb_enabled);
 #ifdef _WIN32
 static void gb_runtime_fixed_host_clear_parent_environment(void);
 #endif
