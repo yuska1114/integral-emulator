@@ -33,6 +33,15 @@ static const char *path_file_name(const char *path)
     return separator ? separator + 1 : path;
 }
 
+static bool server_slot_matches_registration(const IntegralApiRomSlot *server_slot,
+                                             const char *filename,
+                                             const char *sha256)
+{
+    return server_slot->save_id[0] != '\\0' &&
+           strcmp(server_slot->sha256, sha256) == 0 &&
+           strcmp(server_slot->filename, filename) == 0;
+}
+
 static void registration_log(IntegralRomRegistration *state, const char *event, const char *format, ...)
 {
     if (!state->log) return;
@@ -194,7 +203,7 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
     if (integral_api_apply_rom_slot(state->server,
                                state->token,
                                slot_index + 1,
-                               path_file_name(slot->rom_path),
+                               filename,
                                sha256,
                                sha1,
                                header.platform,
