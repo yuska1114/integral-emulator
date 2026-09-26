@@ -229,6 +229,15 @@ void refresh_rom_metadata_cache(AppState *state, bool force)
 }
 
 
+const IntegralClientRomMetadataCache *client_rom_metadata_for_slot(const AppState *state, int slot_index)
+{
+    if (slot_index < 0 || slot_index >= INTEGRAL_ROM_SLOTS) return NULL;
+    const IntegralConfigRomSlot *slot = &state->catalog.rom_slots[slot_index];
+    const IntegralClientRomMetadataCache *cached = &state->catalog.rom_metadata[slot_index];
+    return strcmp(cached->source_path, slot->rom_path) == 0 ? cached : NULL;
+}
+
+
 void client_operation_log(void *context, const char *event, const char *detail)
 {
     client_log(context, event, "%s", detail);
