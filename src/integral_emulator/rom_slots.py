@@ -16,7 +16,6 @@ from .roms import RomRegistration
 
 
 MAX_ROM_SLOTS = 8
-INITIAL_SAVE_BYTES = bytes(32 * 1024)
 INITIAL_N64_SAVE_BYTES = bytes([0xFF]) * (128 * 1024)
 @dataclass(frozen=True)
 class RomSlot:
@@ -344,4 +343,6 @@ class RomSlotManager:
     def _initial_save_bytes_for_rom(self, filename: str) -> bytes:
         if rom_platform_from_filename(filename) == "n64":
             return INITIAL_N64_SAVE_BYTES
-        return INITIAL_SAVE_BYTES
+        raise ValidationError(
+            "GB/GBC ROM registration requires generated initial SAV data"
+        )
