@@ -7,6 +7,7 @@
 #include "client_user_config.h"
 #include "client_rom_registration.h"
 #include "client_rom_catalog.h"
+#include "client_file_io.h"
 #include "client_ui_menu.h"
 #include "credential_store.h"
 #include "../runtimes/gb/src/common/key_config.h"
@@ -134,6 +135,7 @@ void load_active_user_config(AppState *state)
     }
     integral_room_validate_selection(&state->room, state->local.local_slot_indices);
     init_n64_runtime_selection(state);
+    refresh_rom_metadata_cache(state, true);
 }
 
 
@@ -209,6 +211,24 @@ int read_supported_rom_header(const char *path, IntegralRomMetadata *info)
 }
 
 
+void refresh_rom_metadata_cache(AppState *state, bool force)
+{
+    for (unsigned i = 0; i < INTEGRAL_ROM_SLOTS; i++) {
+        IntegralClientRomMetadataCache *cached = &state->catalog.rom_metadata[i];
+        const char *path = state->catalog.rom_slots[i].rom_path;
+        if (!force && strcmp(cached->source_path, path) == 0) {
+            continue;
+        }
+
+        copy_text(cached->source_path, sizeof(cached->source_path), path);
+        memset(&cached->metadata, 0, sizeof(cached->metadata));
+        cached->file_found = path[0] != '\0' && local_file_exists(path);
+        cached->header_valid = path[0] != '\0' &&
+                               read_supported_rom_header(path, &cached->metadata) == 0;
+    }
+}
+
+
 void client_operation_log(void *context, const char *event, const char *detail)
 {
     client_log(context, event, "%s", detail);
@@ -232,7 +252,11 @@ static IntegralRomRegistration rom_registration_context(AppState *state)
 bool refresh_rom_slots_from_server(AppState *state)
 {
     IntegralRomRegistration context = rom_registration_context(state);
-    return integral_rom_registration_refresh(&context);
+    bool refreshed = integral_rom_registration_refresh(&context);
+    if (refreshed) {
+        refresh_rom_metadata_cache(state, true);
+    }
+    return refreshed;
 }
 
 
@@ -240,6 +264,7 @@ static void enter_rom_register(AppState *state)
 {
     IntegralRomRegistration context = rom_registration_context(state);
     integral_rom_registration_enter(&context);
+    refresh_rom_metadata_cache(state, true);
     state->ui.screen = SCREEN_ROM_REGISTER;
     integral_client_rom_editor_reset(&state->catalog.rom_editor, true);
     copy_text(state->login.status, sizeof(state->login.status), "ROM REGISTER");
