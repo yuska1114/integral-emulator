@@ -56,6 +56,11 @@ int main(void)
         fprintf(file, "sgb=invalid\n");
         fclose(file);
         if (!integral_config_sgb_enabled(path)) return 61;
+
+        if (integral_config_save_sgb(path, 0) != 0 ||
+            integral_config_sgb_enabled(path)) return 62;
+        if (integral_config_save_sgb(path, 1) != 0 ||
+            !integral_config_sgb_enabled(path)) return 63;
     }
     (void)remove(path);
     IntegralConfigWindow default_window = {0};
