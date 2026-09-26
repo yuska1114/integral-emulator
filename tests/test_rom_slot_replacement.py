@@ -1,4 +1,5 @@
 """Disposable SQLite/SAV fault-injection tests; no real ROMs or user saves."""
+import base64
 import hashlib
 import tempfile
 import unittest
@@ -26,12 +27,36 @@ class ReplacementTests(unittest.TestCase):
         self.first = self.apply(self.item('a'))['slots'][0]
 
     def item(self, letter, slot=1):
-        return dict(slot=slot, filename=f'{letter}.gbc', sha256=letter*64,
-                    platform='gb', region='JP', rom_header_title=f'TEST {letter.upper()}')
+        return dict(
+            slot=slot,
+            filename=f'{letter}.gbc',
+            sha256=letter*64,
+            platform='gb',
+            region='JP',
+            rom_header_title=f'TEST {letter.upper()}',
+            generated_initial_save_data=base64.b64encode(
+                bytes([0xFF]) * (32 * 1024)
+            ).decode('ascii'),
+        )
 
     def apply(self, *items, confirm=False):
+        current = {
+            slot.slot: slot
+            for slot in self.app.rom_slots.list_for_user(self.users[0][0])
+        }
+        desired_items = []
+        for item in items:
+            desired = dict(item)
+            existing = current.get(int(desired['slot']))
+            if (
+                existing is not None
+                and existing.sha256 == desired.get('sha256')
+                and existing.filename == desired.get('filename')
+            ):
+                desired.pop('generated_initial_save_data', None)
+            desired_items.append(desired)
         return self.app.handle_request('POST', '/rom-slots/apply',
-            {'slots': list(items), 'confirm_delete_saves': confirm}, self.users[0][1])
+            {'slots': desired_items, 'confirm_delete_saves': confirm}, self.users[0][1])
 
     def pair(self):
         uid, token = self.users[1]
@@ -131,7 +156,7 @@ class ReplacementTests(unittest.TestCase):
             c.execute('UPDATE save_records SET revision=revision+1 WHERE save_id=?', (second['save_id'],))
         with self.assertRaisesRegex(ValidationError, 'revision/hash conflict'):
             self.apply(self.item('b'), confirm=True)
-        self.assertEqual(self.app.saves.download(second['save_id'], self.users[1][0])[1], bytes(32768))
+        self.assertEqual(self.app.saves.download(second['save_id'], self.users[1][0])[1], bytes([0xFF]) * 32768)
 
     def test_missing_partial_candidate_blocks_without_slot_change(self):
         session, second = self.interrupt_pair(True)
@@ -139,7 +164,7 @@ class ReplacementTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, 'candidate missing'):
             self.apply(self.item('b'), confirm=True)
         self.assertEqual(self.app.rom_slots.list_for_user(self.users[0][0])[0].save_id, self.first['save_id'])
-        self.assertEqual(self.app.saves.download(second['save_id'], self.users[1][0])[1], bytes(32768))
+        self.assertEqual(self.app.saves.download(second['save_id'], self.users[1][0])[1], bytes([0xFF]) * 32768)
         self.assertIsNone(self.app.sessions.active_game_session_for_user(self.users[1][0]))
 
     def test_active_game_refuses_replacement(self):
