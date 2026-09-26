@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "client_rom_registration.h"
 #include "client_file_io.h"
+#include "../runtimes/gb/src/server/slot.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -9,8 +10,24 @@
 static IntegralApiRomSlot response[INTEGRAL_ROM_SLOTS];
 static unsigned apply_calls, get_calls, import_logs, sync_logs;
 static int api_failure, get_failure, confirmation, expected_delete;
-static size_t expected_bytes;
+static size_t expected_bytes = 4;
+static int expected_generated = 1;
+static unsigned generated_save_calls;
 static char hash256[65], hash1[41];
+
+int integral_gb_runtime_initial_battery_for_rom(const char *rom_path,
+                                                uint8_t *buffer,
+                                                size_t buffer_capacity,
+                                                size_t *buffer_size)
+{
+    static const uint8_t generated_save[] = {0xFF, 0xFF, 0xFF, 0xFF};
+    CHECK(rom_path && strstr(rom_path, "sample.gbc") != NULL);
+    CHECK(buffer && buffer_size && buffer_capacity >= sizeof(generated_save));
+    memcpy(buffer, generated_save, sizeof(generated_save));
+    *buffer_size = sizeof(generated_save);
+    generated_save_calls++;
+    return 0;
+}
 
 int integral_api_get_rom_slots(const char *server, const char *token, IntegralApiRomSlot *out,
                               size_t count, char *error, size_t capacity)
@@ -23,7 +40,8 @@ int integral_api_get_rom_slots(const char *server, const char *token, IntegralAp
 int integral_api_apply_rom_slot(const char *server, const char *token, unsigned slot,
     const char *filename, const char *sha256, const char *sha1, const char *platform,
     const char *region, const char *title, const unsigned char *data, size_t bytes,
-    int confirm_delete, char *rom, size_t rom_capacity, char *save, size_t save_capacity,
+    int initial_save_generated, int confirm_delete, char *rom, size_t rom_capacity,
+    char *save, size_t save_capacity,
     int *requires_confirmation, char *error, size_t error_capacity)
 {
     CHECK(strcmp(server, "https://test.invalid") == 0 && strcmp(token, "test-token") == 0);
@@ -32,7 +50,15 @@ int integral_api_apply_rom_slot(const char *server, const char *token, unsigned 
     CHECK(strcmp(title, "GENERIC SAMPLE") == 0 && region[0]);
     CHECK(strcmp(sha256, hash256) == 0 && strcmp(sha1, hash1) == 0);
     CHECK(confirm_delete == expected_delete && bytes == expected_bytes);
-    if (bytes) CHECK(data && bytes == 3 && memcmp(data, "abc", 3) == 0 && import_logs > 0);
+    CHECK(initial_save_generated == expected_generated);
+    if (initial_save_generated) {
+        static const unsigned char generated_save[] = {0xFF, 0xFF, 0xFF, 0xFF};
+        CHECK(data && bytes == sizeof(generated_save));
+        CHECK(memcmp(data, generated_save, sizeof(generated_save)) == 0);
+    }
+    else if (bytes) {
+        CHECK(data && bytes == 3 && memcmp(data, "abc", 3) == 0 && import_logs > 0);
+    }
     else CHECK(data == NULL);
     apply_calls++;
     if (api_failure) {
@@ -46,6 +72,7 @@ int integral_api_apply_rom_slot(const char *server, const char *token, unsigned 
     snprintf(rom, rom_capacity, "rom-%u", slot); snprintf(save, save_capacity, "save-%u", slot);
     snprintf(response[slot-1].rom_id, sizeof(response[slot-1].rom_id), "%s", rom);
     snprintf(response[slot-1].save_id, sizeof(response[slot-1].save_id), "%s", save);
+    snprintf(response[slot-1].filename, sizeof(response[slot-1].filename), "%s", filename);
     snprintf(response[slot-1].sha256, sizeof(response[slot-1].sha256), "%s", sha256);
     return 0;
 }
@@ -64,7 +91,7 @@ int main(int argc, char **argv)
 {
     CHECK(argc == 2);
     char rom_path[1024], sav_path[1024], config[1024], failed_config[1100], status[160];
-    snprintf(rom_path, sizeof(rom_path), "%s/sample.gbc", argv[1]);
+    snprintf(rom_path, sizeof(rom_path), "%s/roms/sample.gbc", argv[1]);
     snprintf(sav_path, sizeof(sav_path), "%s/initial.sav", argv[1]);
     snprintf(config, sizeof(config), "%s/config.conf", argv[1]);
     snprintf(failed_config, sizeof(failed_config), "%s/blocked.conf", sav_path);
@@ -95,6 +122,7 @@ int main(int argc, char **argv)
     /* Disabled capability must never send the selected SAV, even with confirmation. */
     expected_delete=1; integral_rom_registration_apply(&state, true, true);
     CHECK(apply_calls == 1 && get_calls == 1 && import_logs == 0 && sync_logs == 1);
+    CHECK(generated_save_calls == 1);
     CHECK(strcmp(slots[0].save_id, "save-1") == 0 && strcmp(status, "ROM1 REGISTERED") == 0);
     state.allow_user_initial_save_import=true; editor.rom_initial_save_import_slot=0;
     strcpy(editor.rom_initial_save_import_path, sav_path);
@@ -103,7 +131,7 @@ int main(int argc, char **argv)
     editor.rom_selected=1; strcpy(slots[1].rom_path, rom_path); editor.rom_initial_save_import_slot=1;
     integral_rom_registration_apply(&state, false, false);
     CHECK(apply_calls == 1 && editor.rom_confirm_initial_save_import);
-    expected_delete=0; expected_bytes=3; confirmation=1;
+    expected_delete=0; expected_bytes=3; expected_generated=0; confirmation=1;
     integral_rom_registration_apply(&state, false, true);
     CHECK(apply_calls == 2 && editor.rom_confirm_delete && !editor.rom_confirm_initial_save_import);
     CHECK(get_calls == 1 && slots[1].save_id[0] == 0);
@@ -115,13 +143,14 @@ int main(int argc, char **argv)
     IntegralConfigRomSlot loaded[INTEGRAL_ROM_SLOTS] = {0};
     CHECK(integral_config_load_rom_slots(config, loaded, INTEGRAL_ROM_SLOTS) == 0);
     CHECK(strcmp(loaded[0].save_id, "save-1") == 0 && strcmp(loaded[1].save_id, "save-2") == 0);
-    editor.rom_selected=INTEGRAL_ROM_REGISTER_ROW;
+    editor.rom_selected=INTEGRAL_ROM_EXPORT_ROW;
     integral_rom_registration_apply(&state, false, false);
     CHECK(apply_calls == 3 && strcmp(status, "NO ROM CHANGES") == 0);
     strcpy(slots[2].rom_path, "missing.gbc");
     integral_rom_registration_apply(&state, false, false);
     CHECK(apply_calls == 3 && strcmp(status, "FILE NOT FOUND - EDIT ROM PATH") == 0);
-    strcpy(slots[2].rom_path, rom_path); api_failure=1; expected_bytes=0; expected_delete=0;
+    strcpy(slots[2].rom_path, rom_path); api_failure=1; expected_bytes=4;
+    expected_generated=1; expected_delete=0;
     integral_rom_registration_apply(&state, false, false);
     CHECK(apply_calls == 4 && get_calls == 2 && strcmp(status, "REGISTER FAILED apply-test-error") == 0);
     CHECK(!slots[2].save_id[0] && !slots[2].rom_id[0]);

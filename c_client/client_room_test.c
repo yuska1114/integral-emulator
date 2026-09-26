@@ -64,7 +64,10 @@ int main(int argc, char **argv)
         app.ui.screen=SCREEN_MAIN_MENU;app.ui.main_selected=4;
         handle_main_key(&app,&key);assert(app.ui.screen==SCREEN_SETTINGS);
         app.ui.settings_selected=3;handle_settings_key(&app,&key);
+        assert(app.ui.screen==SCREEN_OPTIONS && app.ui.options_selected==0);
+        key.keysym.sym=SDLK_ESCAPE;handle_options_key(&app,&key);
         assert(app.ui.screen==SCREEN_SETTINGS && app.ui.settings_selected==3);
+        key.keysym.sym=SDLK_RETURN;
         app.ui.settings_selected=0;handle_settings_key(&app,&key);
         assert(app.ui.screen==SCREEN_GB_KEY_CONFIG && app.key_editor.page==KEY_CONFIG_PAGE_GB);
         key.keysym.sym=SDLK_ESCAPE;handle_key_config_key(&app,&key);

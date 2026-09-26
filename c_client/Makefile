@@ -413,11 +413,11 @@ export-test: $(BUILD_DIR)/client_export_test$(EXEEXT)
 $(BUILD_DIR)/client_export_test$(EXEEXT): client_export_test.c client_file_io.c client_file_io.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(OPENSSL_CFLAGS) -o $@ client_export_test.c client_file_io.c $(OPENSSL_LIBS) $(PLATFORM_LIBS)
 
-$(BUILD_DIR)/client_rom_registration_test$(EXEEXT): client_rom_registration_test.c client_rom_registration.c client_rom_registration.h client_rom_editor.c client_rom_editor.h client_rom_catalog.c client_rom_catalog.h client_file_io.c client_file_io.h client_config.c client_config.h rom_metadata.c rom_metadata.h http_client.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ client_rom_registration_test.c client_rom_registration.c client_rom_editor.c client_rom_catalog.c client_file_io.c client_config.c rom_metadata.c $(SDL_LIBS) $(PLATFORM_LIBS)
+$(BUILD_DIR)/client_rom_registration_test$(EXEEXT): client_rom_registration_test.c client_rom_registration.c client_rom_registration.h client_rom_editor.c client_rom_editor.h client_rom_catalog.c client_rom_catalog.h client_file_io.c client_file_io.h client_config.c client_config.h rom_metadata.c rom_metadata.h http_client.h ../runtimes/gb/src/server/slot.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -I../runtimes/gb/src/common -I../runtimes/gb/third_party/SameBoy/Core -o $@ client_rom_registration_test.c client_rom_registration.c client_rom_editor.c client_rom_catalog.c client_file_io.c client_config.c rom_metadata.c $(SDL_LIBS) $(PLATFORM_LIBS)
 
 rom-registration-test: $(BUILD_DIR)/client_rom_registration_test$(EXEEXT)
-	work_dir=$$(mktemp -d) && ./$(BUILD_DIR)/client_rom_registration_test$(EXEEXT) "$$work_dir"
+	work_dir=$$(mktemp -d) && mkdir -p "$$work_dir/roms" && cd "$$work_dir" && "$(abspath $(BUILD_DIR)/client_rom_registration_test$(EXEEXT))" "$$work_dir"
 
 .PHONY: gb-local-launch-test
 $(BUILD_DIR)/client_launch_gb_local_test$(EXEEXT): client_launch_gb_local_test.c client_launch_gb_local.c client_launch_gb_local.h client_save_sync.h client_config.h client_config.c http_client.h client_file_io.c client_file_io.h | $(BUILD_DIR)

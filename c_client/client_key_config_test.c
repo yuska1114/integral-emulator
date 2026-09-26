@@ -119,8 +119,8 @@ int main(int argc, char **argv)
     bool held[INTEGRAL_CLIENT_ALIAS_KEYS] = {false};
     SDL_Event alias_event = {0};
     SDL_KeyboardEvent alias_translated = {0};
-    snprintf(keys.client_alias_right, sizeof(keys.client_alias_right), "PAD_LEFTX_POS");
-    snprintf(keys.client_alias_left, sizeof(keys.client_alias_left), "PAD_LEFTX_NEG");
+    snprintf(keys.client_alias_right, sizeof(keys.client_alias_right), "PAD_LX_POS");
+    snprintf(keys.client_alias_left, sizeof(keys.client_alias_left), "PAD_LX_NEG");
     alias_event.type = SDL_CONTROLLERAXISMOTION;
     alias_event.caxis.axis = SDL_CONTROLLER_AXIS_LEFTX;
     alias_event.caxis.value = -INTEGRAL_GB_RUNTIME_CONTROLLER_AXIS_THRESHOLD - 1;
