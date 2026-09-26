@@ -71,6 +71,7 @@ void cleanup_n64_room_session_files(const char *session_id);
 void poll_n64_room_async(IntegralRoomContext *state, Uint32 now);
 void activate_n64_room(IntegralRoomContext *state, const IntegralApiRoom *matched_room);
 bool n64_room_runtime_active(const IntegralRoomContext *state);
+void capture_n64_room(const IntegralRoomContext *state);
 void handle_n64_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key);
 bool handle_n64_room_util_event(IntegralRoomContext *state, const SDL_Event *event);
 void clear_secret(char *value, size_t value_size);

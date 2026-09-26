@@ -45,6 +45,10 @@ Link ROOMのセッションID、API状態同期、ready／lifecycle状態判定�
 Runtime起動・終了や通信処理は`client_room_link.c`に残します。`make -C c_client client-process-test`で
 POSIX子プロセスの終了・signal終了、およびWindows互換層の境界を検証します。
 
+N64 ROOMの終了確認とUTIL入力（Escape、スクリーンショット）は`client_room_n64_input.c`に分け、
+room orchestration／media処理から独立させています。確認のYES／NO、Escape取消、ウィンドウ閉じる操作の
+既存挙動を維持し、`client_room_test`のN64終了確認・UTIL入力テストで検証します。
+
 ## GBのIR受信調整（実験的設定）
 
 Clientを終了して、アカウント別設定ファイル
