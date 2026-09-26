@@ -7,6 +7,7 @@
 #include "client_rom_editor.h"
 #include "client_room_common.h"
 #include "client_screenshots.h"
+#include "rom_metadata.h"
 
 typedef struct {
     AppScreen screen;
@@ -26,7 +27,15 @@ typedef struct {
 } IntegralClientUiState;
 
 typedef struct {
+    char source_path[INTEGRAL_CONFIG_PATH_MAX];
+    IntegralRomMetadata metadata;
+    bool file_found;
+    bool header_valid;
+} IntegralClientRomMetadataCache;
+
+typedef struct {
     IntegralConfigRomSlot rom_slots[INTEGRAL_ROM_SLOTS];
+    IntegralClientRomMetadataCache rom_metadata[INTEGRAL_ROM_SLOTS];
     IntegralApiRomSlot server_rom_slots[INTEGRAL_ROM_SLOTS];
     IntegralClientRomEditor rom_editor;
     bool allow_user_initial_save_import;
