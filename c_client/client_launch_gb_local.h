@@ -33,6 +33,7 @@ void integral_gb_local_arguments(const IntegralGbLocalLaunch *launch,
                                 const char *argv[INTEGRAL_GB_LOCAL_ARGV_CAPACITY]);
 
 typedef struct IntegralGbLocalSession {
+    IntegralChildProcess *monitor_out;
     const char *server;
     const char *token;
     const char *game_session_id;
@@ -53,6 +54,7 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
 /* Synchronous boundary to existing SAV/outbox/RTC and SDL operations.
  * Callbacks do not retain the request or introduce persistent state. */
 typedef struct IntegralGbLocalRequest {
+    IntegralChildProcess *monitor_out;
     const IntegralConfigRomSlot *slot1, *slot2;
     const char *runtime, *port, *server, *token;
     const char *config_path;
