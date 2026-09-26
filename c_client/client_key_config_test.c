@@ -64,6 +64,13 @@ int main(int argc, char **argv)
     CHECK(editor.key_capture_target == KEY_CAPTURE_NONE);
     CHECK(integral_config_load_keys(path, &restored) == 0 && strcmp(restored.n64_p1, keys.n64_p1) == 0);
     editor.n64_controller_index = 1u;
+    CHECK(keys.n64_p2[0] == '\0');
+    editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
+    press(SDLK_z, SDL_SCANCODE_F1, 0);
+    CHECK(editor.key_capture_step == 1u && keys.n64_p2[0] == '\0');
+    CHECK(!press(SDLK_ESCAPE, SDL_SCANCODE_ESCAPE, 0));
+    CHECK(editor.key_capture_target == KEY_CAPTURE_NONE && keys.n64_p2[0] == '\0');
+    CHECK(integral_config_load_keys(path, &restored) == 0 && restored.n64_p2[0] == '\0');
     editor.key_selected = 1; press(SDLK_RETURN, SDL_SCANCODE_RETURN, 0);
     for (unsigned i = 0; i < 18; i++) press(SDLK_z, SDL_SCANCODE_F1 + i, 0);
     CHECK(keys.n64_p2[0] != '\0');
@@ -119,6 +126,12 @@ int main(int argc, char **argv)
     alias_event.caxis.value = -INTEGRAL_GB_RUNTIME_CONTROLLER_AXIS_THRESHOLD - 1;
     CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
     CHECK(alias_translated.keysym.sym == SDLK_LEFT);
+    alias_event.caxis.value = INTEGRAL_GB_RUNTIME_CONTROLLER_AXIS_THRESHOLD + 1;
+    CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
+    CHECK(alias_translated.keysym.sym == SDLK_RIGHT);
+    alias_event.caxis.value = -INTEGRAL_GB_RUNTIME_CONTROLLER_AXIS_THRESHOLD - 1;
+    CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
+    CHECK(alias_translated.keysym.sym == SDLK_LEFT);
 
     memset(held, 0, sizeof(held));
     snprintf(keys.client_alias_right, sizeof(keys.client_alias_right), "JOY_HAT_0_RIGHT");
@@ -127,6 +140,12 @@ int main(int argc, char **argv)
     snprintf(keys.client_alias_down, sizeof(keys.client_alias_down), "JOY_HAT_0_DOWN");
     alias_event.type = SDL_JOYHATMOTION;
     alias_event.jhat.hat = 0;
+    alias_event.jhat.value = SDL_HAT_LEFT;
+    CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
+    CHECK(alias_translated.keysym.sym == SDLK_LEFT);
+    alias_event.jhat.value = SDL_HAT_RIGHT;
+    CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
+    CHECK(alias_translated.keysym.sym == SDLK_RIGHT);
     alias_event.jhat.value = SDL_HAT_LEFT;
     CHECK(integral_client_alias_controller_event(&keys, held, &alias_event, &alias_translated));
     CHECK(alias_translated.keysym.sym == SDLK_LEFT);
