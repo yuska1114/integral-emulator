@@ -372,6 +372,7 @@ bool integral_client_alias_controller_event(const IntegralConfigKeys *keys,
                                             SDL_KeyboardEvent *translated)
 {
     if (!keys || !held || !event || !translated) return false;
+    int rising_index = -1;
     for (unsigned i = 0; i < INTEGRAL_CLIENT_ALIAS_KEYS; i++) {
         const char *name = client_alias_name(keys, i);
         if (!name[0]) continue;
@@ -386,15 +387,17 @@ bool integral_client_alias_controller_event(const IntegralConfigKeys *keys,
         }
         bool rising = pressed && !held[i];
         held[i] = pressed;
-        if (!rising) continue;
-        memset(translated, 0, sizeof(*translated));
-        translated->type = SDL_KEYDOWN;
-        translated->state = SDL_PRESSED;
-        translated->keysym.sym = client_alias_operation_key(i);
-        translated->keysym.scancode = SDL_GetScancodeFromKey(translated->keysym.sym);
-        return true;
+        if (rising && rising_index < 0) {
+            rising_index = (int)i;
+        }
     }
-    return false;
+    if (rising_index < 0) return false;
+    memset(translated, 0, sizeof(*translated));
+    translated->type = SDL_KEYDOWN;
+    translated->state = SDL_PRESSED;
+    translated->keysym.sym = client_alias_operation_key((unsigned)rising_index);
+    translated->keysym.scancode = SDL_GetScancodeFromKey(translated->keysym.sym);
+    return true;
 }
 
 bool integral_client_alias_has_controller_binding(const IntegralConfigKeys *keys)
@@ -428,6 +431,13 @@ static void begin_key_capture(KeyEditContext *state, KeyCaptureTarget target)
     state->editor->key_capture_step = 0;
     state->editor->key_capture_wait_release = false;
     state->editor->key_capture_release_binding = SDLK_UNKNOWN;
+    if (target == KEY_CAPTURE_N64) {
+        const char *source_spec = n64_key_spec_for_controller(
+            state->keys, state->editor->n64_controller_index);
+        key_spec_to_names_count(source_spec,
+                                state->editor->n64_capture_names,
+                                INTEGRAL_N64_RUNTIME_KEY_BUTTONS);
+    }
     copy_text(state->status, state->status_size, "PRESS KEY OR JOY-CON INPUT");
 }
 
@@ -557,16 +567,17 @@ static void apply_captured_binding(KeyEditContext *state,
         return;
     }
     if (state->editor->key_capture_target == KEY_CAPTURE_N64) {
-        char names[INTEGRAL_N64_RUNTIME_KEY_BUTTONS][INTEGRAL_CONFIG_KEY_NAME_MAX];
-        char *target_spec = n64_key_spec_for_controller(
-            state->keys, state->editor->n64_controller_index);
-        key_spec_to_names_count(target_spec, names, INTEGRAL_N64_RUNTIME_KEY_BUTTONS);
         unsigned index = n64_key_spec_index_for_capture_step(state->editor->key_capture_step);
-        copy_text(names[index], sizeof(names[index]), name);
-        key_names_to_spec_count(names, INTEGRAL_N64_RUNTIME_KEY_BUTTONS,
-                                target_spec, INTEGRAL_CONFIG_KEY_SPEC_MAX);
+        copy_text(state->editor->n64_capture_names[index],
+                  sizeof(state->editor->n64_capture_names[index]), name);
         state->editor->key_capture_step++;
         if (state->editor->key_capture_step >= INTEGRAL_N64_RUNTIME_KEY_BUTTONS) {
+            char *target_spec = n64_key_spec_for_controller(
+                state->keys, state->editor->n64_controller_index);
+            key_names_to_spec_count(state->editor->n64_capture_names,
+                                    INTEGRAL_N64_RUNTIME_KEY_BUTTONS,
+                                    target_spec,
+                                    INTEGRAL_CONFIG_KEY_SPEC_MAX);
             finish_key_capture(state);
         }
         else {
