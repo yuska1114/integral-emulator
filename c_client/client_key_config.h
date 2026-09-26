@@ -35,6 +35,7 @@ typedef struct IntegralClientKeyEditor {
     unsigned key_capture_step;
     bool key_capture_wait_release;
     SDL_Keycode key_capture_release_binding;
+    char n64_capture_names[INTEGRAL_N64_RUNTIME_KEY_BUTTONS][INTEGRAL_CONFIG_KEY_NAME_MAX];
 } IntegralClientKeyEditor;
 
 /* True requests return to the main menu; this module never changes screens. */
