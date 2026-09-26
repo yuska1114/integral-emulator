@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "client_app.h"
 #include "client_input_alias.h"
+#include "client_settings.h"
 #include "client_local.h"
 #include "client_runtime_support.h"
 #include "client_log.h"
@@ -65,7 +66,6 @@ static void move_main_selection(AppState *state, int delta);
 static void apply_selected_rom_slot_to_server(AppState *state,
                                               bool confirm_delete_saves,
                                               bool confirm_initial_save_import);
-static void enter_options(AppState *state);
 
 static size_t field_capacity(LoginField field)
 {
@@ -117,7 +117,7 @@ void handle_key_config_key(AppState *state, const SDL_KeyboardEvent *key)
     if (integral_client_key_editor_keyboard(&state->key_editor, &state->keys,
             state->config_path, state->login.status, sizeof(state->login.status), key)) {
         state->ui.screen = SCREEN_SETTINGS;
-        state->ui.settings_selected = (unsigned)state->key_editor.page;
+        state->settings.settings_selected = (unsigned)state->key_editor.page;
     }
 }
 
@@ -628,191 +628,6 @@ static void move_main_selection(AppState *state, int delta)
 }
 
 
-static void move_settings_selection(AppState *state, int delta)
-{
-    int selected = (int)state->ui.settings_selected + delta;
-    if (selected < 0) selected = INTEGRAL_SETTINGS_ROWS - 1;
-    if (selected >= INTEGRAL_SETTINGS_ROWS) selected = 0;
-    state->ui.settings_selected = (unsigned)selected;
-}
-
-
-void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key)
-{
-    if (key->repeat) return;
-    switch (key->keysym.sym) {
-        case SDLK_ESCAPE:
-            state->ui.screen = SCREEN_MAIN_MENU;
-            copy_text(state->login.status, sizeof(state->login.status), "MAIN MENU");
-            break;
-        case SDLK_TAB:
-        case SDLK_DOWN:
-            move_settings_selection(state, 1);
-            break;
-        case SDLK_UP:
-            move_settings_selection(state, -1);
-            break;
-        case SDLK_RETURN:
-        case SDLK_KP_ENTER:
-            if (state->ui.settings_selected == 3u) {
-                enter_options(state);
-            }
-            else if (state->ui.settings_selected == INTEGRAL_SETTINGS_ROWS - 1u) {
-                state->ui.screen = SCREEN_MAIN_MENU;
-                copy_text(state->login.status, sizeof(state->login.status), "MAIN MENU");
-            }
-            else {
-                if (state->ui.settings_selected == 0u) {
-                    state->key_editor.page = KEY_CONFIG_PAGE_GB;
-                    state->ui.screen = SCREEN_GB_KEY_CONFIG;
-                    copy_text(state->login.status, sizeof(state->login.status), "GB KEYS CONFIG");
-                }
-                else if (state->ui.settings_selected == 1u) {
-                    state->key_editor.page = KEY_CONFIG_PAGE_N64;
-                    state->ui.screen = SCREEN_N64_KEY_CONFIG;
-                    copy_text(state->login.status, sizeof(state->login.status), "N64 KEYS CONFIG");
-                }
-                else {
-                    state->key_editor.page = KEY_CONFIG_PAGE_UTIL;
-                    state->ui.screen = SCREEN_UTIL_KEY_CONFIG;
-                    copy_text(state->login.status, sizeof(state->login.status), "UTIL KEYS");
-                }
-                state->key_editor.key_selected = 0;
-                if (state->key_editor.page == KEY_CONFIG_PAGE_N64) {
-                    state->key_editor.n64_controller_index = 0;
-                }
-                state->key_editor.key_capture_target = KEY_CAPTURE_NONE;
-            }
-            break;
-        default:
-            break;
-    }
-}
-
-
-static void move_options_selection(AppState *state, int delta)
-{
-    int selected = (int)state->ui.options_selected + delta;
-    if (selected < 0) selected = INTEGRAL_OPTIONS_ROWS - 1;
-    if (selected >= INTEGRAL_OPTIONS_ROWS) selected = 0;
-    state->ui.options_selected = (unsigned)selected;
-}
-
-
-static void enter_options(AppState *state)
-{
-    state->ui.screen = SCREEN_OPTIONS;
-    state->ui.options_selected = 0u;
-    state->ui.options_ir_off_delay_ticks = integral_config_ir_off_delay(state->config_path);
-    state->ui.options_sgb_enabled = integral_config_sgb_enabled(state->config_path) != 0;
-    copy_text(state->login.status, sizeof(state->login.status), "OPTIONS");
-}
-
-
-static void adjust_ir_release_delay_option(AppState *state, int delta)
-{
-    IntegralConfigLocal local;
-    if (integral_config_load_local(state->config_path, &local) != 0) {
-        copy_text(state->login.status, sizeof(state->login.status),
-                  "IR RELEASE DELAY LOAD FAILED");
-        return;
-    }
-
-    unsigned next = state->ui.options_ir_off_delay_ticks;
-    if (delta < 0) {
-        if (next == 0u) {
-            copy_text(state->login.status, sizeof(state->login.status),
-                      "IR RELEASE DELAY MIN 0");
-            return;
-        }
-        next--;
-    }
-    else if (delta > 0) {
-        if (next >= 256u) {
-            copy_text(state->login.status, sizeof(state->login.status),
-                      "IR RELEASE DELAY MAX 256");
-            return;
-        }
-        next++;
-    }
-    else {
-        return;
-    }
-
-    local.ir_off_delay_ticks = next;
-    if (integral_config_save_local(state->config_path, &local) != 0) {
-        copy_text(state->login.status, sizeof(state->login.status),
-                  "IR RELEASE DELAY SAVE FAILED");
-        return;
-    }
-    state->ui.options_ir_off_delay_ticks = next;
-    snprintf(state->login.status, sizeof(state->login.status),
-             "IR RELEASE DELAY %u TICK", next);
-}
-
-
-static void toggle_sgb_option(AppState *state)
-{
-    bool enabled = state->ui.options_sgb_enabled;
-    if (integral_config_save_sgb(state->config_path, !enabled) != 0) {
-        copy_text(state->login.status, sizeof(state->login.status), "SGB OPTION SAVE FAILED");
-        return;
-    }
-    state->ui.options_sgb_enabled = !enabled;
-    copy_text(state->login.status, sizeof(state->login.status),
-              enabled ? "SGB DISABLED" : "SGB ENABLED");
-}
-
-
-void handle_options_key(AppState *state, const SDL_KeyboardEvent *key)
-{
-    if (key->repeat) return;
-    switch (key->keysym.sym) {
-        case SDLK_ESCAPE:
-            state->ui.screen = SCREEN_SETTINGS;
-            state->ui.settings_selected = 3u;
-            copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
-            break;
-        case SDLK_TAB:
-        case SDLK_DOWN:
-            move_options_selection(state, 1);
-            break;
-        case SDLK_UP:
-            move_options_selection(state, -1);
-            break;
-        case SDLK_LEFT:
-            if (state->ui.options_selected == 0u) {
-                adjust_ir_release_delay_option(state, -1);
-            }
-            else if (state->ui.options_selected == 1u) {
-                toggle_sgb_option(state);
-            }
-            break;
-        case SDLK_RIGHT:
-            if (state->ui.options_selected == 0u) {
-                adjust_ir_release_delay_option(state, 1);
-            }
-            else if (state->ui.options_selected == 1u) {
-                toggle_sgb_option(state);
-            }
-            break;
-        case SDLK_RETURN:
-        case SDLK_KP_ENTER:
-            if (state->ui.options_selected == 1u) {
-                toggle_sgb_option(state);
-            }
-            else if (state->ui.options_selected == INTEGRAL_OPTIONS_ROWS - 1u) {
-                state->ui.screen = SCREEN_SETTINGS;
-                state->ui.settings_selected = 3u;
-                copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
-            }
-            break;
-        default:
-            break;
-    }
-}
-
-
 void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
 {
     if (key->repeat) {
@@ -856,7 +671,7 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
             }
             else if (state->ui.main_selected == 4) {
                 state->ui.screen = SCREEN_SETTINGS;
-                state->ui.settings_selected = 0;
+                state->settings.settings_selected = 0;
                 copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
             }
             else {

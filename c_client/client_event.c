@@ -11,6 +11,7 @@
 #include "client_room_common.h"
 #include "client_room_n64.h"
 #include "client_runtime_support.h"
+#include "client_settings.h"
 #include "client_screenshots.h"
 #include "../runtimes/gb/src/common/key_config.h"
 
@@ -65,10 +66,10 @@ static void dispatch_client_key(AppState *state, const SDL_KeyboardEvent *key)
         handle_key_config_key(state, key);
     }
     else if (state->ui.screen == SCREEN_SETTINGS) {
-        handle_settings_key(state, key);
+        integral_client_settings_handle_settings_key(state, key);
     }
     else if (state->ui.screen == SCREEN_OPTIONS) {
-        handle_options_key(state, key);
+        integral_client_settings_handle_options_key(state, key);
     }
     else if (state->ui.screen == SCREEN_SCREENSHOTS) {
         if (integral_screenshots_key(state->screenshots, key)) {
