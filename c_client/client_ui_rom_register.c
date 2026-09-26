@@ -95,14 +95,13 @@ static unsigned format_rom_slot_summary(const IntegralConfigRomSlot *slot,
 
 void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState *state)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
-    SDL_Color warning = {230, 92, 76, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
+    SDL_Color warning = theme->warning_error;
 
     draw_header(renderer, "ROM REGISTER", state->login.username, state->login.server);
     integral_sdl_draw_text(renderer, 24, 88, "MAX 8 ROMS  SAV IS SERVER MANAGED", 1, muted);
@@ -110,10 +109,8 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
     for (unsigned i = 0; i < INTEGRAL_ROM_ROWS; i++) {
         int y = 112 + (int)i * 27;
         if (state->catalog.rom_editor.rom_selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 6, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 27};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y, 2, false);
         }
         if (i < INTEGRAL_ROM_SLOTS) {
             char label_text[24];
@@ -183,8 +180,10 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
         const char *value_text = state->catalog.rom_editor.rom_edit_target == ROM_EDIT_INITIAL_SAVE
                                      ? state->catalog.rom_editor.rom_initial_save_import_path
                                      : slot->rom_path;
-        SDL_SetRenderDrawColor(renderer, 8, 12, 16, 240);
         SDL_Rect overlay = {.x = 42, .y = 320, .w = 396, .h = 88};
+        SDL_Color overlay_color = theme->panel_fill;
+        overlay_color.a = 240;
+        SDL_SetRenderDrawColor(renderer, overlay_color.r, overlay_color.g, overlay_color.b, overlay_color.a);
         SDL_RenderFillRect(renderer, &overlay);
         integral_sdl_draw_text(renderer, 62, 342, label_text, 2, selected);
         integral_sdl_draw_utf8_scrolled(renderer, 62, 372, value_text[0] ? value_text : "<EMPTY>",
@@ -192,8 +191,10 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
         integral_sdl_draw_text(renderer, 394, 372, "_", 1, selected);
     }
     else if (state->catalog.rom_editor.rom_browser_active) {
-        SDL_SetRenderDrawColor(renderer, 8, 12, 16, 245);
         SDL_Rect overlay = {.x = 34, .y = 86, .w = 412, .h = 322};
+        SDL_Color overlay_color = theme->panel_fill;
+        overlay_color.a = 245;
+        SDL_SetRenderDrawColor(renderer, overlay_color.r, overlay_color.g, overlay_color.b, overlay_color.a);
         SDL_RenderFillRect(renderer, &overlay);
         SDL_SetRenderDrawColor(renderer, selected.r, selected.g, selected.b, selected.a);
         SDL_RenderDrawRect(renderer, &overlay);
@@ -207,10 +208,8 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
             unsigned index = start + i;
             int y = 142 + (int)i * 28;
             if (index == state->catalog.rom_editor.rom_browser_selected) {
-                SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
                 SDL_Rect row = {.x = 46, .y = y - 6, .w = 388, .h = 24};
-                SDL_RenderFillRect(renderer, &row);
-                integral_sdl_draw_text(renderer, 56, y, ">", 1, selected);
+                integral_client_ui_draw_selection(renderer, row, 56, y, 1, false);
             }
             integral_client_ui_draw_text_fit(renderer,
                                   76,
@@ -223,8 +222,10 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
         integral_sdl_draw_text(renderer, 54, 374, "LEFT/RIGHT MOVE  ENTER CHOOSE  ESC CLOSE", 1, muted);
     }
     else if (state->catalog.rom_editor.rom_confirm_delete) {
-        SDL_SetRenderDrawColor(renderer, 8, 12, 16, 245);
         SDL_Rect overlay = {.x = 34, .y = 242, .w = 412, .h = 166};
+        SDL_Color overlay_color = theme->panel_fill;
+        overlay_color.a = 245;
+        SDL_SetRenderDrawColor(renderer, overlay_color.r, overlay_color.g, overlay_color.b, overlay_color.a);
         SDL_RenderFillRect(renderer, &overlay);
         SDL_SetRenderDrawColor(renderer, selected.r, selected.g, selected.b, selected.a);
         SDL_RenderDrawRect(renderer, &overlay);
@@ -249,8 +250,10 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
         integral_sdl_draw_text(renderer, 54, 382, "ENTER YES   ESC NO", 1, value);
     }
     else if (state->catalog.rom_editor.rom_confirm_initial_save_import) {
-        SDL_SetRenderDrawColor(renderer, 8, 12, 16, 245);
         SDL_Rect overlay = {.x = 34, .y = 316, .w = 412, .h = 92};
+        SDL_Color overlay_color = theme->panel_fill;
+        overlay_color.a = 245;
+        SDL_SetRenderDrawColor(renderer, overlay_color.r, overlay_color.g, overlay_color.b, overlay_color.a);
         SDL_RenderFillRect(renderer, &overlay);
         SDL_SetRenderDrawColor(renderer, selected.r, selected.g, selected.b, selected.a);
         SDL_RenderDrawRect(renderer, &overlay);

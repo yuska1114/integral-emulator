@@ -202,13 +202,12 @@ static void draw_local_mode(SDL_Renderer *renderer, const AppState *state)
 
 static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, bool mobile_mode)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
 
     draw_header(renderer,
                 mobile_mode ? "MOBILE MODE" : "GB MODE",
@@ -245,10 +244,8 @@ static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, b
     for (unsigned i = 0; i < row_count; i++) {
         int y = 118 + (int)i * 76;
         if (state->local.local_selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 10, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 58};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y, 2, false);
         }
         integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.local_selected == i ? selected : label, 390);
         if (details[i][0] != '\0') {
@@ -281,13 +278,12 @@ static void draw_gb_mobile(SDL_Renderer *renderer, const AppState *state)
 
 static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
 
     draw_header(renderer, "N64 MODE", state->login.username, state->login.server);
 
@@ -330,10 +326,8 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
     for (unsigned i = 0; i < 6; i++) {
         int y = 102 + (int)i * 48;
         if (state->local.integral_n64_runtime_selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 8, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 38};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y + 2, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y + 2, 2, false);
         }
         integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.integral_n64_runtime_selected == i ? selected : label, 390);
         if (i == 1 && n64_slot) {
