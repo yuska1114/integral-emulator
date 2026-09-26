@@ -1199,15 +1199,15 @@ void client_diagnostics_prepare_screen(AppState *state, int argc, char **argv)
             }
             else if (strcmp(argv[i + 1], "settings") == 0) {
                 state->ui.screen = SCREEN_SETTINGS;
-                state->ui.settings_selected = 0;
+                state->settings.settings_selected = 0;
                 copy_text(state->login.username, sizeof(state->login.username), "TESTUSER1");
                 copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
             }
             else if (strcmp(argv[i + 1], "options") == 0) {
                 state->ui.screen = SCREEN_OPTIONS;
-                state->ui.options_selected = 0;
-                state->ui.options_ir_off_delay_ticks = 32u;
-                state->ui.options_sgb_enabled = true;
+                state->settings.options_selected = 0;
+                state->settings.options_ir_off_delay_ticks = 32u;
+                state->settings.options_sgb_enabled = true;
                 copy_text(state->login.username, sizeof(state->login.username), "TESTUSER1");
                 copy_text(state->login.status, sizeof(state->login.status), "OPTIONS");
             }

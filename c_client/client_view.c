@@ -121,17 +121,17 @@ static void draw_main_menu(SDL_Renderer *renderer, const AppState *state)
 
 static void draw_settings(SDL_Renderer *renderer, const AppState *state)
 {
-    IntegralClientMenuView view = menu_view(state, state->ui.settings_selected);
+    IntegralClientMenuView view = menu_view(state, state->settings.settings_selected);
     integral_client_ui_draw_settings(renderer, &view);
 }
 
 
 static void draw_options(SDL_Renderer *renderer, const AppState *state)
 {
-    IntegralClientMenuView view = menu_view(state, state->ui.options_selected);
+    IntegralClientMenuView view = menu_view(state, state->settings.options_selected);
     integral_client_ui_draw_options(renderer, &view,
-                                    state->ui.options_ir_off_delay_ticks,
-                                    state->ui.options_sgb_enabled);
+                                    state->settings.options_ir_off_delay_ticks,
+                                    state->settings.options_sgb_enabled);
 }
 
 

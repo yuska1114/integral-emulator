@@ -5,13 +5,11 @@
 
 #include <SDL.h>
 #include <stdbool.h>
+#include "client_settings.h"
 
 #define INTEGRAL_MAIN_ROWS 6
 #define INTEGRAL_LOCAL_MODE_ROWS 3
 #define INTEGRAL_ROOM_MODE_ROWS 3
-#define INTEGRAL_SETTINGS_ROWS 5
-#define INTEGRAL_OPTIONS_ROWS 3
-
 typedef struct IntegralClientMenuView {
     const char *username;
     const char *server;
