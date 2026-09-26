@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "client_key_config.h"
+#include "client_input_alias.h"
 #include "../runtimes/gb/src/common/key_config.h"
 #include <stdio.h>
 #include <string.h>
