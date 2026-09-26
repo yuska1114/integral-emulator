@@ -25,6 +25,7 @@ typedef struct IntegralClientMenuView {
 void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralClientMenuView *view);
 void integral_client_ui_draw_settings(SDL_Renderer *renderer, const IntegralClientMenuView *view);
 void integral_client_ui_draw_options(SDL_Renderer *renderer, const IntegralClientMenuView *view,
+                                     unsigned ir_off_delay_ticks,
                                      int sgb_enabled);
 void integral_client_ui_draw_room_mode(SDL_Renderer *renderer, const IntegralClientMenuView *view);
 void integral_client_ui_draw_join_room(SDL_Renderer *renderer, const IntegralClientMenuView *view,

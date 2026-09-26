@@ -62,6 +62,13 @@ int main(void)
         if (integral_config_save_sgb(path, 1) != 0 ||
             !integral_config_sgb_enabled(path)) return 63;
     }
+    {
+        IntegralConfigLocal local = {0};
+        if (integral_config_load_local(path, &local) != 0) return 70;
+        local.ir_off_delay_ticks = 17u;
+        if (integral_config_save_local(path, &local) != 0) return 71;
+        if (integral_config_ir_off_delay(path) != 17u) return 72;
+    }
     (void)remove(path);
     IntegralConfigWindow default_window = {0};
     if (integral_config_load_window(path, &default_window) != 0 ||

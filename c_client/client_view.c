@@ -199,6 +199,7 @@ static void draw_options(SDL_Renderer *renderer, const AppState *state)
 {
     IntegralClientMenuView view = menu_view(state, state->ui.options_selected);
     integral_client_ui_draw_options(renderer, &view,
+                                    integral_config_ir_off_delay(state->config_path),
                                     integral_config_sgb_enabled(state->config_path));
 }
 
