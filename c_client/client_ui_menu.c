@@ -94,6 +94,7 @@ void integral_client_ui_draw_settings(SDL_Renderer *renderer, const IntegralClie
 
 void integral_client_ui_draw_options(SDL_Renderer *renderer,
                                      const IntegralClientMenuView *view,
+                                     unsigned ir_off_delay_ticks,
                                      int sgb_enabled)
 {
     SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
@@ -103,13 +104,15 @@ void integral_client_ui_draw_options(SDL_Renderer *renderer,
     SDL_Color value = {238, 238, 238, 255};
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
+    char ir_delay_value[24];
+    snprintf(ir_delay_value, sizeof(ir_delay_value), "<%u> tick", ir_off_delay_ticks);
     const char *labels[INTEGRAL_OPTIONS_ROWS] = {
-        "IR DELAY",
+        "IR RELEASE DELAY",
         "SGB",
         "BACK",
     };
     const char *values[INTEGRAL_OPTIONS_ROWS] = {
-        "<16> tick",
+        ir_delay_value,
         sgb_enabled ? "<ENABLE>" : "<DISABLE>",
         "",
     };
@@ -128,8 +131,7 @@ void integral_client_ui_draw_options(SDL_Renderer *renderer,
         integral_sdl_draw_text(renderer, 48, y, labels[i], 2,
                                view->selected == i ? selected : label);
         if (values[i][0]) {
-            integral_sdl_draw_text(renderer, 220, y, values[i], 2,
-                                   i == 0 ? muted : value);
+            integral_sdl_draw_text(renderer, 320, y, values[i], 2, value);
         }
     }
 

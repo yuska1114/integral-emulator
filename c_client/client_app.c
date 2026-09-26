@@ -665,6 +665,47 @@ static void move_options_selection(AppState *state, int delta)
 }
 
 
+static void adjust_ir_release_delay_option(AppState *state, int delta)
+{
+    IntegralConfigLocal local;
+    if (integral_config_load_local(state->config_path, &local) != 0) {
+        copy_text(state->login.status, sizeof(state->login.status),
+                  "IR RELEASE DELAY LOAD FAILED");
+        return;
+    }
+
+    unsigned next = local.ir_off_delay_ticks;
+    if (delta < 0) {
+        if (next == 0u) {
+            copy_text(state->login.status, sizeof(state->login.status),
+                      "IR RELEASE DELAY MIN 0");
+            return;
+        }
+        next--;
+    }
+    else if (delta > 0) {
+        if (next >= 256u) {
+            copy_text(state->login.status, sizeof(state->login.status),
+                      "IR RELEASE DELAY MAX 256");
+            return;
+        }
+        next++;
+    }
+    else {
+        return;
+    }
+
+    local.ir_off_delay_ticks = next;
+    if (integral_config_save_local(state->config_path, &local) != 0) {
+        copy_text(state->login.status, sizeof(state->login.status),
+                  "IR RELEASE DELAY SAVE FAILED");
+        return;
+    }
+    snprintf(state->login.status, sizeof(state->login.status),
+             "IR RELEASE DELAY %u TICK", next);
+}
+
+
 static void toggle_sgb_option(AppState *state)
 {
     int enabled = integral_config_sgb_enabled(state->config_path);
@@ -694,8 +735,20 @@ void handle_options_key(AppState *state, const SDL_KeyboardEvent *key)
             move_options_selection(state, -1);
             break;
         case SDLK_LEFT:
+            if (state->ui.options_selected == 0u) {
+                adjust_ir_release_delay_option(state, -1);
+            }
+            else if (state->ui.options_selected == 1u) {
+                toggle_sgb_option(state);
+            }
+            break;
         case SDLK_RIGHT:
-            if (state->ui.options_selected == 1u) toggle_sgb_option(state);
+            if (state->ui.options_selected == 0u) {
+                adjust_ir_release_delay_option(state, 1);
+            }
+            else if (state->ui.options_selected == 1u) {
+                toggle_sgb_option(state);
+            }
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
