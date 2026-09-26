@@ -619,7 +619,9 @@ void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key)
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
             if (state->ui.settings_selected == 3u) {
-                /* OPTIONS is a focusable placeholder with no action yet. */
+                state->ui.screen = SCREEN_OPTIONS;
+                state->ui.options_selected = 0u;
+                copy_text(state->login.status, sizeof(state->login.status), "OPTIONS");
             }
             else if (state->ui.settings_selected == INTEGRAL_SETTINGS_ROWS - 1u) {
                 state->ui.screen = SCREEN_MAIN_MENU;
@@ -646,6 +648,64 @@ void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key)
                     state->key_editor.n64_controller_index = 0;
                 }
                 state->key_editor.key_capture_target = KEY_CAPTURE_NONE;
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+
+static void move_options_selection(AppState *state, int delta)
+{
+    int selected = (int)state->ui.options_selected + delta;
+    if (selected < 0) selected = INTEGRAL_OPTIONS_ROWS - 1;
+    if (selected >= INTEGRAL_OPTIONS_ROWS) selected = 0;
+    state->ui.options_selected = (unsigned)selected;
+}
+
+
+static void toggle_sgb_option(AppState *state)
+{
+    int enabled = integral_config_sgb_enabled(state->config_path);
+    if (integral_config_save_sgb(state->config_path, !enabled) != 0) {
+        copy_text(state->login.status, sizeof(state->login.status), "SGB OPTION SAVE FAILED");
+        return;
+    }
+    copy_text(state->login.status, sizeof(state->login.status),
+              enabled ? "SGB DISABLED" : "SGB ENABLED");
+}
+
+
+void handle_options_key(AppState *state, const SDL_KeyboardEvent *key)
+{
+    if (key->repeat) return;
+    switch (key->keysym.sym) {
+        case SDLK_ESCAPE:
+            state->ui.screen = SCREEN_SETTINGS;
+            state->ui.settings_selected = 3u;
+            copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
+            break;
+        case SDLK_TAB:
+        case SDLK_DOWN:
+            move_options_selection(state, 1);
+            break;
+        case SDLK_UP:
+            move_options_selection(state, -1);
+            break;
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+            if (state->ui.options_selected == 1u) toggle_sgb_option(state);
+            break;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            if (state->ui.options_selected == 1u) {
+                toggle_sgb_option(state);
+            }
+            else if (state->ui.options_selected == INTEGRAL_OPTIONS_ROWS - 1u) {
+                state->ui.screen = SCREEN_SETTINGS;
+                state->ui.settings_selected = 3u;
+                copy_text(state->login.status, sizeof(state->login.status), "SETTINGS");
             }
             break;
         default:

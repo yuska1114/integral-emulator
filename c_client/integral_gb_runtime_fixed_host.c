@@ -52,6 +52,7 @@ typedef struct Options {
     const char *ca_file;
     uint64_t rtc_target_unix;
     unsigned ir_off_delay_ticks;
+    bool sgb_disabled;
     const char *test_macro_host;
     const char *test_macro_remote;
     unsigned test_macro_press_frames;
@@ -244,6 +245,11 @@ static int parse_options(int argc, char **argv, Options *options)
             unsigned long ticks = strtoul(value, &end, 10);
             if (end == value || *end || ticks > 256) return -1;
             options->ir_off_delay_ticks = (unsigned)ticks;
+        }
+        if ((value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SGB"))) {
+            if (strcmp(value, "enable") == 0) options->sgb_disabled = false;
+            else if (strcmp(value, "disable") == 0) options->sgb_disabled = true;
+            else return -1;
         }
         if (!options->role && (value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE")))
             options->role = value;
@@ -787,6 +793,7 @@ static int run_host(const Options *options, IntegralMediaRelayConnection **conne
         .remote_save_size = save2_size,
         .rtc_target_unix = options->rtc_target_unix,
         .ir_off_delay_ticks = options->ir_off_delay_ticks,
+        .sgb_disabled = options->sgb_disabled,
         .preserve_both_audio = true,
     };
     if (integral_gb_runtime_fixed_host_runtime_init(&runtime, &config) != 0) {

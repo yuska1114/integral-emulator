@@ -323,12 +323,14 @@ static int init_slot(IntegralGBRuntimeSlot *slot,
                      const char *name,
                      const char *rom,
                      const uint8_t *save,
-                     size_t save_size)
+                     size_t save_size,
+                     bool sgb_disabled)
 {
     GB_model_t model;
     IntegralGBRuntimeRomProfile profile;
     IntegralGBRuntimeRomModelReason reason;
     if (integral_gb_runtime_slot_model_for_rom(rom, &model, &profile, &reason) != 0) return -1;
+    model = integral_gb_runtime_slot_apply_sgb_policy(model, !sgb_disabled);
     IntegralGBRuntimeSlotConfig config = {
         .name = name,
         .rom_path = rom,
@@ -362,10 +364,12 @@ int integral_gb_runtime_link_engine_init(IntegralGBRuntimeLinkEngine *engine,
        The Phase 1 ABI disables it so separately initialized pairs receive the
        same defined zero-valued power-on noise. */
     GB_random_set_enabled(false);
-    if (init_slot(&engine->a, "link-a", config->rom_a, config->save_a, config->save_a_size) != 0) {
+    if (init_slot(&engine->a, "link-a", config->rom_a, config->save_a, config->save_a_size,
+                  config->sgb_disabled) != 0) {
         return -1;
     }
-    if (init_slot(&engine->b, "link-b", config->rom_b, config->save_b, config->save_b_size) != 0) {
+    if (init_slot(&engine->b, "link-b", config->rom_b, config->save_b, config->save_b_size,
+                  config->sgb_disabled) != 0) {
         integral_gb_runtime_slot_free_without_save(&engine->a);
         return -1;
     }

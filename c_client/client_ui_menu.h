@@ -10,6 +10,7 @@
 #define INTEGRAL_LOCAL_MODE_ROWS 3
 #define INTEGRAL_ROOM_MODE_ROWS 3
 #define INTEGRAL_SETTINGS_ROWS 5
+#define INTEGRAL_OPTIONS_ROWS 3
 
 typedef struct IntegralClientMenuView {
     const char *username;
@@ -23,6 +24,8 @@ typedef struct IntegralClientMenuView {
 
 void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralClientMenuView *view);
 void integral_client_ui_draw_settings(SDL_Renderer *renderer, const IntegralClientMenuView *view);
+void integral_client_ui_draw_options(SDL_Renderer *renderer, const IntegralClientMenuView *view,
+                                     int sgb_enabled);
 void integral_client_ui_draw_room_mode(SDL_Renderer *renderer, const IntegralClientMenuView *view);
 void integral_client_ui_draw_join_room(SDL_Renderer *renderer, const IntegralClientMenuView *view,
                                       const char *room_code, bool editing);

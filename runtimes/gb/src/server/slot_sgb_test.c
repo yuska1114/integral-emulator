@@ -95,6 +95,10 @@ int main(int argc, char **argv)
     assert(integral_gb_runtime_slot_model_for_rom(argv[1], &model, &profile, &reason) == 0);
     assert(model == GB_MODEL_SGB2);
     assert(reason == INTEGRAL_GB_RUNTIME_ROM_MODEL_SGB_HEADER);
+    assert(integral_gb_runtime_slot_apply_sgb_policy(model, true) == GB_MODEL_SGB2);
+    assert(integral_gb_runtime_slot_apply_sgb_policy(model, false) == GB_MODEL_DMG_B);
+    assert(integral_gb_runtime_slot_apply_sgb_policy(GB_MODEL_CGB_E, false) == GB_MODEL_CGB_E);
+    assert(integral_gb_runtime_slot_apply_sgb_policy(GB_MODEL_DMG_B, false) == GB_MODEL_DMG_B);
 
     GuardedSlot guarded;
     initialize_guards(&guarded);

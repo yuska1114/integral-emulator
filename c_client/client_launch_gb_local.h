@@ -22,16 +22,18 @@ typedef struct IntegralGbLocalLaunch {
     const char *window_width;
     const char *window_height;
     const char *ir_off_delay_ticks;
+    const char *sgb;
     const IntegralConfigKeys *keys;
 } IntegralGbLocalLaunch;
 
 /* Includes argv[0] and the terminating NULL. Strings remain caller-owned.
  * No allocation, quoting, path normalization or process/API operations. */
-#define INTEGRAL_GB_LOCAL_ARGV_CAPACITY 42
+#define INTEGRAL_GB_LOCAL_ARGV_CAPACITY 44
 void integral_gb_local_arguments(const IntegralGbLocalLaunch *launch,
                                 const char *argv[INTEGRAL_GB_LOCAL_ARGV_CAPACITY]);
 
 typedef struct IntegralGbLocalSession {
+    IntegralChildProcess *monitor_out;
     const char *server;
     const char *token;
     const char *game_session_id;
@@ -52,6 +54,7 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
 /* Synchronous boundary to existing SAV/outbox/RTC and SDL operations.
  * Callbacks do not retain the request or introduce persistent state. */
 typedef struct IntegralGbLocalRequest {
+    IntegralChildProcess *monitor_out;
     const IntegralConfigRomSlot *slot1, *slot2;
     const char *runtime, *port, *server, *token;
     const char *config_path;

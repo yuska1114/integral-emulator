@@ -40,6 +40,21 @@
 
 void clear_local_launch_notice(AppState *state)
 {
+    if (state->local.local_monitor) {
+#ifdef _WIN32
+        DWORD result = WaitForSingleObject((HANDLE)state->local.local_monitor, 0);
+        if (result == WAIT_OBJECT_0 || result == WAIT_FAILED) {
+            CloseHandle((HANDLE)state->local.local_monitor);
+            state->local.local_monitor = 0;
+        }
+#else
+        int child_status = 0;
+        IntegralChildProcess result = waitpid(state->local.local_monitor, &child_status, WNOHANG);
+        if (result == state->local.local_monitor || (result < 0 && errno == ECHILD)) {
+            state->local.local_monitor = 0;
+        }
+#endif
+    }
     const char *status = state->login.status;
     if (strcmp(status, "GB_RUNTIME LOCAL STARTED") == 0 ||
         strcmp(status, "GB_RUNTIME SERVER2 STARTED") == 0 ||
@@ -828,6 +843,7 @@ static void gb_local_game_window(void *context, unsigned *width, unsigned *heigh
 static void start_local_gb_runtime(AppState *state)
 {
     const IntegralGbLocalRequest request = {
+        .monitor_out = &state->local.local_monitor,
         .config_path = state->config_path,
         .slot1 = local_selected_rom_slot(state, 0),
         .slot2 = local_selected_rom_slot(state, 1),

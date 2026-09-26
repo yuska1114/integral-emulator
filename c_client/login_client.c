@@ -65,6 +65,9 @@ static void dispatch_client_key(AppState *state, const SDL_KeyboardEvent *key)
     else if (state->ui.screen == SCREEN_SETTINGS) {
         handle_settings_key(state, key);
     }
+    else if (state->ui.screen == SCREEN_OPTIONS) {
+        handle_options_key(state, key);
+    }
     else if (state->ui.screen == SCREEN_SCREENSHOTS) {
         if (integral_screenshots_key(state->screenshots, key)) {
             integral_screenshots_close(state->screenshots);

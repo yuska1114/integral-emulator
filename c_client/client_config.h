@@ -65,6 +65,8 @@ int integral_config_load_login(const char *path, IntegralConfigLogin *login);
 int integral_config_save_login(const char *path, const IntegralConfigLogin *login);
 int integral_config_load_local(const char *path, IntegralConfigLocal *local);
 unsigned integral_config_ir_off_delay(const char *path);
+int integral_config_sgb_enabled(const char *path);
+int integral_config_save_sgb(const char *path, int enabled);
 int integral_config_save_local(const char *path, const IntegralConfigLocal *local);
 int integral_config_load_window(const char *path, IntegralConfigWindow *window);
 int integral_config_save_window(const char *path, const IntegralConfigWindow *window);

@@ -318,12 +318,15 @@ int main(int argc, char **argv)
         free_slot_heap(&slot2);
         return 1;
     }
-    printf("  slot1 model: %s reason=%s cgb=%02X sgb=%02X old_licensee=%02X\n",
+    slot1_model = integral_gb_runtime_slot_apply_sgb_policy(
+        slot1_model, !options.sgb_disabled);
+    printf("  slot1 model: %s reason=%s cgb=%02X sgb=%02X old_licensee=%02X sgb_setting=%s\n",
            integral_gb_runtime_slot_model_name(slot1_model),
            integral_gb_runtime_rom_model_reason_name(slot1_reason),
            slot1_profile.cgb_flag,
            slot1_profile.sgb_flag,
-           slot1_profile.old_licensee);
+           slot1_profile.old_licensee,
+           options.sgb_disabled ? "disable" : "enable");
 
     IntegralGBRuntimeSlotConfig slot1_config = {
         .name = "slot1",
@@ -432,12 +435,15 @@ int main(int argc, char **argv)
             free_slot_heap(&slot2);
             return 1;
         }
-        printf("  slot2 model: %s reason=%s cgb=%02X sgb=%02X old_licensee=%02X\n",
+        slot2_model = integral_gb_runtime_slot_apply_sgb_policy(
+            slot2_model, !options.sgb_disabled);
+        printf("  slot2 model: %s reason=%s cgb=%02X sgb=%02X old_licensee=%02X sgb_setting=%s\n",
                integral_gb_runtime_slot_model_name(slot2_model),
                integral_gb_runtime_rom_model_reason_name(slot2_reason),
                slot2_profile.cgb_flag,
                slot2_profile.sgb_flag,
-               slot2_profile.old_licensee);
+               slot2_profile.old_licensee,
+               options.sgb_disabled ? "disable" : "enable");
         IntegralGBRuntimeSlotConfig slot2_config = {
             .name = "slot2",
             .rom_path = slot2_rom_path,

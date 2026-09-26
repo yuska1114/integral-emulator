@@ -10,6 +10,7 @@
 #include <stdint.h>
 #ifdef _WIN32
 #include <process.h>
+#include <windows.h>
 #include <io.h>
 #ifndef X_OK
 #define X_OK 0
@@ -159,10 +160,12 @@ void integral_gb_local_run(const IntegralGbLocalRequest *request)
         .save2 = slot2_save_path, .port = request->port,
         .rtc_offset = rtc_offset_text,
         .ir_off_delay_ticks = ir_off_delay_text,
+        .sgb = integral_config_sgb_enabled(request->config_path) ? "enable" : "disable",
         .window_width = gb_window_width_text, .window_height = gb_window_height_text,
         .keys = request->keys,
     };
     const IntegralGbLocalSession session = {
+        .monitor_out = request->monitor_out,
         .server = request->server, .token = request->token,
         .game_session_id = game_session_id, .fencing_token = fencing_token,
         .slots = sync_slots, .count = sync_count,
@@ -180,6 +183,8 @@ void integral_gb_local_arguments(const IntegralGbLocalLaunch *launch,
     argv[n++] = launch->rom1;
     argv[n++] = "--save1";
     argv[n++] = launch->save1;
+    argv[n++] = "--sgb";
+    argv[n++] = launch->sgb ? launch->sgb : "enable";
     if (launch->rom2) {
         argv[n++] = "--rom2";
         argv[n++] = launch->rom2;
@@ -240,6 +245,13 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
         if (log) log(log_context, "gb_runtime_server_spawn_failed", detail);
         return;
     }
+    if (session->monitor_out) {
+        HANDLE copy = NULL;
+        if (DuplicateHandle(GetCurrentProcess(), (HANDLE)spawned, GetCurrentProcess(),
+                            &copy, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+            *session->monitor_out = (IntegralChildProcess)copy;
+        }
+    }
     snprintf(status,
               status_size,
               launch->rom2 ? "GB_RUNTIME SERVER2 STARTED" : "GB_RUNTIME LOCAL STARTED");
@@ -272,6 +284,7 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
         monitor_save_sync_process(pid, session->server, session->token, session->game_session_id, session->fencing_token, session->slots, session->count, true);
         _exit(0);
     }
+    if (session->monitor_out) *session->monitor_out = monitor_pid;
     snprintf(status,
               status_size,
               launch->rom2 ? "GB_RUNTIME SERVER2 STARTED" : "GB_RUNTIME LOCAL STARTED");

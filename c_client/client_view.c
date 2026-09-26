@@ -57,6 +57,7 @@ static void draw_login(SDL_Renderer *renderer, const LoginState *state);
 static void draw_password_change(SDL_Renderer *renderer, const AppState *app);
 static IntegralClientMenuView menu_view(const AppState *state, unsigned selected);
 static void draw_main_menu(SDL_Renderer *renderer, const AppState *state);
+static void draw_options(SDL_Renderer *renderer, const AppState *state);
 static void draw_room_mode(SDL_Renderer *renderer, const AppState *state);
 static void draw_join_room(SDL_Renderer *renderer, const AppState *state);
 static void format_local_slot_label(const AppState *state, unsigned local_slot, const char *label, char *out, size_t out_size);
@@ -191,6 +192,14 @@ static void draw_settings(SDL_Renderer *renderer, const AppState *state)
 {
     IntegralClientMenuView view = menu_view(state, state->ui.settings_selected);
     integral_client_ui_draw_settings(renderer, &view);
+}
+
+
+static void draw_options(SDL_Renderer *renderer, const AppState *state)
+{
+    IntegralClientMenuView view = menu_view(state, state->ui.options_selected);
+    integral_client_ui_draw_options(renderer, &view,
+                                    integral_config_sgb_enabled(state->config_path));
 }
 
 
@@ -1544,6 +1553,9 @@ void draw_app(SDL_Renderer *renderer, const AppState *state)
             break;
         case SCREEN_SETTINGS:
             draw_settings(renderer, state);
+            break;
+        case SCREEN_OPTIONS:
+            draw_options(renderer, state);
             break;
         case SCREEN_GB_KEY_CONFIG:
         case SCREEN_N64_KEY_CONFIG:

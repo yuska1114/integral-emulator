@@ -81,7 +81,8 @@ static void gb_runtime_fixed_host_set_child_environment(
     const IntegralConfigKeys *keys,
     unsigned window_width, unsigned window_height,
     intptr_t result_handle, const char *save_policy,
-    const char *rtc_target_unix, unsigned ir_off_delay_ticks);
+    const char *rtc_target_unix, unsigned ir_off_delay_ticks,
+    int sgb_enabled);
 #ifdef _WIN32
 static void gb_runtime_fixed_host_clear_parent_environment(void);
 #endif
@@ -666,7 +667,8 @@ static void gb_runtime_fixed_host_set_child_environment(
     const IntegralConfigKeys *keys,
     unsigned window_width, unsigned window_height,
     intptr_t result_handle, const char *save_policy,
-    const char *rtc_target_unix, unsigned ir_off_delay_ticks)
+    const char *rtc_target_unix, unsigned ir_off_delay_ticks,
+    int sgb_enabled)
 {
     char port[16];
     char ir_delay_text[16];
@@ -683,6 +685,8 @@ static void gb_runtime_fixed_host_set_child_environment(
 #ifdef _WIN32
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE", role);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_IR_OFF_DELAY_TICKS", ir_delay_text);
+    SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SGB",
+                            sgb_enabled ? "enable" : "disable");
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST", relay_host);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT", port);
     SetEnvironmentVariableA("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_TRANSPORT", relay_transport);
@@ -705,6 +709,8 @@ static void gb_runtime_fixed_host_set_child_environment(
 #else
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE", role, 1);
     setenv("INTEGRAL_EMULATOR_GB_IR_OFF_DELAY_TICKS", ir_delay_text, 1);
+    setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SGB",
+           sgb_enabled ? "enable" : "disable", 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST", relay_host, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT", port, 1);
     setenv("INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_TRANSPORT", relay_transport, 1);
@@ -738,6 +744,7 @@ static void gb_runtime_fixed_host_clear_parent_environment(void)
 {
     static const char *names[] = {
         "INTEGRAL_EMULATOR_GB_IR_OFF_DELAY_TICKS",
+        "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_SGB",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_ROLE",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_HOST",
         "INTEGRAL_EMULATOR_GB_RUNTIME_FIXED_HOST_RELAY_PORT",
@@ -894,7 +901,8 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                                          window_width, window_height,
                                          (intptr_t)child_result_write, save_policy,
                                          host ? rtc_target_text : NULL,
-                                         integral_config_ir_off_delay(state->config_path));
+                                         integral_config_ir_off_delay(state->config_path),
+                                         integral_config_sgb_enabled(state->config_path));
         snprintf(command, sizeof(command), "\"%s\"%s",
                  integral_gb_runtime_fixed_host_runtime_path(),
                  host ? " --snapshot-stdin" : "");
@@ -947,7 +955,8 @@ static bool start_room_gb_runtime_fixed_host_runtime(
                                              window_width, window_height,
                                              (intptr_t)result_descriptors[1], save_policy,
                                              host ? rtc_target_text : NULL,
-                                             integral_config_ir_off_delay(state->config_path));
+                                             integral_config_ir_off_delay(state->config_path),
+                                             integral_config_sgb_enabled(state->config_path));
             redirect_child_output_to_client_log();
             if (host)
                 execl(integral_gb_runtime_fixed_host_runtime_path(),

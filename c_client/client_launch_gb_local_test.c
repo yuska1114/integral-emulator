@@ -313,6 +313,7 @@ int main(int argc, char **argv_in)
         .rom1 = "roms/日本語 name.gbc", .save1 = "session/slot1.sav",
         .rom2 = "roms/日本語 name.gbc", .save2 = "session/slot2.sav",
         .port = "8765", .rtc_offset = "-123456",
+        .sgb = "disable",
         .window_width = "360", .window_height = "721", .keys = &keys,
     };
     /* LOCAL SERVER2 is an in-process link, not a LAN listener. */
@@ -322,6 +323,8 @@ int main(int argc, char **argv_in)
         launch.rom1,
         "--save1",
         launch.save1,
+        "--sgb",
+        launch.sgb,
         "--rom2",
         launch.rom2,
         "--save2",
@@ -360,6 +363,8 @@ int main(int argc, char **argv_in)
         launch.rom1,
         "--save1",
         launch.save1,
+        "--sgb",
+        launch.sgb,
         "--self",
         "--rtc-offset-seconds",
         launch.rtc_offset,
@@ -400,8 +405,8 @@ int main(int argc, char **argv_in)
     assert(strcmp(argv[INTEGRAL_GB_LOCAL_ARGV_CAPACITY], "canary") == 0);
     launch.ir_off_delay_ticks = "0";
     integral_gb_local_arguments(&launch, argv);
-    assert(strcmp(argv[9], "--ir-off-delay-ticks") == 0);
-    assert(strcmp(argv[10], "0") == 0);
+    assert(strcmp(argv[11], "--ir-off-delay-ticks") == 0);
+    assert(strcmp(argv[12], "0") == 0);
     launch.rom2 = NULL;
     integral_gb_local_arguments(&launch, argv);
     for (size_t i = 0; i < sizeof(expected_one) / sizeof(*expected_one); ++i) {

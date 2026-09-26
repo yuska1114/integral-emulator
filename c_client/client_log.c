@@ -86,6 +86,8 @@ static const char *screen_name(AppScreen screen)
             return "n64_room";
         case SCREEN_SETTINGS:
             return "settings";
+        case SCREEN_OPTIONS:
+            return "options";
         case SCREEN_GB_KEY_CONFIG:
             return "gb_keys";
         case SCREEN_N64_KEY_CONFIG:

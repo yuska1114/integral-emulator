@@ -22,6 +22,7 @@ int main(void)
 #endif
     (void)remove(path);
     if (integral_config_ir_off_delay(path) != 32) return 50;
+    if (!integral_config_sgb_enabled(path)) return 54;
     const char *ir_values[] = {"0", "32", "256", "-1", "257", "32junk", ""};
     const unsigned ir_expected[] = {0, 32, 256, 32, 32, 32, 32};
     for (unsigned i = 0; i < sizeof(ir_expected)/sizeof(ir_expected[0]); i++) {
@@ -33,6 +34,33 @@ int main(void)
         IntegralConfigWindow window = {.width = 360, .height = 360};
         if (integral_config_save_window(path, &window) != 0 ||
             integral_config_ir_off_delay(path) != ir_expected[i]) return 53;
+    }
+    {
+        FILE *file = fopen(path, "w");
+        if (!file) return 55;
+        fprintf(file, "sgb=disable\n");
+        fclose(file);
+        if (integral_config_sgb_enabled(path)) return 56;
+        IntegralConfigWindow window = {.width = 360, .height = 360};
+        if (integral_config_save_window(path, &window) != 0 ||
+            integral_config_sgb_enabled(path)) return 57;
+
+        file = fopen(path, "w");
+        if (!file) return 58;
+        fprintf(file, "sgb=enable\n");
+        fclose(file);
+        if (!integral_config_sgb_enabled(path)) return 59;
+
+        file = fopen(path, "w");
+        if (!file) return 60;
+        fprintf(file, "sgb=invalid\n");
+        fclose(file);
+        if (!integral_config_sgb_enabled(path)) return 61;
+
+        if (integral_config_save_sgb(path, 0) != 0 ||
+            integral_config_sgb_enabled(path)) return 62;
+        if (integral_config_save_sgb(path, 1) != 0 ||
+            !integral_config_sgb_enabled(path)) return 63;
     }
     (void)remove(path);
     IntegralConfigWindow default_window = {0};

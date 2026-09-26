@@ -19,6 +19,7 @@ typedef struct IntegralGBRuntimeFixedHostRuntimeConfig {
     int64_t rtc_offset_seconds;
     uint64_t rtc_target_unix;
     unsigned ir_off_delay_ticks;
+    bool sgb_disabled;
     bool preserve_both_audio;
 } IntegralGBRuntimeFixedHostRuntimeConfig;
 

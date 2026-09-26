@@ -81,13 +81,62 @@ void integral_client_ui_draw_settings(SDL_Renderer *renderer, const IntegralClie
             SDL_RenderFillRect(renderer, &rect);
             integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
         }
-        SDL_Color color = i == 3 ? muted : (view->selected == i ? selected : label);
-        integral_sdl_draw_text(renderer, 48, y, labels[i], 2, color);
+        integral_sdl_draw_text(renderer, 48, y, labels[i], 2,
+                               view->selected == i ? selected : label);
     }
 
     integral_sdl_draw_text_fit(renderer, 22, 410, view->status, 1, muted, INTEGRAL_CLIENT_UI_WIDTH - 44);
     integral_sdl_draw_text(renderer, 22, 438, "TAB MOVE  ENTER SELECT", 1, muted);
     integral_sdl_draw_text(renderer, 22, 456, "ESC MAIN MENU", 1, muted);
+    SDL_RenderPresent(renderer);
+}
+
+
+void integral_client_ui_draw_options(SDL_Renderer *renderer,
+                                     const IntegralClientMenuView *view,
+                                     int sgb_enabled)
+{
+    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
+    SDL_RenderClear(renderer);
+
+    SDL_Color label = {160, 180, 196, 255};
+    SDL_Color value = {238, 238, 238, 255};
+    SDL_Color selected = {86, 162, 126, 255};
+    SDL_Color muted = {112, 122, 130, 255};
+    const char *labels[INTEGRAL_OPTIONS_ROWS] = {
+        "IR DELAY",
+        "SGB",
+        "BACK",
+    };
+    const char *values[INTEGRAL_OPTIONS_ROWS] = {
+        "<16> tick",
+        sgb_enabled ? "<ENABLE>" : "<DISABLE>",
+        "",
+    };
+
+    integral_client_ui_draw_header(renderer, "OPTIONS",
+                                   view->username, view->server, view->version);
+    for (unsigned i = 0; i < INTEGRAL_OPTIONS_ROWS; i++) {
+        int y = 126 + (int)i * 70;
+        if (view->selected == i) {
+            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+            SDL_Rect rect = {.x = 14, .y = y - 10,
+                             .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 46};
+            SDL_RenderFillRect(renderer, &rect);
+            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
+        }
+        integral_sdl_draw_text(renderer, 48, y, labels[i], 2,
+                               view->selected == i ? selected : label);
+        if (values[i][0]) {
+            integral_sdl_draw_text(renderer, 220, y, values[i], 2,
+                                   i == 0 ? muted : value);
+        }
+    }
+
+    integral_sdl_draw_text_fit(renderer, 22, 410, view->status, 1, muted,
+                               INTEGRAL_CLIENT_UI_WIDTH - 44);
+    integral_sdl_draw_text(renderer, 22, 438, "TAB MOVE  LEFT/RIGHT CHANGE", 1, muted);
+    integral_sdl_draw_text(renderer, 22, 456, "ENTER SELECT  ESC SETTINGS", 1, muted);
     SDL_RenderPresent(renderer);
 }
 
