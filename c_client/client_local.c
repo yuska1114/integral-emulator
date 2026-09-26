@@ -569,6 +569,24 @@ bool resolve_save_upload_outbox(AppState *state, const char *save_id)
     return true;
 }
 
+void poll_local_runtime_monitor(AppState *state)
+{
+    if (!state->local.local_monitor) return;
+#ifdef _WIN32
+    DWORD wait_result = WaitForSingleObject((HANDLE)state->local.local_monitor, 0);
+    if (wait_result == WAIT_OBJECT_0 || wait_result == WAIT_FAILED) {
+        CloseHandle((HANDLE)state->local.local_monitor);
+        state->local.local_monitor = 0;
+    }
+#else
+    int status = 0;
+    IntegralChildProcess result = waitpid(state->local.local_monitor, &status, WNOHANG);
+    if (result == state->local.local_monitor || (result < 0 && errno == ECHILD)) {
+        state->local.local_monitor = 0;
+    }
+#endif
+}
+
 void poll_local_save_notice(AppState *state)
 {
     if (!state->login.token[0] || strcmp(state->local.save_notice_server, state->login.server) ||
@@ -827,7 +845,13 @@ static void gb_local_game_window(void *context, unsigned *width, unsigned *heigh
 
 static void start_local_gb_runtime(AppState *state)
 {
+    poll_local_runtime_monitor(state);
+    if (state->local.local_starting || state->local.local_monitor) {
+        copy_text(state->login.status, sizeof(state->login.status), "GAME ALREADY RUNNING");
+        return;
+    }
     const IntegralGbLocalRequest request = {
+        .monitor_out = &state->local.local_monitor,
         .config_path = state->config_path,
         .slot1 = local_selected_rom_slot(state, 0),
         .slot2 = local_selected_rom_slot(state, 1),
@@ -838,5 +862,7 @@ static void start_local_gb_runtime(AppState *state)
         .recover = gb_local_recover, .download = gb_local_download,
         .rtc = gb_local_rtc, .window_size = gb_local_game_window, .log = client_operation_log,
     };
+    state->local.local_starting = true;
     integral_gb_local_run(&request);
+    state->local.local_starting = false;
 }
