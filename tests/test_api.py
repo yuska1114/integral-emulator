@@ -3089,7 +3089,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(applied["game_type"], "gb_my_custom_rom_2026")
         self.assertEqual(saved["game_type"], "gb_my_custom_rom_2026")
-        self.assertEqual(saved["sha256"], hashlib.sha256(bytes(32 * 1024)).hexdigest())
+        self.assertEqual(saved["sha256"], hashlib.sha256(bytes([0xFF]) * (32 * 1024)).hexdigest())
 
     def test_client_game_type_is_rejected_and_invalid_header_is_rejected(self) -> None:
         self.post(
@@ -3441,7 +3441,7 @@ class ApiTests(unittest.TestCase):
         current = self.get("/rom-slots", token=token)["slots"][0]
         downloaded = self.get(f"/saves/{first['save_id']}", token=token)
         self.assertEqual(current["save_id"], first["save_id"])
-        self.assertEqual(decode(downloaded["save_data"]), bytes(32 * 1024))
+        self.assertEqual(decode(downloaded["save_data"]), bytes([0xFF]) * (32 * 1024))
 
     def test_rom_slot_apply_rejects_initial_save_when_policy_is_disabled(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
@@ -3646,23 +3646,69 @@ class ApiTests(unittest.TestCase):
             hashlib.sha256(b"").hexdigest(),
         )
 
-    def test_rom_slot_apply_default_initial_save_is_full_sized_zero_save(self) -> None:
+    def test_rom_slot_apply_rejects_missing_generated_gb_initial_save(self) -> None:
         self.post("/auth/register", {"username": "Player_A", "password": "correct horse battery staple"})
         token = self.post("/auth/login", {"username": "player_a", "password": "correct horse battery staple"})["token"]["token"]
         alpha = next(rom for rom in allowed_roms() if rom.game_type == "sample_alpha" and rom.display_name == "SAMPLE ALPHA")
 
+        with self.assertRaisesRegex(
+            ValidationError, "GB/GBC ROM registration requires generated initial SAV data"
+        ):
+            self.request(
+                "POST",
+                "/rom-slots/apply",
+                {
+                    "slots": [{
+                        "slot": 1,
+                        "filename": "alpha.gbc",
+                        "sha256": alpha.sha256,
+                        "sha1": alpha.sha1,
+                        "platform": "gb",
+                        "region": "JP",
+                        "rom_header_title": alpha.rom_header_title,
+                    }]
+                },
+                token,
+            )
+        self.assertEqual(self.get("/saves", token=token)["saves"], [])
+
+    def test_rom_slot_filename_change_keeps_generated_gb_initial_save(self) -> None:
+        self.post("/auth/register", {"username": "Rename_Player", "password": "correct horse battery staple"})
+        token = self.post("/auth/login", {"username": "rename_player", "password": "correct horse battery staple"})["token"]["token"]
+        alpha = next(rom for rom in allowed_roms() if rom.game_type == "sample_alpha" and rom.display_name == "SAMPLE ALPHA")
+        generated = bytes([0xFF]) * (32 * 1024)
+
+        first = self.post(
+            "/rom-slots/apply",
+            {"slots": [{
+                "slot": 1,
+                "filename": "alpha.gbc",
+                "sha256": alpha.sha256,
+                "sha1": alpha.sha1,
+                "region": "JP",
+                "generated_initial_save_data": encode(generated),
+            }]},
+            token=token,
+        )["slots"][0]
+        renamed = {
+            "slot": 1,
+            "filename": "alpha-renamed.gbc",
+            "sha256": alpha.sha256,
+            "sha1": alpha.sha1,
+            "region": "JP",
+            "generated_initial_save_data": encode(generated),
+        }
+        preview = self.post("/rom-slots/apply", {"slots": [renamed]}, token=token)
+        self.assertTrue(preview["requires_confirmation"])
         applied = self.post(
             "/rom-slots/apply",
-            {
-                "slots": [
-                    {"slot": 1, "filename": "alpha.gbc", "sha256": alpha.sha256, "sha1": alpha.sha1, "game_type": "sample_alpha", "region": "JP"}
-                ]
-            },
+            {"slots": [renamed], "confirm_delete_saves": True},
             token=token,
-        )
-        downloaded = self.get(f"/saves/{applied['slots'][0]['save_id']}", token=token)
+        )["slots"][0]
+        downloaded = self.get(f"/saves/{applied['save_id']}", token=token)
 
-        self.assertEqual(decode(downloaded["save_data"]), bytes(32 * 1024))
+        self.assertNotEqual(applied["save_id"], first["save_id"])
+        self.assertEqual(decode(downloaded["save_data"]), generated)
 
     def test_rom_slot_replace_rejects_invalid_new_rom_without_deleting_old_save(self) -> None:
         self.enforce_rom_allowlist()
@@ -3910,6 +3956,14 @@ class ApiTests(unittest.TestCase):
     def post(self, path: str, body: dict, token: str | None = None) -> dict:
         if path == "/rom-slots/apply":
             body = copy.deepcopy(body)
+            current_slots = {}
+            if token:
+                context = self.app.build_request_context(token)
+                with self.app.use_environment(context.environment):
+                    current_slots = {
+                        slot.slot: slot
+                        for slot in self.app.rom_slots.list_for_user(context.user_id or "")
+                    }
             for item in body.get("slots", []):
                 supplied_game_type = str(item.pop("game_type", ""))
                 filename = str(item.get("filename", ""))
@@ -3933,6 +3987,21 @@ class ApiTests(unittest.TestCase):
                         part for part in supplied_game_type.upper().replace("-", "_").split("_") if part
                     ) or "TEST ROM"
                 item.setdefault("rom_header_title", header[:20])
+                if (
+                    item.get("platform") == "gb"
+                    and "initial_save_data" not in item
+                    and "generated_initial_save_data" not in item
+                ):
+                    existing = current_slots.get(int(item.get("slot", 0)))
+                    changed = (
+                        existing is None
+                        or existing.sha256 != item.get("sha256")
+                        or existing.filename != filename
+                    )
+                    if changed:
+                        item["generated_initial_save_data"] = encode(
+                            bytes([0xFF]) * (32 * 1024)
+                        )
         return self.request("POST", path, body, token)
 
     def create_test_save(self, body: dict, token: str | None = None) -> dict:
