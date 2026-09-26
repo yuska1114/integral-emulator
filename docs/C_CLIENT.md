@@ -40,6 +40,11 @@ CLIENT ALIASのキーボード／コントローラー変換は`client_input_ali
 Link／N64 ROOMのチャットログ行描画は`client_ui_room_common.c`で共有し、画面固有の配置と状態表示は各ROOM画面に残します。
 `make -C c_client client-ui-common-test`は共通描画部品の色とSDLレンダリング結果を検証します。
 
+子プロセスの`waitpid`／`kill`互換処理と終了コード変換は`client_process.c`に分けています。
+Link ROOMのセッションID、API状態同期、ready／lifecycle状態判定は`client_room_link_state.c`が担当し、
+Runtime起動・終了や通信処理は`client_room_link.c`に残します。`make -C c_client client-process-test`で
+POSIX子プロセスの終了・signal終了、およびWindows互換層の境界を検証します。
+
 ## GBのIR受信調整（実験的設定）
 
 Clientを終了して、アカウント別設定ファイル

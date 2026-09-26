@@ -5,15 +5,8 @@
 #include <SDL.h>
 #include "client_save_sync.h"
 #include "client_config.h"
+#include "client_process.h"
 bool make_n64_runtime_util_hotkeys(const IntegralConfigKeys *, bool allow_reset, char *, size_t);
-
-#ifdef _WIN32
-IntegralChildProcess waitpid(IntegralChildProcess pid, int *status, int options);
-#endif
-#ifdef _WIN32
-int kill(IntegralChildProcess pid, int signal_number);
-#endif
-int child_process_exit_code(int status);
 const char *integral_gb_runtime_server_path(void);
 const char *integral_gb_runtime_mobile_runtime_path(void);
 const char *integral_n64_runtime_home_path(void);
