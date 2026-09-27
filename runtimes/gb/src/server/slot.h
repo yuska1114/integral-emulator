@@ -65,7 +65,8 @@ typedef struct IntegralGBRuntimeSlot {
     unsigned audio_frames;
     unsigned audio_frames_dropped;
     uint64_t last_battery_save_us;
-    uint32_t pixels[INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT];
+    uint32_t pixels[INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT];
+    uint32_t *framebuffer;
 } IntegralGBRuntimeSlot;
 
 int integral_gb_runtime_slot_model_for_rom(const char *rom_path,
