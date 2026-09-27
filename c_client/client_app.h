@@ -13,6 +13,7 @@ void app_state_init(AppState *state, const char *config_path);
 const IntegralConfigRomSlot *registered_rom_slot_at(const AppState *state, int index);
 int read_supported_rom_header(const char *path, IntegralRomMetadata *info);
 void refresh_rom_metadata_cache(AppState *state, bool force);
+const IntegralClientRomMetadataCache *client_rom_metadata_for_slot(const AppState *state, int slot_index);
 void client_operation_log(void *context, const char *event, const char *detail);
 bool refresh_rom_slots_from_server(AppState *state);
 void submit_login(AppState *app);

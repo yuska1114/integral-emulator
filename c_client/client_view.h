@@ -13,4 +13,8 @@ void format_room_phase(const AppState *state,
 void draw_runtime_exit_confirmation(SDL_Renderer *renderer,
                                            const AppState *state);
 void draw_app(SDL_Renderer *renderer, const AppState *state);
+void integral_client_ui_draw_room_link(SDL_Renderer *renderer, const AppState *state);
+void integral_client_ui_draw_room_n64(SDL_Renderer *renderer, const AppState *state);
+void integral_client_ui_draw_key_config(SDL_Renderer *renderer, const AppState *state);
+void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState *state);
 #endif

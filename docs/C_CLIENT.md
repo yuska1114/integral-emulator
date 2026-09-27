@@ -26,6 +26,10 @@ ROMヘッダー情報とローカルファイル有無は、ROMパス単位のCl
 起動時・設定／サーバースロット読込時・ROM登録画面への入場時に更新し、編集でパスが変わった場合も
 イベント処理後に更新します。画面描画中にROMファイルを開いたり存在確認したりしません。
 
+描画dispatchは`client_view.c`に置き、KEY CONFIG、ROM REGISTER、Link ROOM、N64 ROOMの画面実装は
+それぞれ`client_ui_key_config.c`、`client_ui_rom_register.c`、`client_ui_room_link.c`、
+`client_ui_room_n64.c`に分けています。
+
 ## GBのIR受信調整（実験的設定）
 
 Clientを終了して、アカウント別設定ファイル
