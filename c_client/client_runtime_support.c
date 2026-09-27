@@ -46,64 +46,6 @@ static bool integral_n64_runtime_path(char *out, size_t out_size, const char *su
 static long long days_from_civil(int year, unsigned month, unsigned day);
 
 
-#ifdef _WIN32
-IntegralChildProcess waitpid(IntegralChildProcess pid, int *status, int options)
-{
-    HANDLE process = (HANDLE)(intptr_t)pid;
-    if (!process || process == INVALID_HANDLE_VALUE) {
-        errno = ECHILD;
-        return -1;
-    }
-    DWORD wait_ms = options == WNOHANG ? 0 : INFINITE;
-    DWORD wait_result = WaitForSingleObject(process, wait_ms);
-    if (wait_result == WAIT_TIMEOUT) {
-        return 0;
-    }
-    if (wait_result == WAIT_OBJECT_0) {
-        DWORD exit_code = 0;
-        if (status && GetExitCodeProcess(process, &exit_code)) {
-            *status = (int)exit_code;
-        }
-        CloseHandle(process);
-        return pid;
-    }
-    CloseHandle(process);
-    errno = ECHILD;
-    return -1;
-}
-
-#endif
-
-#ifdef _WIN32
-int kill(IntegralChildProcess pid, int signal_number)
-{
-    (void)signal_number;
-    HANDLE process = (HANDLE)(intptr_t)pid;
-    if (!process || process == INVALID_HANDLE_VALUE) {
-        errno = ESRCH;
-        return -1;
-    }
-    DWORD wait_result = WaitForSingleObject(process, 0);
-    if (wait_result == WAIT_TIMEOUT) {
-        return 0;
-    }
-    errno = ESRCH;
-    return -1;
-}
-
-#endif
-
-int child_process_exit_code(int status)
-{
-#ifdef _WIN32
-    return status;
-#else
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-#endif
-}
-
-
-
 const char *integral_gb_runtime_server_path(void)
 {
     const char *value = getenv("INTEGRAL_EMULATOR_GB_RUNTIME_DUAL_SERVER");

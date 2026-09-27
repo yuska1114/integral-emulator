@@ -39,6 +39,8 @@ typedef struct IntegralLinkRoomState {
 } IntegralLinkRoomState;
 typedef struct IntegralRoomContext IntegralRoomContext;
 const char *room_link_mode_label(IntegralRoomLinkMode mode);
+const char *room_link_mode_api_name(IntegralRoomLinkMode mode);
+bool room_link_mode_from_api(const char *mode, IntegralRoomLinkMode *mode_out);
 void set_room_link_session_id(IntegralRoomContext *state, const char *session_id);
 void clear_room_link_session_id(IntegralRoomContext *state);
 void sync_room_ready_flags_from_api(IntegralRoomContext *state);
@@ -47,6 +49,7 @@ void mark_room_game_ended_if_used(IntegralRoomContext *state);
 bool gb_runtime_fixed_host_may_start_for_control_state(
     const char *role, const char *control_state);
 bool current_room_has_link_session(const IntegralRoomContext *state);
+void room_link_sync_state(IntegralRoomContext *state);
 bool current_room_is_ready_to_start(const IntegralRoomContext *state);
 void monitor_room_gb_runtime_client_exit(IntegralRoomContext *state);
 void discard_gb_runtime_fixed_host_result(IntegralRoomContext *state);
