@@ -567,9 +567,11 @@ int integral_gb_runtime_video_window_render(IntegralGBRuntimeVideoWindow *window
 int integral_gb_runtime_video_window_render_pixels(IntegralGBRuntimeVideoWindow *window,
                                            const uint32_t *pixels)
 {
+    if (window == NULL || pixels == NULL || window->slot_count != 1u) {
+        return -1;
+    }
     int pitch = (int)(window->slot_width * sizeof(uint32_t));
-    if (window == NULL || pixels == NULL || window->slot_count != 1u ||
-        SDL_UpdateTexture(window->slot1_texture, NULL, pixels, pitch) != 0) {
+    if (SDL_UpdateTexture(window->slot1_texture, NULL, pixels, pitch) != 0) {
         if (window != NULL && pixels != NULL)
             fprintf(stderr, "SDL_UpdateTexture failed: %s\n", SDL_GetError());
         return -1;
