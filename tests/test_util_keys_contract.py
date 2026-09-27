@@ -56,7 +56,7 @@ class UtilKeysContract(unittest.TestCase):
         self.assertIn("request_runtime_exit_confirmation(state, false)", room)
 
     def test_visible_matrix(self):
-        text = source("c_client/client_view.c")
+        text = source("c_client/client_ui_key_config.c")
         for label in ("FAST / TURBO: LOCAL GB 1P ONLY", "RESET: LOCAL MODES",
                       "SCREENSHOT / ESCAPE: ALL MODES"):
             self.assertIn(label, text)
