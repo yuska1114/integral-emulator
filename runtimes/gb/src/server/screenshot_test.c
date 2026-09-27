@@ -6,7 +6,7 @@
 
 const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntimeSlot *slot)
 {
-    return slot->pixels;
+    return slot->framebuffer ? slot->framebuffer : slot->pixels;
 }
 
 unsigned integral_gb_runtime_slot_screen_width(const IntegralGBRuntimeSlot *slot)
@@ -53,10 +53,13 @@ int main(int argc, char **argv)
             SDL_FreeSurface(rgba); SDL_FreeSurface(image);
         }
     }
+    static uint32_t sgb_pixels[
+        INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT];
     a.screen_width = INTEGRAL_GB_RUNTIME_SGB_WIDTH;
     a.screen_height = INTEGRAL_GB_RUNTIME_SGB_HEIGHT;
+    a.framebuffer = sgb_pixels;
     for (unsigned i = 0; i < INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT; ++i) {
-        a.pixels[i] = 0xff112233;
+        sgb_pixels[i] = 0xff112233;
     }
     assert(integral_gb_runtime_screenshot_save_pair(
         &a, NULL, "local_gb", "local", path, sizeof(path)) == 0);
