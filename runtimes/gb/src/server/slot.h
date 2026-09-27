@@ -24,12 +24,18 @@ typedef enum IntegralGBRuntimeBatteryMode {
     INTEGRAL_GB_RUNTIME_BATTERY_MEMORY_ONLY = 1,
 } IntegralGBRuntimeBatteryMode;
 
+enum {
+    INTEGRAL_GB_RUNTIME_SGB_WIDTH = 256u,
+    INTEGRAL_GB_RUNTIME_SGB_HEIGHT = 224u,
+};
+
 typedef struct IntegralGBRuntimeSlotConfig {
     const char *name;
     const char *rom_path;
     const char *save_path;
     GB_model_t model;
     bool skip_boot_rom;
+    bool display_sgb_border;
     IntegralGBRuntimeBatteryMode battery_mode;
     const uint8_t *battery_buffer;
     size_t battery_buffer_size;
@@ -44,6 +50,9 @@ typedef struct IntegralGBRuntimeSlot {
     void *local_link_context;
     bool initialized;
     bool skip_boot_rom;
+    bool display_sgb_border;
+    unsigned screen_width;
+    unsigned screen_height;
     IntegralGBRuntimeBatteryMode battery_mode;
     IntegralGBRuntimeBootstrapPolicy bootstrap_policy;
     uint8_t sgb2_boot_rom[INTEGRAL_GB_RUNTIME_SGB2_BOOT_ROM_SIZE];
@@ -56,7 +65,7 @@ typedef struct IntegralGBRuntimeSlot {
     unsigned audio_frames;
     unsigned audio_frames_dropped;
     uint64_t last_battery_save_us;
-    uint32_t pixels[INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT];
+    uint32_t pixels[INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT];
 } IntegralGBRuntimeSlot;
 
 int integral_gb_runtime_slot_model_for_rom(const char *rom_path,
@@ -77,6 +86,8 @@ int integral_gb_runtime_slot_apply_rtc_offset_minutes(IntegralGBRuntimeSlot *slo
 uint32_t integral_gb_runtime_slot_pixel_checksum(const IntegralGBRuntimeSlot *slot);
 bool integral_gb_runtime_slot_presentation_suppressed(const IntegralGBRuntimeSlot *slot);
 const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntimeSlot *slot);
+unsigned integral_gb_runtime_slot_screen_width(const IntegralGBRuntimeSlot *slot);
+unsigned integral_gb_runtime_slot_screen_height(const IntegralGBRuntimeSlot *slot);
 unsigned integral_gb_runtime_slot_drain_audio(IntegralGBRuntimeSlot *slot, int16_t *dest, unsigned max_frames);
 bool integral_gb_runtime_slot_battery_dirty(const IntegralGBRuntimeSlot *slot);
 void integral_gb_runtime_slot_clear_battery_dirty(IntegralGBRuntimeSlot *slot);
