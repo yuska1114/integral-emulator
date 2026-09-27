@@ -151,6 +151,7 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     slot->rom_path = config->rom_path;
     slot->save_path = config->save_path;
     slot->skip_boot_rom = config->skip_boot_rom;
+    slot->display_sgb_border = config->display_sgb_border;
     slot->battery_mode = config->battery_mode;
     slot->bootstrap_policy = config->model == GB_MODEL_SGB2
         ? INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT
@@ -188,7 +189,8 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
         GB_set_boot_rom_load_callback(slot->gb, slot_boot_rom_load_callback);
         GB_load_boot_rom_from_buffer(slot->gb, slot->sgb2_boot_rom, sizeof(slot->sgb2_boot_rom));
-        GB_set_border_mode(slot->gb, GB_BORDER_NEVER);
+        GB_set_border_mode(slot->gb,
+                           config->display_sgb_border ? GB_BORDER_SGB : GB_BORDER_NEVER);
     }
     GB_set_log_callback(slot->gb, slot_log_callback);
     GB_set_input_callback(slot->gb, NULL);
@@ -197,16 +199,20 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     GB_set_vblank_callback(slot->gb, slot_vblank_callback);
     GB_set_sample_rate(slot->gb, INTEGRAL_GB_RUNTIME_AUDIO_SAMPLE_RATE);
     GB_apu_set_sample_callback(slot->gb, slot_audio_callback);
-    unsigned screen_width = GB_get_screen_width(slot->gb);
-    unsigned screen_height = GB_get_screen_height(slot->gb);
-    if (screen_width != INTEGRAL_GB_RUNTIME_GB_WIDTH || screen_height != INTEGRAL_GB_RUNTIME_GB_HEIGHT) {
+    slot->screen_width = GB_get_screen_width(slot->gb);
+    slot->screen_height = GB_get_screen_height(slot->gb);
+    unsigned expected_width = config->display_sgb_border && config->model == GB_MODEL_SGB2
+        ? INTEGRAL_GB_RUNTIME_SGB_WIDTH : INTEGRAL_GB_RUNTIME_GB_WIDTH;
+    unsigned expected_height = config->display_sgb_border && config->model == GB_MODEL_SGB2
+        ? INTEGRAL_GB_RUNTIME_SGB_HEIGHT : INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+    if (slot->screen_width != expected_width || slot->screen_height != expected_height) {
         fprintf(stderr,
                 "%s: framebuffer geometry mismatch: %ux%u (expected %ux%u)\n",
                 slot->name,
-                screen_width,
-                screen_height,
-                INTEGRAL_GB_RUNTIME_GB_WIDTH,
-                INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+                slot->screen_width,
+                slot->screen_height,
+                expected_width,
+                expected_height);
         integral_gb_runtime_slot_free(slot);
         return -1;
     }
@@ -366,7 +372,9 @@ int integral_gb_runtime_slot_apply_rtc_offset_minutes(IntegralGBRuntimeSlot *slo
 uint32_t integral_gb_runtime_slot_pixel_checksum(const IntegralGBRuntimeSlot *slot)
 {
     uint32_t hash = 2166136261u;
-    for (size_t i = 0; i < sizeof(slot->pixels) / sizeof(slot->pixels[0]); i++) {
+    size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
+                         integral_gb_runtime_slot_screen_height(slot);
+    for (size_t i = 0; i < pixel_count; i++) {
         hash ^= slot->pixels[i];
         hash *= 16777619u;
     }
@@ -381,11 +389,21 @@ bool integral_gb_runtime_slot_presentation_suppressed(const IntegralGBRuntimeSlo
 const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntimeSlot *slot)
 {
     static const uint32_t black_pixels[
-        INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT] = {0};
+        INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT] = {0};
     if (!slot || !slot->initialized || slot_presentation_suppressed(slot)) {
         return black_pixels;
     }
     return slot->pixels;
+}
+
+unsigned integral_gb_runtime_slot_screen_width(const IntegralGBRuntimeSlot *slot)
+{
+    return slot && slot->screen_width ? slot->screen_width : INTEGRAL_GB_RUNTIME_GB_WIDTH;
+}
+
+unsigned integral_gb_runtime_slot_screen_height(const IntegralGBRuntimeSlot *slot)
+{
+    return slot && slot->screen_height ? slot->screen_height : INTEGRAL_GB_RUNTIME_GB_HEIGHT;
 }
 
 unsigned integral_gb_runtime_slot_drain_audio(IntegralGBRuntimeSlot *slot, int16_t *dest, unsigned max_frames)
