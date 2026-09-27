@@ -221,7 +221,9 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
         slot->screen_height != INTEGRAL_GB_RUNTIME_GB_HEIGHT) {
         size_t pixel_count = (size_t)slot->screen_width * slot->screen_height;
         slot->framebuffer = calloc(pixel_count, sizeof(*slot->framebuffer));
-        if (!slot->framebuffer) {
+        slot->presentation_framebuffer = calloc(
+            pixel_count, sizeof(*slot->presentation_framebuffer));
+        if (!slot->framebuffer || !slot->presentation_framebuffer) {
             fprintf(stderr, "%s: failed to allocate %ux%u framebuffer\n",
                     slot->name, slot->screen_width, slot->screen_height);
             integral_gb_runtime_slot_free(slot);
@@ -324,6 +326,10 @@ void integral_gb_runtime_slot_note_vblank(IntegralGBRuntimeSlot *slot)
     if (slot->sameboot_presentation_frames_remaining > 0u) {
         slot->sameboot_presentation_frames_remaining--;
     }
+    if (slot->display_sgb_border && !slot->sgb_game_border_ready &&
+        GB_sgb_has_game_border(slot->gb)) {
+        slot->sgb_game_border_ready = true;
+    }
 }
 
 bool integral_gb_runtime_slot_serial_active(const IntegralGBRuntimeSlot *slot)
@@ -360,6 +366,7 @@ void integral_gb_runtime_slot_reset(IntegralGBRuntimeSlot *slot)
     else if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
         slot->sameboot_presentation_frames_remaining =
             INTEGRAL_GB_RUNTIME_SAMEBOOT_PRESENTATION_FRAMES;
+        slot->sgb_game_border_ready = false;
     }
     slot->vblank_occurred = false;
     slot->audio_frames = 0;
@@ -407,6 +414,26 @@ const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntim
         INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT] = {0};
     if (!slot || !slot->initialized || slot_presentation_suppressed(slot)) {
         return black_pixels;
+    }
+
+    if (slot->display_sgb_border && !slot->sgb_game_border_ready &&
+        slot->framebuffer && slot->presentation_framebuffer) {
+        const unsigned x_offset =
+            (INTEGRAL_GB_RUNTIME_SGB_WIDTH - INTEGRAL_GB_RUNTIME_GB_WIDTH) / 2u;
+        const unsigned y_offset =
+            (INTEGRAL_GB_RUNTIME_SGB_HEIGHT - INTEGRAL_GB_RUNTIME_GB_HEIGHT) / 2u;
+        memset(slot->presentation_framebuffer, 0,
+               (size_t)INTEGRAL_GB_RUNTIME_SGB_WIDTH *
+               INTEGRAL_GB_RUNTIME_SGB_HEIGHT *
+               sizeof(*slot->presentation_framebuffer));
+        for (unsigned y = 0; y < INTEGRAL_GB_RUNTIME_GB_HEIGHT; y++) {
+            memcpy(slot->presentation_framebuffer +
+                       (y + y_offset) * INTEGRAL_GB_RUNTIME_SGB_WIDTH + x_offset,
+                   slot->framebuffer +
+                       (y + y_offset) * INTEGRAL_GB_RUNTIME_SGB_WIDTH + x_offset,
+                   INTEGRAL_GB_RUNTIME_GB_WIDTH * sizeof(uint32_t));
+        }
+        return slot->presentation_framebuffer;
     }
     return slot->framebuffer ? slot->framebuffer : slot->pixels;
 }
@@ -622,7 +649,15 @@ static void free_slot(IntegralGBRuntimeSlot *slot, bool save_battery)
         memset(slot->framebuffer, 0, pixel_count * sizeof(*slot->framebuffer));
         free(slot->framebuffer);
     }
+    if (slot->presentation_framebuffer) {
+        size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
+                             integral_gb_runtime_slot_screen_height(slot);
+        memset(slot->presentation_framebuffer, 0,
+               pixel_count * sizeof(*slot->presentation_framebuffer));
+        free(slot->presentation_framebuffer);
+    }
     slot->framebuffer = NULL;
+    slot->presentation_framebuffer = NULL;
     slot->initialized = false;
 }
 
