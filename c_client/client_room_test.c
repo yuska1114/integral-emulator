@@ -2,6 +2,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "client_room_common.h"
 #include "client_app.h"
+#include "client_event.h"
 #include "client_runtime_support.h"
 #include "client_local.h"
 #include "client_save_outbox.h"
@@ -40,6 +41,81 @@ int main(int argc, char **argv)
         .screen = &screen, .quit = &quit,
     };
     integral_keys_defaults(&keys);
+    if (argc == 2 && !strcmp(argv[1], "--input-pipeline")) {
+        assert(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_JOYSTICK |
+                        SDL_INIT_GAMECONTROLLER) == 0);
+        AppState app = {0};
+        bind_room_context(&app);
+        integral_keys_defaults(&app.keys);
+        app.ui.client_window = SDL_CreateWindow("Input pipeline regression", 0, 0, 360, 360,
+                                                SDL_WINDOW_HIDDEN);
+        assert(app.ui.client_window);
+        app.ui.screen = SCREEN_MAIN_MENU;
+        strcpy(app.keys.client_alias_enter, "M");
+
+        SDL_Event event = {0};
+        event.type = SDL_KEYDOWN;
+        event.key.type = SDL_KEYDOWN;
+        event.key.keysym.sym = SDLK_m;
+        event.key.keysym.scancode = SDL_SCANCODE_M;
+        SDL_StartTextInput();
+        integral_client_handle_event(&app, &event);
+        assert(app.ui.screen == SCREEN_LOCAL_MODE);
+        assert(app.ui.suppress_text_input_once);
+        memset(&event, 0, sizeof(event));
+        event.type = SDL_TEXTINPUT;
+        event.text.type = SDL_TEXTINPUT;
+        strcpy(event.text.text, "m");
+        integral_client_handle_event(&app, &event);
+        assert(!app.ui.suppress_text_input_once);
+
+        app.ui.screen = SCREEN_LOGIN;
+        app.login.editing = true;
+        app.login.selected = FIELD_USERNAME;
+        memset(&event, 0, sizeof(event));
+        event.type = SDL_TEXTINPUT;
+        event.text.type = SDL_TEXTINPUT;
+        strcpy(event.text.text, "X");
+        integral_client_handle_event(&app, &event);
+        assert(!strcmp(app.login.username, "X"));
+        app.ui.suppress_text_input_once = true;
+        strcpy(event.text.text, "Y");
+        integral_client_handle_event(&app, &event);
+        assert(!strcmp(app.login.username, "X") && !app.ui.suppress_text_input_once);
+
+        int device = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 2, 16, 1);
+        assert(device >= 0 && integral_gb_runtime_key_config_open_game_controllers() >= 1);
+        app.ui.screen = SCREEN_MAIN_MENU;
+        strcpy(app.keys.client_alias_enter, "PAD_A");
+        memset(&event, 0, sizeof(event));
+        event.type = SDL_CONTROLLERBUTTONDOWN;
+        event.cbutton.type = SDL_CONTROLLERBUTTONDOWN;
+        event.cbutton.which = SDL_JoystickGetDeviceInstanceID(device);
+        event.cbutton.button = SDL_CONTROLLER_BUTTON_A;
+        event.cbutton.state = SDL_PRESSED;
+        integral_client_handle_event(&app, &event);
+        assert(app.ui.screen == SCREEN_LOCAL_MODE);
+        app.ui.screen = SCREEN_MAIN_MENU;
+        integral_client_handle_event(&app, &event);
+        assert(app.ui.screen == SCREEN_MAIN_MENU);
+        event.type = SDL_CONTROLLERBUTTONUP;
+        event.cbutton.type = SDL_CONTROLLERBUTTONUP;
+        event.cbutton.state = SDL_RELEASED;
+        integral_client_handle_event(&app, &event);
+        event.type = SDL_CONTROLLERBUTTONDOWN;
+        event.cbutton.type = SDL_CONTROLLERBUTTONDOWN;
+        event.cbutton.state = SDL_PRESSED;
+        integral_client_handle_event(&app, &event);
+        assert(app.ui.screen == SCREEN_LOCAL_MODE);
+
+        integral_gb_runtime_key_config_close_game_controllers();
+        assert(SDL_JoystickDetachVirtual(device) == 0);
+        SDL_StopTextInput();
+        SDL_DestroyWindow(app.ui.client_window);
+        SDL_Quit();
+        puts("Client SDL input pipeline and alias dispatch: PASS");
+        return 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--focus-return")) {
         assert(SDL_Init(SDL_INIT_VIDEO) == 0);
         AppState app={0};bind_room_context(&app);

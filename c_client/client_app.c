@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114) */
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "client_app.h"
+#include "client_input_alias.h"
 #include "client_local.h"
 #include "client_runtime_support.h"
 #include "client_log.h"

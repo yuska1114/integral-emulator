@@ -30,6 +30,10 @@ ROMヘッダー情報とローカルファイル有無は、ROMパス単位のCl
 それぞれ`client_ui_key_config.c`、`client_ui_rom_register.c`、`client_ui_room_link.c`、
 `client_ui_room_n64.c`に分けています。
 
+SDLイベントの優先処理、キー変換、画面別キーdispatch、テキスト入力は`client_event.c`が担当します。
+CLIENT ALIASのキーボード／コントローラー変換は`client_input_alias.c`に分け、KEY CONFIGのcapture・保存とは分離しています。
+`make -C c_client client-event-test`はキーとコントローラーALIAS、押下状態、テキスト入力抑制を検証します。
+
 共通パレット、画面背景、選択行、入力欄、ヘッダー、パネル描画は`client_ui_common.c`に集約しています。
 Link／N64 ROOMのチャットログ行描画は`client_ui_room_common.c`で共有し、画面固有の配置と状態表示は各ROOM画面に残します。
 `make -C c_client client-ui-common-test`は共通描画部品の色とSDLレンダリング結果を検証します。

@@ -52,10 +52,4 @@ void format_slot_key_summary(const char *, char *, size_t, char *, size_t);
 void format_util_key_summary(const IntegralConfigKeys *, char *, size_t, char *, size_t, char *, size_t);
 void format_client_alias_summary(const IntegralConfigKeys *, char *, size_t, char *, size_t);
 void format_n64_key_summary(const char *, char *, size_t, char *, size_t, char *, size_t);
-bool integral_client_alias_keyboard_event(const IntegralConfigKeys *, const SDL_KeyboardEvent *,
-                                          SDL_KeyboardEvent *);
-bool integral_client_alias_controller_event(const IntegralConfigKeys *,
-                                            bool held[INTEGRAL_CLIENT_ALIAS_KEYS],
-                                            const SDL_Event *, SDL_KeyboardEvent *);
-bool integral_client_alias_has_controller_binding(const IntegralConfigKeys *);
 #endif
