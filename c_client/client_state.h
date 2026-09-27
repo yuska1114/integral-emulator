@@ -6,6 +6,7 @@
 #include "client_key_config.h"
 #include "client_rom_editor.h"
 #include "client_room_common.h"
+#include "client_settings.h"
 #include "client_screenshots.h"
 #include "rom_metadata.h"
 
@@ -16,10 +17,6 @@ typedef struct {
     unsigned window_height;
     bool window_size_dirty;
     unsigned main_selected;
-    unsigned settings_selected;
-    unsigned options_selected;
-    unsigned options_ir_off_delay_ticks;
-    bool options_sgb_enabled;
     bool game_input_active;
     bool client_alias_held[INTEGRAL_CLIENT_ALIAS_KEYS];
     bool suppress_text_input_once;
@@ -65,6 +62,7 @@ typedef struct {
 typedef struct AppState {
     IntegralScreenshots *screenshots;
     IntegralClientUiState ui;
+    IntegralClientSettingsState settings;
     IntegralClientCatalogState catalog;
     IntegralClientLocalState local;
     LoginState login;

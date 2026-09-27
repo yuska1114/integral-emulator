@@ -30,6 +30,8 @@ ROMヘッダー情報とローカルファイル有無は、ROMパス単位のCl
 それぞれ`client_ui_key_config.c`、`client_ui_rom_register.c`、`client_ui_room_link.c`、
 `client_ui_room_n64.c`に分けています。
 
+SETTINGS／OPTIONSの状態と操作は`client_settings.c`／`client_settings.h`が所有し、選択位置と読込済みoption値は`AppState.settings`に保持します。画面遷移、設定値の読込・保存とキー設定画面への移動は従来どおりです。
+
 SDLイベントの優先処理、キー変換、画面別キーdispatch、テキスト入力は`client_event.c`が担当します。
 CLIENT ALIASのキーボード／コントローラー変換は`client_input_alias.c`に分け、KEY CONFIGのcapture・保存とは分離しています。
 `make -C c_client client-event-test`はキーとコントローラーALIAS、押下状態、テキスト入力抑制を検証します。

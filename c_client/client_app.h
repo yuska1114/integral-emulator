@@ -22,8 +22,6 @@ void handle_login_key(AppState *app, const SDL_KeyboardEvent *key);
 void handle_password_change_key(AppState *app, const SDL_KeyboardEvent *key);
 void handle_password_change_text_input(AppState *app, const SDL_TextInputEvent *text);
 void handle_main_key(AppState *state, const SDL_KeyboardEvent *key);
-void handle_settings_key(AppState *state, const SDL_KeyboardEvent *key);
-void handle_options_key(AppState *state, const SDL_KeyboardEvent *key);
 void handle_key_config_controller_event(AppState *state, const SDL_Event *event);
 bool set_game_input_active(AppState *state, bool active);
 bool client_game_input_required(const AppState *state);
