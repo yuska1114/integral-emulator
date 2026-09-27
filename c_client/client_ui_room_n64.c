@@ -8,6 +8,7 @@
 #include "client_ui_common.h"
 #include "client_key_config.h"
 #include "client_room_common.h"
+#include "client_ui_room_common.h"
 #include "sdl_text.h"
 #include "sdl_unicode_text.h"
 #include <stdio.h>
@@ -63,8 +64,7 @@ static void format_n64_room_selection_line(char *label_out,
 
 void integral_client_ui_draw_room_n64(SDL_Renderer *renderer, const AppState *state)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
+    integral_client_ui_clear_screen(renderer);
 
     if (state->room.n64.n64_runtime_media_paired && strcmp(state->room.n64.n64_runtime_media_role, "remote") == 0) {
         SDL_Rect video_bounds = {.x = 0, .y = 0, .w = INTEGRAL_WINDOW_WIDTH, .h = INTEGRAL_WINDOW_HEIGHT};
@@ -73,11 +73,12 @@ void integral_client_ui_draw_room_n64(SDL_Renderer *renderer, const AppState *st
                                                 &video_bounds);
     }
 
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
-    SDL_Color warning = {236, 142, 108, 255};
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
+    SDL_Color warning = theme->warning;
     char subtitle[32];
     const IntegralApiRoom *header_room = state->room.common.room_number >= 65 && state->room.common.room_number <= 128
                                               ? &state->room.common.current_room : NULL;
@@ -175,10 +176,8 @@ void integral_client_ui_draw_room_n64(SDL_Renderer *renderer, const AppState *st
     for (unsigned i = 0; i < 3; i++) {
         int y = rom_y[i];
         if (state->room.common.room_selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 5, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 20};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 1, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y, 1, false);
         }
         integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 1,
                                          state->room.common.room_selected == i ? selected : value, 176);
@@ -194,10 +193,8 @@ void integral_client_ui_draw_room_n64(SDL_Renderer *renderer, const AppState *st
 
     const int ready_y = 246;
     if (state->room.common.room_selected == 3) {
-        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
         SDL_Rect rect = {.x = 14, .y = ready_y - 5, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 20};
-        SDL_RenderFillRect(renderer, &rect);
-        integral_sdl_draw_text(renderer, 24, ready_y, ">", 1, selected);
+        integral_client_ui_draw_selection(renderer, rect, 24, ready_y, 1, false);
     }
     integral_client_ui_draw_text_fit(renderer, 48, ready_y, labels[3], 1,
                                      state->room.common.room_selected == 3 ? selected : label, 190);
@@ -205,36 +202,17 @@ void integral_client_ui_draw_room_n64(SDL_Renderer *renderer, const AppState *st
 
     int log_y = 294;
     if (state->room.common.room_selected == 4) {
-        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
         SDL_Rect rect = {.x = 14, .y = log_y - 22, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 122};
-        SDL_RenderFillRect(renderer, &rect);
-        integral_sdl_draw_text(renderer, 24, log_y - 12, ">", 2, selected);
+        integral_client_ui_draw_selection(renderer, rect, 24, log_y - 12, 2, false);
     }
     integral_sdl_draw_text(renderer, 48, log_y - 16, labels[4], 1, state->room.common.room_selected == 4 ? selected : label);
     integral_sdl_draw_text(renderer, 140, log_y - 16, details[4], 1, muted);
-    integral_client_ui_draw_panel(renderer, 22, log_y + 2, INTEGRAL_WINDOW_WIDTH - 44, 100, (SDL_Color){55, 64, 70, 255});
-    unsigned message_count = chat_message_count((char (*)[INTEGRAL_CHAT_MESSAGE_MAX])state->room.common.room_chat_log);
-    unsigned start = message_count > INTEGRAL_CHAT_VISIBLE_LINES ? message_count - INTEGRAL_CHAT_VISIBLE_LINES : 0;
-    if (state->room.common.room_chat_scroll > 0 && message_count > INTEGRAL_CHAT_VISIBLE_LINES) {
-        unsigned max_scroll = message_count - INTEGRAL_CHAT_VISIBLE_LINES;
-        unsigned offset = state->room.common.room_chat_scroll > max_scroll ? max_scroll : state->room.common.room_chat_scroll;
-        start = message_count - INTEGRAL_CHAT_VISIBLE_LINES - offset;
-    }
-    unsigned seen = 0;
-    unsigned drawn = 0;
-    for (unsigned i = 0; i < INTEGRAL_CHAT_LOG_LINES && drawn < INTEGRAL_CHAT_VISIBLE_LINES; i++) {
-        if (state->room.common.room_chat_log[i][0] == '\0') {
-            continue;
-        }
-        if (seen++ < start) {
-            continue;
-        }
-        integral_sdl_draw_utf8_text(renderer, 34, log_y + 8 + (int)drawn * 18, state->room.common.room_chat_log[i], 14, value, INTEGRAL_WINDOW_WIDTH - 68);
-        drawn++;
-    }
-    if (message_count == 0) {
-        integral_sdl_draw_text(renderer, 34, log_y + 42, "NO MESSAGES", 1, muted);
-    }
+    integral_client_ui_draw_panel(renderer, 22, log_y + 2, INTEGRAL_WINDOW_WIDTH - 44, 100, theme->panel_border);
+    integral_client_ui_draw_room_chat_messages(renderer,
+                                               &state->room.common,
+                                               34,
+                                               log_y + 8,
+                                               INTEGRAL_WINDOW_WIDTH - 68);
 
     bool status_is_warning = strstr(state->login.status, "FAILED") != NULL ||
                              strstr(state->login.status, "REQUIRED") != NULL ||
@@ -275,12 +253,15 @@ void draw_runtime_exit_confirmation(SDL_Renderer *renderer,
                       .y = INTEGRAL_WINDOW_HEIGHT / 2 - 70,
                       .w = 420,
                       .h = 140};
-    SDL_Color title = {238, 238, 220, 255};
-    SDL_Color text = {185, 205, 216, 255};
-    SDL_Color selected = {86, 220, 150, 255};
-    SDL_SetRenderDrawColor(renderer, 10, 14, 18, 245);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color title = theme->title;
+    SDL_Color text = theme->body_text;
+    SDL_Color selected = theme->selected_bright;
+    SDL_SetRenderDrawColor(renderer, theme->modal_background.r, theme->modal_background.g,
+                           theme->modal_background.b, theme->modal_background.a);
     SDL_RenderFillRect(renderer, &panel);
-    SDL_SetRenderDrawColor(renderer, 86, 162, 126, 255);
+    SDL_SetRenderDrawColor(renderer, theme->selected.r, theme->selected.g,
+                           theme->selected.b, theme->selected.a);
     SDL_RenderDrawRect(renderer, &panel);
     integral_sdl_draw_text(renderer, panel.x + 36, panel.y + 28,
                            "EXIT GAME?", 3, title);

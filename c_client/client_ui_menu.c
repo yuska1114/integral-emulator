@@ -9,13 +9,12 @@
 
 void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralClientMenuView *view)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
 
     integral_client_ui_draw_header(renderer, "MAIN MENU", view->username, view->server, view->version);
     const char *labels[] = {
@@ -38,10 +37,8 @@ void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralCli
     for (unsigned i = 0; i < INTEGRAL_MAIN_ROWS; i++) {
         int y = 92 + (int)i * 46;
         if (view->selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 6, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 42};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y + 6, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y + 6, 2, false);
         }
         integral_sdl_draw_text(renderer, 48, y, labels[i], 2, view->selected == i ? selected : label);
         integral_sdl_draw_text_fit(renderer, 48, y + 24, values[i], 1, value, 380);
@@ -58,12 +55,11 @@ void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralCli
 
 void integral_client_ui_draw_settings(SDL_Renderer *renderer, const IntegralClientMenuView *view)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
     const char *labels[INTEGRAL_SETTINGS_ROWS] = {
         "GB KEYS CONFIG",
         "N64 KEYS CONFIG",
@@ -76,10 +72,8 @@ void integral_client_ui_draw_settings(SDL_Renderer *renderer, const IntegralClie
     for (unsigned i = 0; i < INTEGRAL_SETTINGS_ROWS; i++) {
         int y = 110 + (int)i * 54;
         if (view->selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 8, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 42};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y, 2, false);
         }
         integral_sdl_draw_text(renderer, 48, y, labels[i], 2,
                                view->selected == i ? selected : label);
@@ -97,13 +91,12 @@ void integral_client_ui_draw_options(SDL_Renderer *renderer,
                                      unsigned ir_off_delay_ticks,
                                      int sgb_enabled)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
     char ir_delay_value[24];
     snprintf(ir_delay_value, sizeof(ir_delay_value), "<%u> tick", ir_off_delay_ticks);
     const char *labels[INTEGRAL_OPTIONS_ROWS] = {
@@ -122,11 +115,9 @@ void integral_client_ui_draw_options(SDL_Renderer *renderer,
     for (unsigned i = 0; i < INTEGRAL_OPTIONS_ROWS; i++) {
         int y = 126 + (int)i * 70;
         if (view->selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 10,
                              .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 46};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y, 2, false);
         }
         integral_sdl_draw_text(renderer, 48, y, labels[i], 2,
                                view->selected == i ? selected : label);
@@ -145,22 +136,19 @@ void integral_client_ui_draw_options(SDL_Renderer *renderer,
 
 void integral_client_ui_draw_room_mode(SDL_Renderer *renderer, const IntegralClientMenuView *view)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
     const char *buttons[] = {"LINK CABLE ROOM", "N64 ROOM", "BACK"};
 
     integral_client_ui_draw_header(renderer, "CREATE ROOM", view->username, view->server, view->version);
     for (unsigned i = 0; i < INTEGRAL_ROOM_MODE_ROWS; i++) {
         int y = 126 + (int)i * 86;
         if (view->selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect button = {.x = 14, .y = y - 10, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 58};
-            SDL_RenderFillRect(renderer, &button);
-            integral_sdl_draw_text(renderer, 24, y + 7, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, button, 24, y + 7, 2, false);
         }
         integral_sdl_draw_text(renderer, 48, y,
                                buttons[i], 3,
@@ -177,17 +165,16 @@ void integral_client_ui_draw_room_mode(SDL_Renderer *renderer, const IntegralCli
 void integral_client_ui_draw_join_room(SDL_Renderer *renderer, const IntegralClientMenuView *view,
                                       const char *room_code, bool editing)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color value = {238, 238, 238, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color value = theme->value;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
     integral_client_ui_draw_header(renderer, "JOIN ROOM", view->username, view->server, view->version);
     integral_sdl_draw_text(renderer, 48, 150, "ROOM CODE", 2, label);
-    SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
     SDL_Rect input = {.x = 46, .y = 188, .w = 388, .h = 72};
-    SDL_RenderFillRect(renderer, &input);
+    integral_client_ui_fill_selection(renderer, input, false);
     char display[16];
     snprintf(display, sizeof(display), "%s%s", room_code,
              editing ? "_" : "");
@@ -219,12 +206,11 @@ void integral_client_ui_draw_join_room(SDL_Renderer *renderer, const IntegralCli
 
 void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralClientMenuView *view)
 {
-    SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
-    SDL_RenderClear(renderer);
-
-    SDL_Color label = {160, 180, 196, 255};
-    SDL_Color selected = {86, 162, 126, 255};
-    SDL_Color muted = {112, 122, 130, 255};
+    integral_client_ui_clear_screen(renderer);
+    const IntegralClientUiTheme *theme = integral_client_ui_theme();
+    SDL_Color label = theme->label;
+    SDL_Color selected = theme->selected;
+    SDL_Color muted = theme->muted;
 
     integral_client_ui_draw_header(renderer, "LOCAL", view->username, view->server, view->version);
     const char *labels[] = {
@@ -236,10 +222,8 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
     for (unsigned i = 0; i < INTEGRAL_LOCAL_MODE_ROWS; i++) {
         int y = 126 + (int)i * 76;
         if (view->selected == i) {
-            SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 10, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 58};
-            SDL_RenderFillRect(renderer, &rect);
-            integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
+            integral_client_ui_draw_selection(renderer, rect, 24, y, 2, false);
         }
         integral_sdl_draw_text_fit(renderer,
                                    48,
