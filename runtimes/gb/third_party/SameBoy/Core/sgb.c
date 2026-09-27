@@ -797,6 +797,23 @@ void GB_sgb_render(GB_gameboy_t *gb, bool incomplete)
     }
 }
 
+bool GB_sgb_has_game_border(GB_gameboy_t *gb)
+{
+    if (!gb || !gb->sgb ||
+        gb->sgb->intro_animation < GB_SGB_INTRO_ANIMATION_LENGTH) {
+        return false;
+    }
+
+    /*
+     * The built-in SGB/SGB2 border is loaded only into border. The pending
+     * border starts empty and is populated by CHR_TRN/PCT_TRN. Once SameBoy
+     * activates the game-provided border it copies pending_border to border.
+     */
+    return memcmp(&gb->sgb->border,
+                  &gb->sgb->pending_border,
+                  sizeof(gb->sgb->border)) == 0;
+}
+
 void GB_sgb_load_default_data(GB_gameboy_t *gb)
 {
     
