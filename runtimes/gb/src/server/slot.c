@@ -216,7 +216,19 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
         integral_gb_runtime_slot_free(slot);
         return -1;
     }
-    GB_set_pixels_output(slot->gb, slot->pixels);
+    slot->framebuffer = slot->pixels;
+    if (slot->screen_width != INTEGRAL_GB_RUNTIME_GB_WIDTH ||
+        slot->screen_height != INTEGRAL_GB_RUNTIME_GB_HEIGHT) {
+        size_t pixel_count = (size_t)slot->screen_width * slot->screen_height;
+        slot->framebuffer = calloc(pixel_count, sizeof(*slot->framebuffer));
+        if (!slot->framebuffer) {
+            fprintf(stderr, "%s: failed to allocate %ux%u framebuffer\n",
+                    slot->name, slot->screen_width, slot->screen_height);
+            integral_gb_runtime_slot_free(slot);
+            return -1;
+        }
+    }
+    GB_set_pixels_output(slot->gb, slot->framebuffer);
 
     int load_result;
 #ifdef _WIN32
@@ -374,8 +386,11 @@ uint32_t integral_gb_runtime_slot_pixel_checksum(const IntegralGBRuntimeSlot *sl
     uint32_t hash = 2166136261u;
     size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
                          integral_gb_runtime_slot_screen_height(slot);
+    const uint32_t *pixels = slot && slot->framebuffer ? slot->framebuffer :
+                             (slot ? slot->pixels : NULL);
+    if (!pixels) return hash;
     for (size_t i = 0; i < pixel_count; i++) {
-        hash ^= slot->pixels[i];
+        hash ^= pixels[i];
         hash *= 16777619u;
     }
     return hash;
@@ -393,7 +408,7 @@ const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntim
     if (!slot || !slot->initialized || slot_presentation_suppressed(slot)) {
         return black_pixels;
     }
-    return slot->pixels;
+    return slot->framebuffer ? slot->framebuffer : slot->pixels;
 }
 
 unsigned integral_gb_runtime_slot_screen_width(const IntegralGBRuntimeSlot *slot)
@@ -589,18 +604,25 @@ int integral_gb_runtime_initial_battery_for_rom(const char *rom_path,
 
 static void free_slot(IntegralGBRuntimeSlot *slot, bool save_battery)
 {
-    if (!slot || !slot->gb) {
-        return;
-    }
+    if (!slot) return;
 
-    if (slot->initialized && save_battery &&
-        slot->battery_mode == INTEGRAL_GB_RUNTIME_BATTERY_FILE) {
-        (void)integral_gb_runtime_slot_save_battery(slot);
+    if (slot->gb) {
+        if (slot->initialized && save_battery &&
+            slot->battery_mode == INTEGRAL_GB_RUNTIME_BATTERY_FILE) {
+            (void)integral_gb_runtime_slot_save_battery(slot);
+        }
+        integral_gb_runtime_serial_peripheral_router_shutdown(&slot->serial_router);
+        GB_free(slot->gb);
+        GB_dealloc(slot->gb);
+        slot->gb = NULL;
     }
-    integral_gb_runtime_serial_peripheral_router_shutdown(&slot->serial_router);
-    GB_free(slot->gb);
-    GB_dealloc(slot->gb);
-    slot->gb = NULL;
+    if (slot->framebuffer && slot->framebuffer != slot->pixels) {
+        size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
+                             integral_gb_runtime_slot_screen_height(slot);
+        memset(slot->framebuffer, 0, pixel_count * sizeof(*slot->framebuffer));
+        free(slot->framebuffer);
+    }
+    slot->framebuffer = NULL;
     slot->initialized = false;
 }
 
