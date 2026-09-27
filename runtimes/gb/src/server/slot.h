@@ -51,6 +51,7 @@ typedef struct IntegralGBRuntimeSlot {
     bool initialized;
     bool skip_boot_rom;
     bool display_sgb_border;
+    bool sgb_game_border_ready;
     unsigned screen_width;
     unsigned screen_height;
     IntegralGBRuntimeBatteryMode battery_mode;
@@ -67,6 +68,7 @@ typedef struct IntegralGBRuntimeSlot {
     uint64_t last_battery_save_us;
     uint32_t pixels[INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT];
     uint32_t *framebuffer;
+    uint32_t *presentation_framebuffer;
 } IntegralGBRuntimeSlot;
 
 int integral_gb_runtime_slot_model_for_rom(const char *rom_path,
