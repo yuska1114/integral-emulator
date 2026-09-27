@@ -21,6 +21,8 @@ struct IntegralGBRuntimeVideoWindow {
     SDL_Texture *slot2_texture;
     unsigned scale;
     unsigned slot_count;
+    unsigned slot_width;
+    unsigned slot_height;
     int canvas_width;
     int canvas_height;
     int content_x;
@@ -37,8 +39,8 @@ struct IntegralGBRuntimeVideoWindow {
 
 static void set_layout(IntegralGBRuntimeVideoWindow *window, int width, int height)
 {
-    int content_width = INTEGRAL_GB_RUNTIME_GB_WIDTH * (int)window->slot_count;
-    int content_height = INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+    int content_width = (int)window->slot_width * (int)window->slot_count;
+    int content_height = (int)window->slot_height;
     window->canvas_width = width;
     window->canvas_height = height;
     window->scale = integral_display_scale_resolve(
@@ -108,13 +110,23 @@ static int open_titled(IntegralGBRuntimeVideoWindow **window_out,
                        const char *title,
                        bool vsync,
                        unsigned target_width,
-                       unsigned target_height)
+                       unsigned target_height,
+                       unsigned slot_width,
+                       unsigned slot_height)
 {
     if (slot_count == 0 || slot_count > 2) {
         slot_count = 2;
     }
-    int content_width = INTEGRAL_GB_RUNTIME_GB_WIDTH * (int)slot_count;
-    int content_height = INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+    if (slot_width == 0u) slot_width = INTEGRAL_GB_RUNTIME_GB_WIDTH;
+    if (slot_height == 0u) slot_height = INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+    if (slot_count > 1u &&
+        (slot_width != INTEGRAL_GB_RUNTIME_GB_WIDTH ||
+         slot_height != INTEGRAL_GB_RUNTIME_GB_HEIGHT)) {
+        fprintf(stderr, "Variable GB display geometry is only supported for one slot\n");
+        return -1;
+    }
+    int content_width = (int)slot_width * (int)slot_count;
+    int content_height = (int)slot_height;
     if ((target_width == 0u) != (target_height == 0u) ||
         (target_width != 0u &&
          (target_width < (unsigned)content_width ||
@@ -140,6 +152,8 @@ static int open_titled(IntegralGBRuntimeVideoWindow **window_out,
         return -1;
     }
     window->slot_count = slot_count;
+    window->slot_width = slot_width;
+    window->slot_height = slot_height;
     window->active = true;
 
     int width = (int)target_width;
@@ -194,8 +208,8 @@ static int open_titled(IntegralGBRuntimeVideoWindow **window_out,
     window->slot1_texture = SDL_CreateTexture(window->renderer,
                                               SDL_PIXELFORMAT_ARGB8888,
                                               SDL_TEXTUREACCESS_STREAMING,
-                                              INTEGRAL_GB_RUNTIME_GB_WIDTH,
-                                              INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+                                              window->slot_width,
+                                              window->slot_height);
     window->slot2_texture = SDL_CreateTexture(window->renderer,
                                               SDL_PIXELFORMAT_ARGB8888,
                                               SDL_TEXTUREACCESS_STREAMING,
@@ -222,7 +236,8 @@ int integral_gb_runtime_video_window_open_titled(IntegralGBRuntimeVideoWindow **
                                         unsigned slot_count,
                                         const char *title)
 {
-    return open_titled(window_out, scale, slot_count, title, true, 0u, 0u);
+    return open_titled(window_out, scale, slot_count, title, true, 0u, 0u,
+                       INTEGRAL_GB_RUNTIME_GB_WIDTH, INTEGRAL_GB_RUNTIME_GB_HEIGHT);
 }
 
 int integral_gb_runtime_video_window_open_titled_sized(
@@ -234,7 +249,22 @@ int integral_gb_runtime_video_window_open_titled_sized(
     unsigned window_height)
 {
     return open_titled(window_out, scale, slot_count, title, true,
-                       window_width, window_height);
+                       window_width, window_height,
+                       INTEGRAL_GB_RUNTIME_GB_WIDTH, INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+}
+
+int integral_gb_runtime_video_window_open_titled_sized_content(
+    IntegralGBRuntimeVideoWindow **window_out,
+    unsigned scale,
+    unsigned slot_count,
+    const char *title,
+    unsigned window_width,
+    unsigned window_height,
+    unsigned slot_width,
+    unsigned slot_height)
+{
+    return open_titled(window_out, scale, slot_count, title, true,
+                       window_width, window_height, slot_width, slot_height);
 }
 
 int integral_gb_runtime_video_window_open_titled_unthrottled(
@@ -243,7 +273,8 @@ int integral_gb_runtime_video_window_open_titled_unthrottled(
     unsigned slot_count,
     const char *title)
 {
-    return open_titled(window_out, scale, slot_count, title, false, 0u, 0u);
+    return open_titled(window_out, scale, slot_count, title, false, 0u, 0u,
+                       INTEGRAL_GB_RUNTIME_GB_WIDTH, INTEGRAL_GB_RUNTIME_GB_HEIGHT);
 }
 
 int integral_gb_runtime_video_window_open_titled_unthrottled_sized(
@@ -255,7 +286,8 @@ int integral_gb_runtime_video_window_open_titled_unthrottled_sized(
     unsigned window_height)
 {
     return open_titled(window_out, scale, slot_count, title, false,
-                       window_width, window_height);
+                       window_width, window_height,
+                       INTEGRAL_GB_RUNTIME_GB_WIDTH, INTEGRAL_GB_RUNTIME_GB_HEIGHT);
 }
 
 static void render_top_right_message(IntegralGBRuntimeVideoWindow *window,
@@ -287,8 +319,8 @@ static void render_textured_slots(IntegralGBRuntimeVideoWindow *window,
     SDL_Rect slot1_rect = {
         .x = window->content_x,
         .y = window->content_y,
-        .w = (int)(INTEGRAL_GB_RUNTIME_GB_WIDTH * window->scale),
-        .h = (int)(INTEGRAL_GB_RUNTIME_GB_HEIGHT * window->scale),
+        .w = (int)(window->slot_width * window->scale),
+        .h = (int)(window->slot_height * window->scale),
     };
     SDL_Rect slot2_rect = {
         .x = slot1_rect.w,
@@ -515,7 +547,7 @@ int integral_gb_runtime_video_window_render(IntegralGBRuntimeVideoWindow *window
                                    const IntegralGBRuntimeSlot *slot1,
                                    const IntegralGBRuntimeSlot *slot2)
 {
-    int pitch = (int)(INTEGRAL_GB_RUNTIME_GB_WIDTH * sizeof(uint32_t));
+    int pitch = (int)(window->slot_width * sizeof(uint32_t));
     if (SDL_UpdateTexture(window->slot1_texture, NULL,
                           integral_gb_runtime_slot_presented_pixels(slot1), pitch) != 0) {
         fprintf(stderr, "SDL_UpdateTexture failed: %s\n", SDL_GetError());
@@ -535,7 +567,7 @@ int integral_gb_runtime_video_window_render(IntegralGBRuntimeVideoWindow *window
 int integral_gb_runtime_video_window_render_pixels(IntegralGBRuntimeVideoWindow *window,
                                            const uint32_t *pixels)
 {
-    int pitch = (int)(INTEGRAL_GB_RUNTIME_GB_WIDTH * sizeof(uint32_t));
+    int pitch = (int)(window->slot_width * sizeof(uint32_t));
     if (window == NULL || pixels == NULL || window->slot_count != 1u ||
         SDL_UpdateTexture(window->slot1_texture, NULL, pixels, pitch) != 0) {
         if (window != NULL && pixels != NULL)
