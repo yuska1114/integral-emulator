@@ -328,12 +328,19 @@ int main(int argc, char **argv)
            slot1_profile.old_licensee,
            options.sgb_disabled ? "disable" : "enable");
 
+    bool display_sgb_border =
+        options.self_mode &&
+        options.display &&
+        options.display_slots == 1u &&
+        !options.lan_remote_enabled &&
+        slot1_model == GB_MODEL_SGB2;
     IntegralGBRuntimeSlotConfig slot1_config = {
         .name = "slot1",
         .rom_path = options.rom1,
         .save_path = options.save1,
         .model = slot1_model,
         .skip_boot_rom = options.skip_boot_rom,
+        .display_sgb_border = display_sgb_border,
     };
 
     if (integral_gb_runtime_slot_init(slot1, &slot1_config) != 0) {
@@ -529,10 +536,23 @@ int main(int argc, char **argv)
              sizeof(window_title),
              "INTEGRAL EMULATOR - GB Runtime (%s mode)",
              integral_gb_runtime_server_window_mode_name(&options));
+    unsigned display_slot_width = options.display_slots == 1u
+        ? integral_gb_runtime_slot_screen_width(slot1)
+        : INTEGRAL_GB_RUNTIME_GB_WIDTH;
+    unsigned display_slot_height = options.display_slots == 1u
+        ? integral_gb_runtime_slot_screen_height(slot1)
+        : INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+    unsigned display_window_width = options.window_width;
+    unsigned display_window_height = options.window_height;
+    if (display_window_width != 0u && options.display_slots == 1u) {
+        if (display_window_width < display_slot_width) display_window_width = display_slot_width;
+        if (display_window_height < display_slot_height) display_window_height = display_slot_height;
+    }
     if (options.display &&
-        integral_gb_runtime_video_window_open_titled_sized(
+        integral_gb_runtime_video_window_open_titled_sized_content(
             &window, options.scale, options.display_slots, window_title,
-            options.window_width, options.window_height) != 0) {
+            display_window_width, display_window_height,
+            display_slot_width, display_slot_height) != 0) {
         close_stream_server_heap(&stream_server, &stream_server_open);
         close_stream_server_heap(&stream_server_slot1, &stream_server_slot1_open);
         if (slot2_ready) {
