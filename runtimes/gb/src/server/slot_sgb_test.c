@@ -85,7 +85,14 @@ static void assert_sameboot_presentation_boundary(IntegralGBRuntimeSlot *slot)
     }
     assert(saw_hidden_core_frame);
     assert(!integral_gb_runtime_slot_presentation_suppressed(slot));
-    assert(integral_gb_runtime_slot_presented_pixels(slot) == slot->pixels);
+    if (slot->display_sgb_border) {
+        assert(!slot->sgb_game_border_ready);
+        assert(integral_gb_runtime_slot_presented_pixels(slot) ==
+               slot->presentation_framebuffer);
+    }
+    else {
+        assert(integral_gb_runtime_slot_presented_pixels(slot) == slot->pixels);
+    }
 }
 
 int main(int argc, char **argv)
@@ -140,8 +147,12 @@ int main(int argc, char **argv)
     assert(integral_gb_runtime_slot_screen_width(&guarded.slot) == INTEGRAL_GB_RUNTIME_SGB_WIDTH);
     assert(integral_gb_runtime_slot_screen_height(&guarded.slot) == INTEGRAL_GB_RUNTIME_SGB_HEIGHT);
     assert(guarded.slot.framebuffer != guarded.slot.pixels);
+    assert(guarded.slot.presentation_framebuffer != NULL);
 
     assert_sameboot_presentation_boundary(&guarded.slot);
+    const uint32_t *masked = integral_gb_runtime_slot_presented_pixels(&guarded.slot);
+    assert(masked == guarded.slot.presentation_framebuffer);
+    assert(masked[0] == 0u);
 
     bool seen_a = false;
     bool seen_b = false;
