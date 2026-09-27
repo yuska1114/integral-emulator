@@ -14,6 +14,7 @@ static size_t expected_bytes = 4;
 static int expected_generated = 1;
 static unsigned generated_save_calls;
 static char hash256[65], hash1[41];
+static char expected_title[21] = "GENERIC SAMPLE";
 
 int integral_gb_runtime_initial_battery_for_rom(const char *rom_path,
                                                 uint8_t *buffer,
@@ -47,7 +48,7 @@ int integral_api_apply_rom_slot(const char *server, const char *token, unsigned 
     CHECK(strcmp(server, "https://test.invalid") == 0 && strcmp(token, "test-token") == 0);
     CHECK(slot >= 1 && slot <= INTEGRAL_ROM_SLOTS);
     CHECK(strcmp(filename, "sample.gbc") == 0 && strcmp(platform, "gb") == 0);
-    CHECK(strcmp(title, "GENERIC SAMPLE") == 0 && region[0]);
+    CHECK(strcmp(title, expected_title) == 0 && region[0]);
     CHECK(strcmp(sha256, hash256) == 0 && strcmp(sha1, hash1) == 0);
     CHECK(confirm_delete == expected_delete && bytes == expected_bytes);
     CHECK(initial_save_generated == expected_generated);
@@ -135,9 +136,29 @@ int main(int argc, char **argv)
     integral_rom_registration_apply(&state, false, true);
     CHECK(apply_calls == 2 && editor.rom_confirm_delete && !editor.rom_confirm_initial_save_import);
     CHECK(get_calls == 1 && slots[1].save_id[0] == 0);
+    CHECK(editor.rom_confirm_target_valid);
+    CHECK(strcmp(editor.rom_confirm_new_filename, "sample.gbc") == 0);
+    CHECK(strcmp(editor.rom_confirm_new_metadata.header_title, "GENERIC SAMPLE") == 0);
+    CHECK(strcmp(editor.rom_confirm_new_sha256, hash256) == 0);
+
+    unsigned char second_gb[0x150] = {0};
+    memcpy(second_gb + 0x134, "SECOND SAMPLE", 13);
+    for (unsigned i=0x134; i<=0x14c; i++) second_gb[0x14d] = (unsigned char)(second_gb[0x14d]-second_gb[i]-1);
+    write_file(rom_path, second_gb, sizeof(second_gb));
+    strcpy(expected_title, "SECOND SAMPLE");
+    CHECK(sha256_file_hex(rom_path, hash256, sizeof(hash256)) == 0);
+    CHECK(sha1_file_hex(rom_path, hash1, sizeof(hash1)) == 0);
+
     confirmation=0; expected_delete=1;
     integral_rom_registration_apply(&state, true, true);
+    CHECK(apply_calls == 2 && get_calls == 1 && editor.rom_confirm_delete);
+    CHECK(strcmp(status, "ROM CHANGED - CONFIRM AGAIN") == 0);
+    CHECK(strcmp(editor.rom_confirm_new_metadata.header_title, "SECOND SAMPLE") == 0);
+    CHECK(strcmp(editor.rom_confirm_new_sha256, hash256) == 0);
+
+    integral_rom_registration_apply(&state, true, true);
     CHECK(apply_calls == 3 && get_calls == 2 && !editor.rom_confirm_delete);
+    CHECK(!editor.rom_confirm_target_valid);
     CHECK(strcmp(slots[0].save_id, "save-1") == 0 && strcmp(slots[1].save_id, "save-2") == 0);
     CHECK(editor.rom_initial_save_import_slot == -1 && editor.rom_initial_save_import_path[0] == 0);
     IntegralConfigRomSlot loaded[INTEGRAL_ROM_SLOTS] = {0};

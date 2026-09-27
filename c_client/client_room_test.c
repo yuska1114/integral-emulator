@@ -87,6 +87,33 @@ int main(int argc, char **argv)
         assert(app.ui.screen==SCREEN_SETTINGS && app.ui.settings_selected==0);
         app.ui.settings_selected=4;key.keysym.sym=SDLK_RETURN;handle_settings_key(&app,&key);
         assert(app.ui.screen==SCREEN_MAIN_MENU);
+
+        unsigned char rom[0x150] = {0};
+        const char *rom_path = "build/client_rom_cache_test.gb";
+        memcpy(rom + 0x134, "CACHE SAMPLE", 12);
+        rom[0x14a] = 1;
+        for (size_t i = 0x134; i <= 0x14c; i++) rom[0x14d] = (unsigned char)(rom[0x14d] - rom[i] - 1u);
+        FILE *rom_file = fopen(rom_path, "wb");assert(rom_file);
+        assert(fwrite(rom, 1, sizeof(rom), rom_file) == sizeof(rom));assert(fclose(rom_file) == 0);
+        snprintf(app.catalog.rom_slots[0].rom_path, sizeof(app.catalog.rom_slots[0].rom_path), "%s", rom_path);
+        refresh_rom_metadata_cache(&app, false);
+        assert(app.catalog.rom_metadata[0].file_found && app.catalog.rom_metadata[0].header_valid);
+        assert(!strcmp(app.catalog.rom_metadata[0].metadata.header_title, "CACHE SAMPLE"));
+        memset(rom + 0x134, 0, 16);
+        memcpy(rom + 0x134, "SECOND SAMPLE", 13);
+        rom[0x14d] = 0;
+        for (size_t i = 0x134; i <= 0x14c; i++) rom[0x14d] = (unsigned char)(rom[0x14d] - rom[i] - 1u);
+        rom_file = fopen(rom_path, "wb");assert(rom_file);
+        assert(fwrite(rom, 1, sizeof(rom), rom_file) == sizeof(rom));assert(fclose(rom_file) == 0);
+        refresh_rom_metadata_cache(&app, false);
+        assert(!strcmp(app.catalog.rom_metadata[0].metadata.header_title, "CACHE SAMPLE"));
+        refresh_rom_metadata_cache(&app, true);
+        assert(!strcmp(app.catalog.rom_metadata[0].metadata.header_title, "SECOND SAMPLE"));
+        snprintf(app.catalog.rom_slots[0].rom_path, sizeof(app.catalog.rom_slots[0].rom_path),
+                 "build/client_rom_cache_missing.gb");
+        refresh_rom_metadata_cache(&app, false);
+        assert(!app.catalog.rom_metadata[0].file_found && !app.catalog.rom_metadata[0].header_valid);
+        remove(rom_path);
         remove(app.config_path);
         integral_room_destroy_resources(&app.room);SDL_DestroyWindow(main);SDL_Quit();
         puts("Remote window destroyed, MAIN focus restored, arrows/Tab/Enter PASS");

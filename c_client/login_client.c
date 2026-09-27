@@ -172,6 +172,7 @@ int main(int argc, char **argv)
         }
     }
     if (diagnostics.smoke_test) client_diagnostics_prepare_screen(&state, argc, argv);
+    refresh_rom_metadata_cache(&state, true);
     draw_app(renderer, &state);
     if (diagnostics.screenshot_path && save_screenshot(renderer, diagnostics.screenshot_path) != 0) {
         client_log(&state, "screenshot_failed", "path=%s", diagnostics.screenshot_path);
@@ -312,6 +313,7 @@ int main(int argc, char **argv)
                 }
             }
         }
+        refresh_rom_metadata_cache(&state, false);
         poll_server_state(&state.room);
         poll_local_save_notice(&state);
         /* Focus may already be restored before queued events are consumed. */
