@@ -235,11 +235,19 @@ void integral_client_ui_draw_rom_register(SDL_Renderer *renderer, const AppState
         integral_client_ui_draw_text_fit(renderer, 54, 274, target, 1, value, 372);
         if (index < INTEGRAL_ROM_SLOTS) {
             char old_rom[384], new_rom[384];
-            const IntegralClientRomMetadataCache *cached = client_rom_metadata_for_slot(state, (int)index);
-            const char *header_title = cached && cached->header_valid ? cached->metadata.header_title : "";
+            const char *new_filename = path_file_name(state->catalog.rom_slots[index].rom_path);
+            const char *header_title = "";
+            if (state->catalog.rom_editor.rom_confirm_target_valid) {
+                new_filename = state->catalog.rom_editor.rom_confirm_new_filename;
+                header_title = state->catalog.rom_editor.rom_confirm_new_metadata.header_title;
+            }
+            else {
+                const IntegralClientRomMetadataCache *cached = client_rom_metadata_for_slot(state, (int)index);
+                if (cached && cached->header_valid) header_title = cached->metadata.header_title;
+            }
             snprintf(old_rom, sizeof(old_rom), "%s (%s)", state->catalog.server_rom_slots[index].filename,
                      state->catalog.server_rom_slots[index].rom_header_title);
-            snprintf(new_rom, sizeof(new_rom), "%s (%s)", path_file_name(state->catalog.rom_slots[index].rom_path), header_title);
+            snprintf(new_rom, sizeof(new_rom), "%s (%s)", new_filename, header_title);
             integral_sdl_draw_text(renderer, 54, 298, "OLD:", 1, label);
             integral_client_ui_draw_text_fit(renderer, 86, 298, old_rom, 1, value, 340);
             integral_sdl_draw_text(renderer, 54, 324, "NEW:", 1, label);

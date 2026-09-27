@@ -24,12 +24,21 @@ static void preserve_registration(RomEditContext *state, unsigned index)
     }
 }
 
+static void clear_rom_confirmation_target(IntegralClientRomEditor *editor)
+{
+    editor->rom_confirm_target_valid = false;
+    editor->rom_confirm_new_filename[0] = '\0';
+    editor->rom_confirm_new_sha256[0] = '\0';
+    memset(&editor->rom_confirm_new_metadata, 0, sizeof(editor->rom_confirm_new_metadata));
+}
+
 void integral_client_rom_editor_discard(IntegralClientRomEditor *editor, IntegralConfigRomSlot *slots)
 {
     for (unsigned i = 0; i < INTEGRAL_ROM_SLOTS; i++) {
         if (editor->pending_paths[i]) slots[i] = editor->confirmed_slots[i];
         editor->pending_paths[i] = false;
     }
+    clear_rom_confirmation_target(editor);
     editor->rom_initial_save_import_slot = -1;
     editor->rom_initial_save_import_path[0] = '\0';
 }
@@ -40,6 +49,7 @@ void integral_client_rom_editor_reset(IntegralClientRomEditor *editor, bool sele
     editor->rom_edit_target = ROM_EDIT_NONE;
     editor->rom_browser_active = false;
     editor->rom_confirm_delete = false;
+    clear_rom_confirmation_target(editor);
     editor->rom_confirm_initial_save_import = false;
     editor->rom_initial_save_import_slot = -1;
     editor->rom_initial_save_import_path[0] = '\0';
