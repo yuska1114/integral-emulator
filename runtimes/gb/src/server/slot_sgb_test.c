@@ -41,10 +41,9 @@ static void observe_palette_states(IntegralGBRuntimeSlot *slot, bool *seen_a, bo
         unsigned x_offset = (width - INTEGRAL_GB_RUNTIME_GB_WIDTH) / 2u;
         unsigned y_offset =
             (integral_gb_runtime_slot_screen_height(slot) - INTEGRAL_GB_RUNTIME_GB_HEIGHT) / 2u;
-        uint32_t left = slot->pixels[
-            (72u + y_offset) * width + 40u + x_offset];
-        uint32_t right = slot->pixels[
-            (72u + y_offset) * width + 120u + x_offset];
+        const uint32_t *pixels = integral_gb_runtime_slot_presented_pixels(slot);
+        uint32_t left = pixels[(72u + y_offset) * width + 40u + x_offset];
+        uint32_t right = pixels[(72u + y_offset) * width + 120u + x_offset];
         if (left == 0xFFFF0000u && right == 0xFF0000FFu) {
             *seen_a = true;
         }
@@ -79,7 +78,8 @@ static void assert_sameboot_presentation_boundary(IntegralGBRuntimeSlot *slot)
     for (unsigned frame = 0; frame < 400u; frame++) {
         assert(integral_gb_runtime_slot_run_frames(slot, 1u) == 0);
         if (!integral_gb_runtime_slot_presentation_suppressed(slot)) break;
-        if (!pixels_are_zero(slot, slot->pixels)) saw_hidden_core_frame = true;
+        const uint32_t *raw_pixels = slot->framebuffer ? slot->framebuffer : slot->pixels;
+        if (!pixels_are_zero(slot, raw_pixels)) saw_hidden_core_frame = true;
         assert(pixels_are_zero(slot, integral_gb_runtime_slot_presented_pixels(slot)));
         assert(integral_gb_runtime_slot_drain_audio(slot, audio, 1u) == 0u);
     }
@@ -139,6 +139,7 @@ int main(int argc, char **argv)
     assert(GB_get_screen_height(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_SGB_HEIGHT);
     assert(integral_gb_runtime_slot_screen_width(&guarded.slot) == INTEGRAL_GB_RUNTIME_SGB_WIDTH);
     assert(integral_gb_runtime_slot_screen_height(&guarded.slot) == INTEGRAL_GB_RUNTIME_SGB_HEIGHT);
+    assert(guarded.slot.framebuffer != guarded.slot.pixels);
 
     assert_sameboot_presentation_boundary(&guarded.slot);
 
