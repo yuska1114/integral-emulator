@@ -47,16 +47,17 @@ class UtilKeysContract(unittest.TestCase):
     def test_n64_local_and_room(self):
         local = source("c_client/client_local.c")
         room = source("c_client/client_room_n64.c")
+        room_input = source("c_client/client_room_n64_input.c")
         self.assertIn("make_n64_runtime_util_hotkeys(&state->keys, true,", local)
         self.assertIn("make_n64_runtime_util_hotkeys(state->keys, false,", room)
         self.assertEqual(room.count('"--hotkeys", hotkeys'), 2)  # Windows/POSIX
-        self.assertIn('state->n64.n64_runtime_media_stream, "n64_room"', room)
+        self.assertIn('state->n64.n64_runtime_media_stream, "n64_room"', room_input)
         self.assertIn('= "screenshot";', room)
         self.assertIn('= "screenshot";', source("c_client/client_launch_n64_local.c"))
-        self.assertIn("request_runtime_exit_confirmation(state, false)", room)
+        self.assertIn("request_runtime_exit_confirmation(state, false)", room_input)
 
     def test_visible_matrix(self):
-        text = source("c_client/client_view.c")
+        text = source("c_client/client_ui_key_config.c")
         for label in ("FAST / TURBO: LOCAL GB 1P ONLY", "RESET: LOCAL MODES",
                       "SCREENSHOT / ESCAPE: ALL MODES"):
             self.assertIn(label, text)

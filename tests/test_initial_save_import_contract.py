@@ -16,7 +16,7 @@ class InitialSaveImportContractTests(unittest.TestCase):
         self.assertNotIn("--rom-smoke", client_source)
 
     def test_clients_gate_initial_save_ui_on_server_capability(self) -> None:
-        client_source = (ROOT / "c_client/client_view.c").read_text(encoding="utf-8")
+        client_source = (ROOT / "c_client/client_ui_rom_register.c").read_text(encoding="utf-8")
 
         self.assertIn("state->catalog.allow_user_initial_save_import", client_source)
         self.assertIn("SEND SELECTED INITIAL SAV?", client_source)
