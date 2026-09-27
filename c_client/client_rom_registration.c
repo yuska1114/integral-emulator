@@ -42,6 +42,17 @@ static bool server_slot_matches_registration(const IntegralApiRomSlot *server_sl
            strcmp(server_slot->filename, filename) == 0;
 }
 
+static void remember_confirmation_target(IntegralClientRomEditor *editor,
+                                         const char *filename,
+                                         const char *sha256,
+                                         const IntegralRomMetadata *metadata)
+{
+    copy_text(editor->rom_confirm_new_filename, sizeof(editor->rom_confirm_new_filename), filename);
+    copy_text(editor->rom_confirm_new_sha256, sizeof(editor->rom_confirm_new_sha256), sha256);
+    editor->rom_confirm_new_metadata = *metadata;
+    editor->rom_confirm_target_valid = true;
+}
+
 static void registration_log(IntegralRomRegistration *state, const char *event, const char *format, ...)
 {
     if (!state->log) return;
@@ -159,6 +170,14 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
                            state->editor->rom_initial_save_import_slot == (int)slot_index;
     const IntegralApiRomSlot *server_slot = &state->server_rom_slots[slot_index];
     const char *filename = path_file_name(slot->rom_path);
+    if (confirm_delete_saves &&
+        state->editor->rom_confirm_delete &&
+        state->editor->rom_confirm_target_valid &&
+        strcmp(state->editor->rom_confirm_new_sha256, sha256) != 0) {
+        remember_confirmation_target(state->editor, filename, sha256, &header);
+        copy_text(state->status, state->status_size, "ROM CHANGED - CONFIRM AGAIN");
+        return;
+    }
     bool same_server_registration =
         server_slot_matches_registration(server_slot, filename, sha256);
     if (import_selected && same_server_registration) {
@@ -229,6 +248,7 @@ void integral_rom_registration_apply(IntegralRomRegistration *state,
         state->editor->rom_selected = slot_index;
         state->editor->rom_confirm_initial_save_import = false;
         state->editor->rom_confirm_delete = true;
+        remember_confirmation_target(state->editor, filename, sha256, &header);
         copy_text(state->status, state->status_size, "SAV DELETE CONFIRM REQUIRED");
         return;
     }

@@ -911,7 +911,9 @@ static void apply_selected_rom_slot_to_server(AppState *state,
                                               bool confirm_initial_save_import)
 {
     IntegralRomRegistration context = rom_registration_context(state);
+    refresh_rom_metadata_cache(state, true);
     integral_rom_registration_apply(&context, confirm_delete_saves, confirm_initial_save_import);
+    refresh_rom_metadata_cache(state, true);
 }
 
 

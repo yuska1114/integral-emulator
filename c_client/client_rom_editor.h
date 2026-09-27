@@ -3,6 +3,7 @@
 #ifndef INTEGRAL_CLIENT_ROM_EDITOR_H
 #define INTEGRAL_CLIENT_ROM_EDITOR_H
 #include "client_config.h"
+#include "rom_metadata.h"
 #include <SDL.h>
 #include <stdbool.h>
 
@@ -26,6 +27,10 @@ typedef struct IntegralClientRomEditor {
     RomEditTarget rom_edit_target;
     char rom_edit_original[INTEGRAL_CONFIG_PATH_MAX];
     bool rom_confirm_delete;
+    bool rom_confirm_target_valid;
+    char rom_confirm_new_filename[INTEGRAL_CONFIG_PATH_MAX];
+    char rom_confirm_new_sha256[65];
+    IntegralRomMetadata rom_confirm_new_metadata;
     int rom_initial_save_import_slot;
     char rom_initial_save_import_path[INTEGRAL_CONFIG_PATH_MAX];
     bool rom_confirm_initial_save_import;
