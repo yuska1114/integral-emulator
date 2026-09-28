@@ -4,6 +4,8 @@ Integral Emulatorの公開ソースには、第三者由来のコードが含ま
 
 SameBoyにはIntegral側の変更として、`Core/gb.c`・`gb.h`・`timing.c`に設定可能な
 IR受信OFF遅延を追加しています。0指定で上流動作となり、上流のrevision更新ではありません。
+また、`Core/sgb.c`・`sgb.h`に、ゲーム側SGBボーダーの有効化をRuntimeから判定するための
+補助APIを追加しています。
 
 ## 収録コンポーネント
 
