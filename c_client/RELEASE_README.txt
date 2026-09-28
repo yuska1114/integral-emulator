@@ -1,4 +1,4 @@
-INTEGRAL EMULATOR C CLIENT
+INTEGRAL EMULATOR C CLIENT 0.4.0-beta
 Linux／Windows／macOS 配布版
 
 このREADMEは、Linux版、Windows版、macOS版で共通です。
@@ -90,6 +90,8 @@ Linuxでログイン情報の記憶を有効にすると、パスワードは平
 
 メニュー画面はキーボードで操作します。基本は上下キーまたはTabで項目を移動し、
 Enterで決定、Escで戻ります。画面下にも操作方法が表示されます。
+SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
+キーボードまたはゲームパッド入力を追加で割り当てられます。
 
 1. 接続先とアカウントを用意します。
    サーバー管理者から接続先URL、ユーザー名、パスワードを受け取り、前述の
@@ -106,16 +108,16 @@ Enterで決定、Escで戻ります。画面下にも操作方法が表示され
 
 4. ROMを登録します。
    MAIN MENUのROM REGISTERを開き、空いているROM1～ROM8の枠を選びます。
-   F4でroms/内の一覧を開き、ROMを選んでEnterを押します。その後、REGISTERの行へ
-   移動してEnterを押し、登録完了を確認してください。複数のROMは1本ずつ登録します。
-   ファイルを選んだだけで戻ると、登録は確定しません。
+   F4でroms/内の一覧を開いてROMを選ぶか、F2でROMパスを編集します。
+   対象のROM1～ROM8の行でEnterを押すとサーバーへ登録します。
+   複数のROMは1本ずつ登録し、登録完了を確認してください。
 
    新規登録では通常、新しいSAVをサーバーが作成します。手持ちのSAVから始めたい
    場合は、登録前に管理者へ取込みが許可されているか確認してください。
    ROM本体はサーバーへ送信されません。登録後もroms/に置いたまま使用します。
 
 5. GBのゲームを開始します。
-   必要に応じてMAIN MENUのKEY CONFIGで、キーやコントローラーを設定します。
+   必要に応じてMAIN MENU → SETTINGS → GB KEYS CONFIGでキーやコントローラーを設定します。
    LOCAL → GB MODEを開き、SLOT1の行で左右キーを押して登録済みのROMを選びます。
    1画面で遊ぶ場合はSLOT2を空にします。設定済みならSLOT2の行でBackspaceを押すと
    解除できます。STARTを選んでEnterを押すとゲームが起動します。
@@ -128,7 +130,9 @@ SAVが必要です。保存と終了の方法は、後述の「セーブデー�
 ほかのモードを使う場合
 
 - N64：ROM REGISTERでN64 ROMを登録し、LOCAL → N64 MODEのN64 SLOTで選びます。
-  必要に応じてSLOT1～SLOT4にTransfer Pak用のGB ROMを選び、STARTで開始します。
+  N64の1～4Pキー設定はSETTINGS → N64 KEYS CONFIGで行い、画面上部の
+  N64 CONTROLLERを左右キーで切り替えます。必要に応じてSLOT1～SLOT4に
+  Transfer Pak用のGB ROMを選び、STARTで開始します。
 - ROOM：作成側はCREATE ROOMでLINK CABLE ROOMまたはN64 ROOMを選び、表示された
   5桁のコードを相手へ伝えます。参加側はJOIN ROOMでコードを入力します。
   入室後、各自のROMなど必要な項目を設定し、両者がREADYにします。
@@ -149,6 +153,10 @@ SAVが必要です。保存と終了の方法は、後述の「セーブデー�
 ClientとGBのゲーム画面は、ウィンドウの端をドラッグして大きさを変更できます。
 GBのゲーム画面は起動時のClientと同じウィンドウサイズになり、映像を整数倍率で
 中央表示して余白を黒くします。Clientの終了時のサイズは次回起動時に復元されます。
+
+SETTINGS → OPTIONSではIR RELEASE DELAYとSGBを変更できます。SGBがENABLEで、
+LOCAL GBを1スロットでSGB対応ROMとして起動した場合は、ゲーム側が転送したSGBボーダーを
+含む256×224表示を使用します。SameBootの起動画面は表示しません。
 
 RTC搭載ROMのSAVが通信に必要なRTC情報を含まない場合は、LOCALで一度ゲームを起動し、
 正常に終了してから再度通信を開始してください。
