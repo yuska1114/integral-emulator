@@ -3,20 +3,20 @@
 C Clientは、ログイン、ROM登録、LOCALプレイ、ROOM参加、GB Mobile Mode、
 GB／N64 Runtimeの起動を行うデスクトップクライアントです。
 
-ログイン時には機械判定用の版`0.3.0-beta`を送信します（画面表記は`0.3BETA`）。
+現行リリースは`0.4.0-beta`です。ログイン時の機械判定値と画面表記にも`0.4.0-beta`を使用します。
 `ASK SERVER ADMIN FOR SUPPORTED VERSION`が表示された場合は、管理者へ対応版を確認してください。
 
 ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として管理します。
 
-RESETの既定キーはOです。保存済みの割当ては維持され、KEY CONFIGのDEFAULTで既定値へ戻せます。
+RESETの既定キーはOです。保存済みの割当ては維持され、`SETTINGS`内の各キー設定画面にある`RESET DEFAULTS`で既定値へ戻せます。
 
-LOCAL N64の2～4Pは、アカウント別`.conf`の`keys.n64_p2`、`keys.n64_p3`、
-`keys.n64_p4`へ1Pと同じ18項目形式で指定できます。未設定はAUTOです。
-KEY CONFIGで編集するのは1Pだけで、UI保存・DEFAULT操作では2～4Pの手動設定を保持します。
-LOCAL N64の4ポートはGB SLOTの有無にかかわらず有効です。
+LOCAL N64の1～4Pは`SETTINGS > N64 KEYS CONFIG`で設定できます。画面上部の
+`N64 CONTROLLER 1P`～`4P`を左右キーで切り替えてから`N64 KEYS`を編集します。
+2～4Pの未設定値はAUTOとして扱い、設定値はアカウント別`.conf`の`keys.n64_p2`～
+`keys.n64_p4`へ保存します。LOCAL N64の4ポートはGB SLOTの有無にかかわらず有効です。
 N64で使用するゲームパッドはゲーム開始前に接続してください。起動後の初接続は対象外です。
-ROMパス編集のEnterは入力の確定、Escは取消です。サーバーへの反映はREGISTERで行います。
-Backspaceのローカルパス消去ではサーバー登録・SAVは削除されません。
+ROM REGISTERではROM1～ROM8の対象行を選び、Enterでサーバーへ登録します。
+F2はROMパス編集、F4は`roms/`内の一覧表示です。パス編集ではEnterで確定、Escで取消します。
 EXPORTは登録枠番号付きのSAV名で出力し、同名ROMの別枠も別ファイルになります。
 
 OPTIONSの設定値は画面へ入るときに読み込み、表示中の描画は保持した状態だけを参照します。
@@ -24,13 +24,21 @@ OPTIONSの設定値は画面へ入るときに読み込み、表示中の描画�
 
 ## GBのIR受信調整（実験的設定）
 
-Clientを終了して、アカウント別設定ファイル
-`config/integral_client_<server>_<user>.conf` に `gb.ir_off_delay_ticks=32` を指定できます。
+`SETTINGS > OPTIONS > IR RELEASE DELAY`で変更できます。値はアカウント別設定ファイル
+`config/integral_client_<server>_<user>.conf` の`gb.ir_off_delay_ticks`へ保存します。
 既定32、範囲0〜256、0は従来のSameBoy動作です。単位は8MHz tick（32は約3.8μ秒）。
 SERVER2とLink Cable ROOMのHostに適用し、Hostの両コアを同じ値で動かします。
 Remote側の値は使用しません。次回ゲーム起動時に読み込みます。
 1画面LOCAL・Mobile・N64には適用しません。大きくすると短いOFF区間を
 見失う可能性があり、実機の応答時間を保証する設定ではありません。
+
+## SGB表示
+
+`SETTINGS > OPTIONS > SGB`で`ENABLE`／`DISABLE`を切り替えます。既定は`ENABLE`です。
+SGBを有効にしてLOCAL GBを1スロットで起動し、対象ROMがSGB2として動作する場合は、
+256×224のSGB表示を使用します。SameBootの起動画面は表示せず、ゲーム側がSGBボーダーを
+転送するまでは中央のGB画面だけを表示し、転送後はゲーム側ボーダーも表示します。
+SERVER2、Mobile Mode、Link Cable ROOMでは従来どおり160×144表示です。
 
 ## スクリーンショット閲覧
 
@@ -45,7 +53,8 @@ UTIL KEYSの適用範囲は次のとおりです。
 
 キーボードのほか、汎用の`PAD@...`／`JOY@...`によるボタン・軸・Hatを割り当てられます。
 Screenshot／Escape／Resetは押下時に1回、FASTは倍率切替、TURBOは従来の連射対象指定です。
-ログイン・メニュー・ROOMの通常操作はキーボードのみです。
+`SETTINGS > UTIL KEYS CONFIG`の`CLIENT ALIAS`では、Client操作のRIGHT／LEFT／UP／DOWN／
+ENTER／ESCAPEにキーボードまたはゲームパッド入力を追加で割り当てられます。
 
 | モード | SCREENSHOT / ESCAPE | RESET | FAST / TURBO |
 |---|---|---|---|
@@ -208,10 +217,12 @@ Linuxの保存先ディレクトリは`0700`、接続先・ユーザー別の保
 別アプリへ切り替えた後の自動再取得は行いません。OS側のフォーカス制限により
 前面化されない場合は、ゲームウィンドウを選択してください。
 
-通常のClient画面はキーボードで操作します。
+通常のClient画面はキーボードで操作でき、`SETTINGS > UTIL KEYS CONFIG > CLIENT ALIAS`で
+設定したキーボードまたはゲームパッド入力もClient操作に使用できます。
 
-ゲーム実行中と`KEY CONFIG`画面では、SDLが認識するコントローラーを使用できます。
-GBとN64の割当は`KEY CONFIG`画面で設定し、Client設定ファイルへ保存します。
+ゲーム実行中と`SETTINGS`内のキー設定画面では、SDLが認識するコントローラーを使用できます。
+GBは`GB KEYS CONFIG`、N64は`N64 KEYS CONFIG`、共通操作とClient Aliasは
+`UTIL KEYS CONFIG`で設定し、Client設定ファイルへ保存します。
 Link Cable ROOMでは、Host／Remoteとも各Clientの`SLOT 1 KEYS`を使用します。
 Mobile Modeでは`SLOT 1 KEYS`と共通操作の割当を使用しますが、倍速操作は無効です。
 OSで選択中のキーボード入力方式は変更しません。
@@ -230,7 +241,9 @@ ROOMはサーバーが発行するルームコードで作成・参加します�
 ROM登録では、ROM本体をサーバーへ送信せず、hash、ROMヘッダータイトルなどの
 メタデータだけを送信します。ROMファイルは利用者のPCに残ります。
 
-新しいROMを登録すると、通常はサーバーが初期化SAVを作成します。
+新しいGB／GBC ROMを登録すると、C ClientがSameBoyでROMに対応した初期SAVを生成し、
+サーバーが形式を検証して保存します。バッテリーセーブを持たないROMでは0 byte SAVを使用します。
+N64 ROMではサーバーが128 KiBの`0xFF`初期SAVを作成します。
 サーバー管理者が初期SAV取込みを許可している場合に限り、利用者はROM登録画面で
 SAVを選択し、確認後に送信できます。
 
