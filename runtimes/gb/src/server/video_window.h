@@ -29,6 +29,15 @@ int integral_gb_runtime_video_window_open_titled_sized(
     const char *title,
     unsigned window_width,
     unsigned window_height);
+int integral_gb_runtime_video_window_open_titled_sized_content(
+    IntegralGBRuntimeVideoWindow **window_out,
+    unsigned scale,
+    unsigned slot_count,
+    const char *title,
+    unsigned window_width,
+    unsigned window_height,
+    unsigned slot_width,
+    unsigned slot_height);
 int integral_gb_runtime_video_window_open_titled_unthrottled(
     IntegralGBRuntimeVideoWindow **window_out,
     unsigned scale,

@@ -37,8 +37,13 @@ static void observe_palette_states(IntegralGBRuntimeSlot *slot, bool *seen_a, bo
     *seen_b = false;
     for (unsigned frame = 0; frame < 1600; frame++) {
         assert(integral_gb_runtime_slot_run_frames(slot, 1) == 0);
-        uint32_t left = slot->pixels[72 * INTEGRAL_GB_RUNTIME_GB_WIDTH + 40];
-        uint32_t right = slot->pixels[72 * INTEGRAL_GB_RUNTIME_GB_WIDTH + 120];
+        unsigned width = integral_gb_runtime_slot_screen_width(slot);
+        unsigned x_offset = (width - INTEGRAL_GB_RUNTIME_GB_WIDTH) / 2u;
+        unsigned y_offset =
+            (integral_gb_runtime_slot_screen_height(slot) - INTEGRAL_GB_RUNTIME_GB_HEIGHT) / 2u;
+        const uint32_t *pixels = integral_gb_runtime_slot_presented_pixels(slot);
+        uint32_t left = pixels[(72u + y_offset) * width + 40u + x_offset];
+        uint32_t right = pixels[(72u + y_offset) * width + 120u + x_offset];
         if (left == 0xFFFF0000u && right == 0xFF0000FFu) {
             *seen_a = true;
         }
@@ -49,11 +54,11 @@ static void observe_palette_states(IntegralGBRuntimeSlot *slot, bool *seen_a, bo
     }
 }
 
-static bool pixels_are_zero(const uint32_t *pixels)
+static bool pixels_are_zero(const IntegralGBRuntimeSlot *slot, const uint32_t *pixels)
 {
-    for (unsigned i = 0;
-         i < INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT;
-         i++) {
+    unsigned count = integral_gb_runtime_slot_screen_width(slot) *
+                     integral_gb_runtime_slot_screen_height(slot);
+    for (unsigned i = 0; i < count; i++) {
         if (pixels[i] != 0u) return false;
     }
     return true;
@@ -73,13 +78,21 @@ static void assert_sameboot_presentation_boundary(IntegralGBRuntimeSlot *slot)
     for (unsigned frame = 0; frame < 400u; frame++) {
         assert(integral_gb_runtime_slot_run_frames(slot, 1u) == 0);
         if (!integral_gb_runtime_slot_presentation_suppressed(slot)) break;
-        if (!pixels_are_zero(slot->pixels)) saw_hidden_core_frame = true;
-        assert(pixels_are_zero(integral_gb_runtime_slot_presented_pixels(slot)));
+        const uint32_t *raw_pixels = slot->framebuffer ? slot->framebuffer : slot->pixels;
+        if (!pixels_are_zero(slot, raw_pixels)) saw_hidden_core_frame = true;
+        assert(pixels_are_zero(slot, integral_gb_runtime_slot_presented_pixels(slot)));
         assert(integral_gb_runtime_slot_drain_audio(slot, audio, 1u) == 0u);
     }
     assert(saw_hidden_core_frame);
     assert(!integral_gb_runtime_slot_presentation_suppressed(slot));
-    assert(integral_gb_runtime_slot_presented_pixels(slot) == slot->pixels);
+    if (slot->display_sgb_border) {
+        assert(!slot->sgb_game_border_ready);
+        assert(integral_gb_runtime_slot_presented_pixels(slot) ==
+               slot->presentation_framebuffer);
+    }
+    else {
+        assert(integral_gb_runtime_slot_presented_pixels(slot) == slot->pixels);
+    }
 }
 
 int main(int argc, char **argv)
@@ -100,6 +113,22 @@ int main(int argc, char **argv)
     assert(integral_gb_runtime_slot_apply_sgb_policy(GB_MODEL_CGB_E, false) == GB_MODEL_CGB_E);
     assert(integral_gb_runtime_slot_apply_sgb_policy(GB_MODEL_DMG_B, false) == GB_MODEL_DMG_B);
 
+    GuardedSlot legacy;
+    initialize_guards(&legacy);
+    IntegralGBRuntimeSlotConfig legacy_config = {
+        .name = "sgb-legacy-test",
+        .rom_path = argv[1],
+        .save_path = "/tmp/integral_emulator_sgb_fixture_no_battery.sav",
+        .model = model,
+        .skip_boot_rom = true,
+    };
+    assert(integral_gb_runtime_slot_init(&legacy.slot, &legacy_config) == 0);
+    assert(GB_get_screen_width(legacy.slot.gb) == INTEGRAL_GB_RUNTIME_GB_WIDTH);
+    assert(GB_get_screen_height(legacy.slot.gb) == INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+    assert_guards(&legacy);
+    integral_gb_runtime_slot_free(&legacy.slot);
+    assert_guards(&legacy);
+
     GuardedSlot guarded;
     initialize_guards(&guarded);
     IntegralGBRuntimeSlotConfig config = {
@@ -108,14 +137,22 @@ int main(int argc, char **argv)
         .save_path = "/tmp/integral_emulator_sgb_fixture_no_battery.sav",
         .model = model,
         .skip_boot_rom = true,
+        .display_sgb_border = true,
     };
     assert(integral_gb_runtime_slot_init(&guarded.slot, &config) == 0);
     assert(guarded.slot.bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT);
     assert(GB_get_model(guarded.slot.gb) == GB_MODEL_SGB2);
-    assert(GB_get_screen_width(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_GB_WIDTH);
-    assert(GB_get_screen_height(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+    assert(GB_get_screen_width(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_SGB_WIDTH);
+    assert(GB_get_screen_height(guarded.slot.gb) == INTEGRAL_GB_RUNTIME_SGB_HEIGHT);
+    assert(integral_gb_runtime_slot_screen_width(&guarded.slot) == INTEGRAL_GB_RUNTIME_SGB_WIDTH);
+    assert(integral_gb_runtime_slot_screen_height(&guarded.slot) == INTEGRAL_GB_RUNTIME_SGB_HEIGHT);
+    assert(guarded.slot.framebuffer != guarded.slot.pixels);
+    assert(guarded.slot.presentation_framebuffer != NULL);
 
     assert_sameboot_presentation_boundary(&guarded.slot);
+    const uint32_t *masked = integral_gb_runtime_slot_presented_pixels(&guarded.slot);
+    assert(masked == guarded.slot.presentation_framebuffer);
+    assert(masked[0] == 0u);
 
     bool seen_a = false;
     bool seen_b = false;

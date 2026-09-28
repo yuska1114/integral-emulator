@@ -151,6 +151,7 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     slot->rom_path = config->rom_path;
     slot->save_path = config->save_path;
     slot->skip_boot_rom = config->skip_boot_rom;
+    slot->display_sgb_border = config->display_sgb_border;
     slot->battery_mode = config->battery_mode;
     slot->bootstrap_policy = config->model == GB_MODEL_SGB2
         ? INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT
@@ -188,7 +189,8 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
         GB_set_boot_rom_load_callback(slot->gb, slot_boot_rom_load_callback);
         GB_load_boot_rom_from_buffer(slot->gb, slot->sgb2_boot_rom, sizeof(slot->sgb2_boot_rom));
-        GB_set_border_mode(slot->gb, GB_BORDER_NEVER);
+        GB_set_border_mode(slot->gb,
+                           config->display_sgb_border ? GB_BORDER_SGB : GB_BORDER_NEVER);
     }
     GB_set_log_callback(slot->gb, slot_log_callback);
     GB_set_input_callback(slot->gb, NULL);
@@ -197,20 +199,38 @@ int integral_gb_runtime_slot_init(IntegralGBRuntimeSlot *slot, const IntegralGBR
     GB_set_vblank_callback(slot->gb, slot_vblank_callback);
     GB_set_sample_rate(slot->gb, INTEGRAL_GB_RUNTIME_AUDIO_SAMPLE_RATE);
     GB_apu_set_sample_callback(slot->gb, slot_audio_callback);
-    unsigned screen_width = GB_get_screen_width(slot->gb);
-    unsigned screen_height = GB_get_screen_height(slot->gb);
-    if (screen_width != INTEGRAL_GB_RUNTIME_GB_WIDTH || screen_height != INTEGRAL_GB_RUNTIME_GB_HEIGHT) {
+    slot->screen_width = GB_get_screen_width(slot->gb);
+    slot->screen_height = GB_get_screen_height(slot->gb);
+    unsigned expected_width = config->display_sgb_border && config->model == GB_MODEL_SGB2
+        ? INTEGRAL_GB_RUNTIME_SGB_WIDTH : INTEGRAL_GB_RUNTIME_GB_WIDTH;
+    unsigned expected_height = config->display_sgb_border && config->model == GB_MODEL_SGB2
+        ? INTEGRAL_GB_RUNTIME_SGB_HEIGHT : INTEGRAL_GB_RUNTIME_GB_HEIGHT;
+    if (slot->screen_width != expected_width || slot->screen_height != expected_height) {
         fprintf(stderr,
                 "%s: framebuffer geometry mismatch: %ux%u (expected %ux%u)\n",
                 slot->name,
-                screen_width,
-                screen_height,
-                INTEGRAL_GB_RUNTIME_GB_WIDTH,
-                INTEGRAL_GB_RUNTIME_GB_HEIGHT);
+                slot->screen_width,
+                slot->screen_height,
+                expected_width,
+                expected_height);
         integral_gb_runtime_slot_free(slot);
         return -1;
     }
-    GB_set_pixels_output(slot->gb, slot->pixels);
+    slot->framebuffer = slot->pixels;
+    if (slot->screen_width != INTEGRAL_GB_RUNTIME_GB_WIDTH ||
+        slot->screen_height != INTEGRAL_GB_RUNTIME_GB_HEIGHT) {
+        size_t pixel_count = (size_t)slot->screen_width * slot->screen_height;
+        slot->framebuffer = calloc(pixel_count, sizeof(*slot->framebuffer));
+        slot->presentation_framebuffer = calloc(
+            pixel_count, sizeof(*slot->presentation_framebuffer));
+        if (!slot->framebuffer || !slot->presentation_framebuffer) {
+            fprintf(stderr, "%s: failed to allocate %ux%u framebuffer\n",
+                    slot->name, slot->screen_width, slot->screen_height);
+            integral_gb_runtime_slot_free(slot);
+            return -1;
+        }
+    }
+    GB_set_pixels_output(slot->gb, slot->framebuffer);
 
     int load_result;
 #ifdef _WIN32
@@ -306,6 +326,10 @@ void integral_gb_runtime_slot_note_vblank(IntegralGBRuntimeSlot *slot)
     if (slot->sameboot_presentation_frames_remaining > 0u) {
         slot->sameboot_presentation_frames_remaining--;
     }
+    if (slot->display_sgb_border && !slot->sgb_game_border_ready &&
+        GB_sgb_has_game_border(slot->gb)) {
+        slot->sgb_game_border_ready = true;
+    }
 }
 
 bool integral_gb_runtime_slot_serial_active(const IntegralGBRuntimeSlot *slot)
@@ -342,6 +366,7 @@ void integral_gb_runtime_slot_reset(IntegralGBRuntimeSlot *slot)
     else if (slot->bootstrap_policy == INTEGRAL_GB_RUNTIME_BOOTSTRAP_SGB2_SAMEBOOT) {
         slot->sameboot_presentation_frames_remaining =
             INTEGRAL_GB_RUNTIME_SAMEBOOT_PRESENTATION_FRAMES;
+        slot->sgb_game_border_ready = false;
     }
     slot->vblank_occurred = false;
     slot->audio_frames = 0;
@@ -366,8 +391,13 @@ int integral_gb_runtime_slot_apply_rtc_offset_minutes(IntegralGBRuntimeSlot *slo
 uint32_t integral_gb_runtime_slot_pixel_checksum(const IntegralGBRuntimeSlot *slot)
 {
     uint32_t hash = 2166136261u;
-    for (size_t i = 0; i < sizeof(slot->pixels) / sizeof(slot->pixels[0]); i++) {
-        hash ^= slot->pixels[i];
+    size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
+                         integral_gb_runtime_slot_screen_height(slot);
+    const uint32_t *pixels = slot && slot->framebuffer ? slot->framebuffer :
+                             (slot ? slot->pixels : NULL);
+    if (!pixels) return hash;
+    for (size_t i = 0; i < pixel_count; i++) {
+        hash ^= pixels[i];
         hash *= 16777619u;
     }
     return hash;
@@ -381,11 +411,41 @@ bool integral_gb_runtime_slot_presentation_suppressed(const IntegralGBRuntimeSlo
 const uint32_t *integral_gb_runtime_slot_presented_pixels(const IntegralGBRuntimeSlot *slot)
 {
     static const uint32_t black_pixels[
-        INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT] = {0};
+        INTEGRAL_GB_RUNTIME_SGB_WIDTH * INTEGRAL_GB_RUNTIME_SGB_HEIGHT] = {0};
     if (!slot || !slot->initialized || slot_presentation_suppressed(slot)) {
         return black_pixels;
     }
-    return slot->pixels;
+
+    if (slot->display_sgb_border && !slot->sgb_game_border_ready &&
+        slot->framebuffer && slot->presentation_framebuffer) {
+        const unsigned x_offset =
+            (INTEGRAL_GB_RUNTIME_SGB_WIDTH - INTEGRAL_GB_RUNTIME_GB_WIDTH) / 2u;
+        const unsigned y_offset =
+            (INTEGRAL_GB_RUNTIME_SGB_HEIGHT - INTEGRAL_GB_RUNTIME_GB_HEIGHT) / 2u;
+        memset(slot->presentation_framebuffer, 0,
+               (size_t)INTEGRAL_GB_RUNTIME_SGB_WIDTH *
+               INTEGRAL_GB_RUNTIME_SGB_HEIGHT *
+               sizeof(*slot->presentation_framebuffer));
+        for (unsigned y = 0; y < INTEGRAL_GB_RUNTIME_GB_HEIGHT; y++) {
+            memcpy(slot->presentation_framebuffer +
+                       (y + y_offset) * INTEGRAL_GB_RUNTIME_SGB_WIDTH + x_offset,
+                   slot->framebuffer +
+                       (y + y_offset) * INTEGRAL_GB_RUNTIME_SGB_WIDTH + x_offset,
+                   INTEGRAL_GB_RUNTIME_GB_WIDTH * sizeof(uint32_t));
+        }
+        return slot->presentation_framebuffer;
+    }
+    return slot->framebuffer ? slot->framebuffer : slot->pixels;
+}
+
+unsigned integral_gb_runtime_slot_screen_width(const IntegralGBRuntimeSlot *slot)
+{
+    return slot && slot->screen_width ? slot->screen_width : INTEGRAL_GB_RUNTIME_GB_WIDTH;
+}
+
+unsigned integral_gb_runtime_slot_screen_height(const IntegralGBRuntimeSlot *slot)
+{
+    return slot && slot->screen_height ? slot->screen_height : INTEGRAL_GB_RUNTIME_GB_HEIGHT;
 }
 
 unsigned integral_gb_runtime_slot_drain_audio(IntegralGBRuntimeSlot *slot, int16_t *dest, unsigned max_frames)
@@ -571,18 +631,33 @@ int integral_gb_runtime_initial_battery_for_rom(const char *rom_path,
 
 static void free_slot(IntegralGBRuntimeSlot *slot, bool save_battery)
 {
-    if (!slot || !slot->gb) {
-        return;
-    }
+    if (!slot) return;
 
-    if (slot->initialized && save_battery &&
-        slot->battery_mode == INTEGRAL_GB_RUNTIME_BATTERY_FILE) {
-        (void)integral_gb_runtime_slot_save_battery(slot);
+    if (slot->gb) {
+        if (slot->initialized && save_battery &&
+            slot->battery_mode == INTEGRAL_GB_RUNTIME_BATTERY_FILE) {
+            (void)integral_gb_runtime_slot_save_battery(slot);
+        }
+        integral_gb_runtime_serial_peripheral_router_shutdown(&slot->serial_router);
+        GB_free(slot->gb);
+        GB_dealloc(slot->gb);
+        slot->gb = NULL;
     }
-    integral_gb_runtime_serial_peripheral_router_shutdown(&slot->serial_router);
-    GB_free(slot->gb);
-    GB_dealloc(slot->gb);
-    slot->gb = NULL;
+    if (slot->framebuffer && slot->framebuffer != slot->pixels) {
+        size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
+                             integral_gb_runtime_slot_screen_height(slot);
+        memset(slot->framebuffer, 0, pixel_count * sizeof(*slot->framebuffer));
+        free(slot->framebuffer);
+    }
+    if (slot->presentation_framebuffer) {
+        size_t pixel_count = (size_t)integral_gb_runtime_slot_screen_width(slot) *
+                             integral_gb_runtime_slot_screen_height(slot);
+        memset(slot->presentation_framebuffer, 0,
+               pixel_count * sizeof(*slot->presentation_framebuffer));
+        free(slot->presentation_framebuffer);
+    }
+    slot->framebuffer = NULL;
+    slot->presentation_framebuffer = NULL;
     slot->initialized = false;
 }
 

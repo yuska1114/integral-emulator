@@ -10,4 +10,4 @@ binary = str(Path(sys.argv[1]).resolve())
 with tempfile.TemporaryDirectory(prefix="integral-util-") as directory:
     subprocess.run([binary], cwd=directory, check=True,
                    env={**os.environ, "SDL_VIDEODRIVER": "dummy"})
-    assert len(list((Path(directory) / "screenshot").glob("*.bmp"))) == 12
+    assert len(list((Path(directory) / "screenshot").glob("*.bmp"))) == 13
