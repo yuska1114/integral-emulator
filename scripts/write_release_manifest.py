@@ -94,6 +94,7 @@ def executable_contract(platform: str, app_name: str = "INTEGRAL EMULATOR") -> d
             "gb_dual_server": "runtimes/gb/integral_gb_runtime_dual_server",
             "gb_fixed_host": "runtimes/gb/integral_gb_runtime_fixed_host",
             "gb_mobile_runtime": "runtimes/gb/integral_gb_runtime_mobile_runtime",
+            "gb_frontend": "runtimes/gb/integral_gb_runtime_frontend",
             "n64_frontend": "runtimes/n64/build/integral_n64_runtime_frontend",
         }
     else:
@@ -103,6 +104,7 @@ def executable_contract(platform: str, app_name: str = "INTEGRAL EMULATOR") -> d
             "gb_dual_server": f"{prefix}runtimes/gb/integral_gb_runtime_dual_server",
             "gb_fixed_host": f"{prefix}runtimes/gb/integral_gb_runtime_fixed_host",
             "gb_mobile_runtime": f"{prefix}runtimes/gb/integral_gb_runtime_mobile_runtime",
+            "gb_frontend": f"{prefix}runtimes/gb/integral_gb_runtime_frontend",
             "n64_frontend": f"{prefix}runtimes/n64/build/integral_n64_runtime_frontend",
         }
     return {
