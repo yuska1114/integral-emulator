@@ -28,10 +28,16 @@
           "order": 2,
           "path": "runtimes/gb/patches/sameboy-integral-ir-release-delay.patch",
           "sha256": "46977b6265c30962f939b4d0ca1ee30c1dc3fed4e9f509f5321b0286ac5f7e19"
+        },
+        {
+          "license": "MIT",
+          "order": 3,
+          "path": "runtimes/gb/patches/sameboy-integral-sgb-game-border.patch",
+          "sha256": "7e464960f684126695a134e11d1882a89f0f0f0b9ff8c666b96618fe7d284c8a"
         }
       ],
       "public_source_file_count": 75,
-      "public_source_tree_sha256": "7ffb9748858138182525b454cb703c3085702e2af426f10c89525165748efc1a",
+      "public_source_tree_sha256": "f59061d95e490d73acb1e55230b400720a58ac7c865d30fec4d3947d84a0ead2",
       "source_path": "runtimes/gb/third_party/SameBoy",
       "upstream_archive_sha256": "aca79238ef23c220b6332abb28b6a4bbe467995ff7a26073dcb3070a7054eab6",
       "upstream_archive_url": "https://codeload.github.com/LIJI32/SameBoy/tar.gz/208ba4afabffab9edde416f2dbb8ae459e34adb8",
@@ -41,7 +47,7 @@
       "upstream_tree_oid": "74605c44c72c74979907e1f0680e982410af050f",
       "upstream_tree_sha256": "6c0a825ce2ea2bbbf4aefe420ed39935653c77fe08f67f648d21a4cfe1dd5f23",
       "vendored_file_count": 631,
-      "vendored_tree_sha256": "160362e9f8c6112bc84910ed6ded06443a08531c692df8fd5eb326df6c487c63"
+      "vendored_tree_sha256": "651e82949ff141fad4ceea518f125b1ace04e9e041d6e902bf60ca9427b378dd"
     },
     {
       "build_patches": [
@@ -268,7 +274,7 @@
   ],
   "digest_algorithm": "sha256-mode-path-content-v1",
   "format": 1,
-  "generated_at": "2026-09-02",
+  "generated_at": "2026-09-29",
   "public_digest_algorithm": "sha256-path-content-v1",
   "scope_note": "iPhone/iOS client source and excluded SameBoy platform integrations are outside the initial public release. Upstream license texts remain controlling for third-party code."
 }
