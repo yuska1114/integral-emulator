@@ -108,7 +108,8 @@ SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
 
 4. ROMを登録します。
    MAIN MENUのROM REGISTERを開き、空いているROM1～ROM8の枠を選びます。
-   F4でroms/内の一覧を開いてROMを選ぶか、F2でROMパスを編集します。
+   左右キーでroms/内のROMを切り替えて選択できます。F4ではroms/内の一覧から
+   ROMを選択でき、F2ではROMパスを直接編集できます。
    対象のROM1～ROM8の行でEnterを押すとサーバーへ登録します。
    複数のROMは1本ずつ登録し、登録完了を確認してください。
 
