@@ -52,7 +52,7 @@ mkdir -p "$linux_package/roms" "$linux_package/export" "$windows_package/roms" "
 copy_file "$project_root/c_client/RELEASE_README.txt" "$linux_package/README.txt"; copy_file "$project_root/c_client/linux_release_launcher.sh" "$linux_package/INTEGRAL_EMULATOR.sh"
 copy_file "$linux_input/integral_client" "$linux_package/client/integral_client"
 copy_file "$linux_input/assets/integral_emulator_icon.bmp" "$linux_package/assets/integral_emulator_icon.bmp"
-for runtime in dual_server fixed_host mobile_runtime; do copy_file "$linux_input/integral_gb_runtime_$runtime" "$linux_package/runtimes/gb/integral_gb_runtime_$runtime"; done
+for runtime in frontend dual_server fixed_host mobile_runtime; do copy_file "$linux_input/integral_gb_runtime_$runtime" "$linux_package/runtimes/gb/integral_gb_runtime_$runtime"; done
 copy_file "$linux_input/runtimes/gb/libmobile/libmobile.so.0.0.0" "$linux_package/runtimes/gb/libmobile/libmobile.so.0"
 openh264=$(find "$linux_input/runtimes/linux/lib" -maxdepth 1 -type f -name 'libopenh264.so.*' | sort | head -n 1)
 [ -n "$openh264" ] || { echo "Required OpenH264 shared library not found." >&2; exit 1; }
