@@ -30,7 +30,7 @@ make -C "$project_root/runtimes/gb/src" clean
 rm -rf -- "$project_root/runtimes/gb/third_party/SameBoy/build" \
   "$project_root/runtimes/n64/build" "$project_root/runtimes/n64/release"
 python3 "$project_root/scripts/verify_app_icon_assets.py" "$icon_bmp" --format bmp
-make -C "$project_root/runtimes/gb/src" server mobile-runtime
+make -C "$project_root/runtimes/gb/src" app server mobile-runtime
 make -C "$project_root/c_client"
 make -C "$project_root/runtimes/n64" frontend
 
@@ -44,6 +44,7 @@ mkdir -p "$output_dir/runtimes/gb/libmobile" \
 install -m 0644 "$icon_bmp" \
   "$output_dir/assets/integral_emulator_icon.bmp"
 install -m 0755 "$project_root/c_client/build/integral_client" "$output_dir/integral_client"
+install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_frontend" "$output_dir/integral_gb_runtime_frontend"
 install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_dual_server" "$output_dir/integral_gb_runtime_dual_server"
 install -m 0755 "$project_root/c_client/build/integral_gb_runtime_fixed_host" "$output_dir/integral_gb_runtime_fixed_host"
 install -m 0755 "$project_root/runtimes/gb/build_exp/integral_gb_runtime_mobile_runtime" "$output_dir/integral_gb_runtime_mobile_runtime"
