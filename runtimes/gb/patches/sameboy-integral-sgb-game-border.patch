@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: MIT
+# SameBoy 208ba4a after the existing Integral RTC/Windows and IR-delay patches.
+# Expose whether the active SGB border came from the game so the Runtime can
+# suppress SameBoy's built-in SGB/SGB2 border until the game-provided border is ready.
+diff --git a/Core/sgb.c b/Core/sgb.c
+--- a/Core/sgb.c
++++ b/Core/sgb.c
+@@ -797,6 +797,23 @@ void GB_sgb_render(GB_gameboy_t *gb, bool incomplete)
+     }
+ }
+ 
++bool GB_sgb_has_game_border(GB_gameboy_t *gb)
++{
++    if (!gb || !gb->sgb ||
++        gb->sgb->intro_animation < GB_SGB_INTRO_ANIMATION_LENGTH) {
++        return false;
++    }
++
++    /*
++     * The built-in SGB/SGB2 border is loaded only into border. The pending
++     * border starts empty and is populated by CHR_TRN/PCT_TRN. Once SameBoy
++     * activates the game-provided border it copies pending_border to border.
++     */
++    return memcmp(&gb->sgb->border,
++                  &gb->sgb->pending_border,
++                  sizeof(gb->sgb->border)) == 0;
++}
++
+ void GB_sgb_load_default_data(GB_gameboy_t *gb)
+ {
+     
+diff --git a/Core/sgb.h b/Core/sgb.h
+--- a/Core/sgb.h
++++ b/Core/sgb.h
+@@ -68,3 +68,4 @@ internal void GB_sgb_load_default_data(GB_gameboy_t *gb);
+ 
+ #endif
+ unsigned GB_get_player_count(GB_gameboy_t *gb);
++bool GB_sgb_has_game_border(GB_gameboy_t *gb);
