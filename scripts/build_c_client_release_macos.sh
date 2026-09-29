@@ -74,7 +74,7 @@ if [[ "${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD}" != "1" ]]; then
   make -C "${PROJECT_ROOT}/c_client"
 
   echo "Building GB Runtime runtime binaries..."
-  make -C "${PROJECT_ROOT}/runtimes/gb/src" server mobile-runtime
+  make -C "${PROJECT_ROOT}/runtimes/gb/src" app server mobile-runtime
 
   echo "Building N64 Runtime runtime release..."
   "${PROJECT_ROOT}/scripts/build_n64_runtime_macos.sh" --release
@@ -115,6 +115,7 @@ cp -f "${PROJECT_ROOT}/c_client/ssl/README.md" "${SSL_DIR}/README.md"
 cp -f "${PROJECT_ROOT}/c_client/ssl/MPL-2.0.txt" "${PACKAGE_DIR}/LICENSES/third-party/mozilla-ca/MPL-2.0.txt"
 cp -f "${PROJECT_ROOT}/scripts/unlock_macos.sh" "${PACKAGE_DIR}/unlock_macos.sh"
 chmod +x "${PACKAGE_DIR}/unlock_macos.sh"
+cp -f "${PROJECT_ROOT}/runtimes/gb/build_exp/integral_gb_runtime_frontend" "${GB_RUNTIME_DIR}/integral_gb_runtime_frontend"
 cp -f "${PROJECT_ROOT}/runtimes/gb/build_exp/integral_gb_runtime_dual_server" "${GB_RUNTIME_DIR}/integral_gb_runtime_dual_server"
 cp -f "${PROJECT_ROOT}/c_client/build/integral_gb_runtime_fixed_host" "${GB_RUNTIME_DIR}/integral_gb_runtime_fixed_host"
 cp -f "${PROJECT_ROOT}/runtimes/gb/build_exp/integral_gb_runtime_mobile_runtime" "${GB_RUNTIME_DIR}/integral_gb_runtime_mobile_runtime"
@@ -236,6 +237,7 @@ is_system_dependency() {
 copy_and_fix_dylibs() {
   local -a queue=(
     "${CLIENT_DIR}/integral_client"
+    "${GB_RUNTIME_DIR}/integral_gb_runtime_frontend"
     "${GB_RUNTIME_DIR}/integral_gb_runtime_dual_server"
     "${GB_RUNTIME_DIR}/integral_gb_runtime_fixed_host"
     "${GB_RUNTIME_DIR}/integral_gb_runtime_mobile_runtime"
@@ -281,6 +283,7 @@ copy_and_fix_dylibs() {
 
   local -a machos=(
     "${CLIENT_DIR}/integral_client"
+    "${GB_RUNTIME_DIR}/integral_gb_runtime_frontend"
     "${GB_RUNTIME_DIR}/integral_gb_runtime_dual_server"
     "${GB_RUNTIME_DIR}/integral_gb_runtime_fixed_host"
     "${GB_RUNTIME_DIR}/integral_gb_runtime_mobile_runtime"
@@ -472,6 +475,7 @@ chmod -R u+w "${PACKAGE_DIR}"
 echo "Removing local debug paths from product executables..."
 for binary in \
   "${CLIENT_DIR}/integral_client" \
+  "${GB_RUNTIME_DIR}/integral_gb_runtime_frontend" \
   "${GB_RUNTIME_DIR}/integral_gb_runtime_dual_server" \
   "${GB_RUNTIME_DIR}/integral_gb_runtime_fixed_host" \
   "${GB_RUNTIME_DIR}/integral_gb_runtime_mobile_runtime"; do
