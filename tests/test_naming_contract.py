@@ -120,6 +120,39 @@ class NamingContractTests(unittest.TestCase):
         self.assertIn("integral_emulator_icon.icns", macos_builder)
         self.assertNotIn("continuing without a custom app icon", macos_builder)
 
+    def test_gb_frontend_is_built_and_packaged_on_unix_releases(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        linux_builder = (
+            root / "scripts" / "build_c_client_release_linux.sh"
+        ).read_text(encoding="utf-8")
+        linux_windows_packager = (
+            root / "scripts" / "package_c_client_linux_windows_release.sh"
+        ).read_text(encoding="utf-8")
+        macos_builder = (
+            root / "scripts" / "build_c_client_release_macos.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'make -C "$project_root/runtimes/gb/src" app server mobile-runtime',
+            linux_builder,
+        )
+        self.assertIn(
+            'integral_gb_runtime_frontend" "$output_dir/integral_gb_runtime_frontend"',
+            linux_builder,
+        )
+        self.assertIn(
+            "for runtime in frontend dual_server fixed_host mobile_runtime; do",
+            linux_windows_packager,
+        )
+        self.assertIn(
+            'make -C "${PROJECT_ROOT}/runtimes/gb/src" app server mobile-runtime',
+            macos_builder,
+        )
+        self.assertIn(
+            'integral_gb_runtime_frontend" "${GB_RUNTIME_DIR}/integral_gb_runtime_frontend"',
+            macos_builder,
+        )
+
     def test_integral_client_is_primary_build_output(self) -> None:
         root = Path(__file__).resolve().parents[1]
         makefile = (root / "c_client" / "Makefile").read_text(encoding="utf-8")
@@ -218,10 +251,19 @@ class NamingContractTests(unittest.TestCase):
         spec.loader.exec_module(module)
 
         macos = module.executable_contract("macos")
+        linux = module.executable_contract("linux")
         windows = module.executable_contract("windows")
         self.assertEqual(
             macos["client"]["canonical"],
             "INTEGRAL EMULATOR.app/Contents/Resources/client/integral_client",
+        )
+        self.assertEqual(
+            macos["gb_frontend"]["canonical"],
+            "INTEGRAL EMULATOR.app/Contents/Resources/runtimes/gb/integral_gb_runtime_frontend",
+        )
+        self.assertEqual(
+            linux["gb_frontend"]["canonical"],
+            "runtimes/gb/integral_gb_runtime_frontend",
         )
         self.assertEqual(
             macos["n64_frontend"]["canonical"],
@@ -275,6 +317,7 @@ class NamingContractTests(unittest.TestCase):
         self.assertIn('CLIENT_DIR="${RESOURCES_DIR}/client"', macos)
         self.assertIn('GB_RUNTIME_DIR="${RESOURCES_DIR}/runtimes/gb"', macos)
         self.assertIn('N64_RUNTIME_DIR="${RESOURCES_DIR}/runtimes/n64"', macos)
+        self.assertIn('"${GB_RUNTIME_DIR}/integral_gb_runtime_frontend"', macos)
         self.assertIn('"${GB_RUNTIME_DIR}/integral_gb_runtime_dual_server"', macos)
         self.assertIn('"${GB_RUNTIME_DIR}/integral_gb_runtime_fixed_host"', macos)
         self.assertIn('"${GB_RUNTIME_DIR}/integral_gb_runtime_mobile_runtime"', macos)

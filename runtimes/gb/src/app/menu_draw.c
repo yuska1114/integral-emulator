@@ -174,10 +174,10 @@ void integral_gb_runtime_menu_draw_key_config_menu(SDL_Renderer *renderer, const
     integral_gb_runtime_app_draw_text(renderer, 22, 20, "KEY CONFIG", 4, title);
     integral_gb_runtime_app_draw_text(renderer, 330, 26, "VER " INTEGRAL_GB_RUNTIME_VERSION, 2, muted);
 
-    char slot1_line1[192];
-    char slot1_line2[192];
-    char slot2_line1[192];
-    char slot2_line2[192];
+    char slot1_line1[384];
+    char slot1_line2[384];
+    char slot2_line1[384];
+    char slot2_line2[384];
     char util_line1[192];
     char util_line2[192];
     char util_line3[192];
