@@ -92,6 +92,18 @@
           "order": 7,
           "path": "runtimes/n64/patches/mupen64plus-core-util-keys.patch",
           "sha256": "82ad8482b5b6cc05a9b9755afa652b0c02eaef5b7826957b9d0608633cbb9bb8"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 8,
+          "path": "runtimes/n64/patches/mupen64plus-core-transferpak-memory.patch",
+          "sha256": "6211363485d5998c7c36ca98a128a7aa33fedab3cd5c96d41d8b11861de81f15"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 9,
+          "path": "runtimes/n64/patches/mupen64plus-core-integral-change-notices.patch",
+          "sha256": "54c0ffab6575cf2c4f2398f727b028d2ff5db61748313ce864e9dec92c9aef39"
         }
       ],
       "component": "mupen64plus-core",
@@ -156,6 +168,12 @@
           "order": 2,
           "path": "runtimes/n64/patches/mupen64plus-input-sdl-remote-controller2.patch",
           "sha256": "56de19c172dc08029f64fd0a1dd6e0c4d48b3d0bd7c0e62a2e470b898b574386"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 3,
+          "path": "runtimes/n64/patches/mupen64plus-input-sdl-integral-change-notices.patch",
+          "sha256": "a935f2092a894aee846c7f5fab492a088fa801b051e08296bf6bbc905e6d89e3"
         }
       ],
       "component": "mupen64plus-input-sdl",
@@ -189,6 +207,12 @@
           "order": 1,
           "path": "runtimes/n64/patches/mupen64plus-audio-sdl-remote-media.patch",
           "sha256": "13f4109fd654a5572c7bc8f8252baa2b4d12dacf2f705edc66f0f645b1fbfe46"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 2,
+          "path": "runtimes/n64/patches/mupen64plus-audio-sdl-integral-change-notices.patch",
+          "sha256": "050918a7f079f7d3adfdd955bae06434159a0215a5eb4e60adad62a667249b5b"
         }
       ],
       "component": "mupen64plus-audio-sdl",
@@ -255,11 +279,24 @@
       "license_files": [
         "runtimes/n64/third_party/GLideN64/LICENSE"
       ],
-      "license_review_status": "ATTESTED_EXACT_UPSTREAM_WITH_COMPILED_TRANSLATION_EXCLUSIONS; UPSTREAM_GPL-2.0 LICENSE_PRESERVED",
+      "license_review_status": "ATTESTED_UPSTREAM_WITH_COMPILED_TRANSLATION_EXCLUSIONS_AND_GPL_MATERIALIZED_PATCH; UPSTREAM_GPL-2.0 LICENSE_PRESERVED",
       "line_ending_normalizations": [],
-      "materialized_patches": [],
+      "materialized_patches": [
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 1,
+          "path": "runtimes/n64/patches/gliden64-integral-game-viewport.patch",
+          "sha256": "e2204d869a102d3e050ca6a2323322dc5e7c1828bef683447bfc6f143c55dc60"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 2,
+          "path": "runtimes/n64/patches/gliden64-integral-change-notices.patch",
+          "sha256": "53da638ce4c3a7661fb7268dd93a783b31484c2f49bafbdd1d3a13366eb4f4c1"
+        }
+      ],
       "public_source_file_count": 515,
-      "public_source_tree_sha256": "2d7d04c93aeac6ec5f25f68a58f302ad0cbefb270a9be4f1f8dbbccd11696b90",
+      "public_source_tree_sha256": "a68b0c9de07e2c47f94eb4ca05348354453c4ef257d5b1268e9bd7f526f0604e",
       "source_path": "runtimes/n64/third_party/GLideN64",
       "upstream_archive_sha256": "e13ec39ec21e7f6b009803caf3608674d160823b637fd5d964ed4ae215646b44",
       "upstream_archive_url": "https://codeload.github.com/gonetz/GLideN64/tar.gz/7c8cc44f92437a298c21b4262f48f83effb4d05d",
@@ -269,7 +306,7 @@
       "upstream_tree_oid": "5bdcd12c400044eb1363e7981448e3de37174a69",
       "upstream_tree_sha256": "c3f4a331ed1f8ce8f6275b289578899463159c33f1d3c018bf6ee9676297507e",
       "vendored_file_count": 531,
-      "vendored_tree_sha256": "e88fc5beda6f985052f8706e5ea306eb1b225e3d4c4c4757269fedb532508a3c"
+      "vendored_tree_sha256": "478a8bb5827eb36bf77e3d4ff1a142e21578b96f1c3a13028f0fca8db984bdc7"
     }
   ],
   "digest_algorithm": "sha256-mode-path-content-v1",

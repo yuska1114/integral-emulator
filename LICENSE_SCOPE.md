@@ -22,6 +22,8 @@ Integral Emulatorの公開ソースには、複数のライセンスが適用さ
 
 `third_party/`以下を含む第三者由来のコードや素材には、それぞれの上流プロジェクトのライセンスと著作権表示が適用されます。
 
+`runtimes/n64/patches/mupen64plus-core-current-rdram.patch`はIntegral独自の創作物ではなく、Rosalie Wanders氏によるMupen64Plus上流修正の一部を旧baselineへ移植したものです。移植元コミットとライセンスは`THIRD_PARTY_NOTICES.md`に、パッチのhashと適用順は`THIRD_PARTY_LOCK.json`に記録します。
+
 詳細は`THIRD_PARTY_NOTICES.md`および各third-partyディレクトリに収録された`LICENSE`、`COPYING`、ファイルヘッダー等を参照してください。
 
 第三者ファイルに記載された原文のライセンス・著作権表示が、本書の説明に優先します。

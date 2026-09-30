@@ -1,0 +1,172 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Target: GLideN64 commit 7c8cc44f92437a298c21b4262f48f83effb4d05d
+# Purpose: expose the game viewport for N64 ROOM capture.
+diff --git a/src/DisplayWindow.cpp b/src/DisplayWindow.cpp
+index 59725f62..4699b2fa 100644
+--- a/src/DisplayWindow.cpp
++++ b/src/DisplayWindow.cpp
+@@ -209,6 +209,11 @@ void DisplayWindow::readScreen2(void * _dest, int * _width, int * _height, int _
+ 	_readScreen2(_dest, _width, _height, _front);
+ }
+ 
++void DisplayWindow::readGameScreen2(void * _dest, int * _width, int * _height, int _front)
++{
++	_readGameScreen2(_dest, _width, _height, _front);
++}
++
+ u32 DisplayWindow::maxMSAALevel() const
+ {
+ 	return m_maxMsaa;
+diff --git a/src/DisplayWindow.h b/src/DisplayWindow.h
+index a1cf83d4..780ab25f 100644
+--- a/src/DisplayWindow.h
++++ b/src/DisplayWindow.h
+@@ -22,6 +22,7 @@ public:
+ 	void setToggleFullscreen() { m_bToggleFullscreen = true; }
+ 	void readScreen(void **_pDest, long *_pWidth, long *_pHeight);
+ 	void readScreen2(void * _dest, int * _width, int * _height, int _front);
++	void readGameScreen2(void * _dest, int * _width, int * _height, int _front);
+ 	u32 maxMSAALevel() const;
+ 	u32 maxAnisotropy() const;
+ 
+@@ -84,6 +85,7 @@ private:
+ 	virtual bool _resizeWindow() = 0;
+ 	virtual void _readScreen(void **_pDest, long *_pWidth, long *_pHeight) = 0;
+ 	virtual void _readScreen2(void * _dest, int * _width, int * _height, int _front) = 0;
++	virtual void _readGameScreen2(void * _dest, int * _width, int * _height, int _front) = 0;
+ 	virtual graphics::ObjectHandle _getDefaultFramebuffer() = 0;
+ 
+ };
+diff --git a/src/FrameBuffer.cpp b/src/FrameBuffer.cpp
+index 9d6ba513..a3bfab3c 100644
+--- a/src/FrameBuffer.cpp
++++ b/src/FrameBuffer.cpp
+@@ -814,7 +814,7 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
+ 	}
+ 
+ 	const float scaleX = config.frameBufferEmulation.nativeResFactor == 0 ?
+-		wnd.getScaleX() :
++		std::max(wnd.getScaleX(), 1.0f) :
+ 		static_cast<float>(config.frameBufferEmulation.nativeResFactor);
+ 
+ 	if (m_pCurrent == nullptr || m_pCurrent->m_startAddress != _address || m_pCurrent->m_width != _width)
+diff --git a/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp b/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp
+index 1573c831..6dd86c83 100644
+--- a/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp
++++ b/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp
+@@ -40,6 +40,9 @@ private:
+ 	void _changeWindow() override;
+ 	void _readScreen(void **_pDest, long *_pWidth, long *_pHeight) override {}
+ 	void _readScreen2(void * _dest, int * _width, int * _height, int _front) override;
++	void _readGameScreen2(void * _dest, int * _width, int * _height, int _front) override;
++	void _readScreenArea(void * _dest, int * _width, int * _height, int _front,
++		u32 _x, u32 _y, u32 _captureWidth, u32 _captureHeight);
+ #ifdef M64P_GLIDENUI
+ 	bool _supportsWithRateFunctions = true;
+ #endif // M64P_GLIDENUI
+@@ -242,12 +245,29 @@ void DisplayWindowMupen64plus::_getDisplaySize()
+ }
+ 
+ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _height, int _front)
++{
++	_readScreenArea(_dest, _width, _height, _front,
++		0, m_heightOffset, m_screenWidth, m_screenHeight);
++}
++
++void DisplayWindowMupen64plus::_readGameScreen2(void * _dest, int * _width, int * _height, int _front)
++{
++	const u32 captureWidth = m_width <= m_screenWidth ? m_width : m_screenWidth;
++	const u32 captureHeight = m_height <= m_screenHeight ? m_height : m_screenHeight;
++	const u32 hOffset = (m_screenWidth - captureWidth) / 2;
++	const u32 vOffset = (m_screenHeight - captureHeight) / 2 + m_heightOffset;
++	_readScreenArea(_dest, _width, _height, _front,
++		hOffset, vOffset, captureWidth, captureHeight);
++}
++
++void DisplayWindowMupen64plus::_readScreenArea(void * _dest, int * _width, int * _height, int _front,
++	u32 _x, u32 _y, u32 _captureWidth, u32 _captureHeight)
+ {
+ 	if (_width == nullptr || _height == nullptr)
+ 		return;
+ 
+-	*_width = m_screenWidth;
+-	*_height = m_screenHeight;
++	*_width = static_cast<int>(_captureWidth);
++	*_height = static_cast<int>(_captureHeight);
+ 
+ 	if (_dest == nullptr)
+ 		return;
+@@ -260,7 +280,7 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
+ 		glReadBuffer(GL_FRONT);
+ 	else
+ 		glReadBuffer(GL_BACK);
+-	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGB, GL_UNSIGNED_BYTE, _dest);
++	glReadPixels(_x, _y, _captureWidth, _captureHeight, GL_RGB, GL_UNSIGNED_BYTE, _dest);
+ 	if (graphics::BufferAttachmentParam(oldMode) == graphics::bufferAttachment::COLOR_ATTACHMENT0) {
+ 		FrameBuffer * pBuffer = frameBufferList().getCurrent();
+ 		if (pBuffer != nullptr)
+@@ -272,7 +292,7 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
+ 	if (pBufferData == nullptr)
+ 		return;
+ 	u8 *pDest = (u8*)_dest;
+-	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, pBufferData);
++	glReadPixels(_x, _y, _captureWidth, _captureHeight, GL_RGBA, GL_UNSIGNED_BYTE, pBufferData);
+ 
+ 	//Convert RGBA to RGB
+ 	for (s32 y = 0; y < *_height; ++y) {
+diff --git a/src/MupenPlusPluginAPI.cpp b/src/MupenPlusPluginAPI.cpp
+index c13060d6..463e1160 100644
+--- a/src/MupenPlusPluginAPI.cpp
++++ b/src/MupenPlusPluginAPI.cpp
+@@ -52,6 +52,11 @@ EXPORT void CALL ReadScreen2(void *dest, int *width, int *height, int front)
+ 	api().ReadScreen2(dest, width, height, front);
+ }
+ 
++EXPORT void CALL IntegralReadGameScreen2(void *dest, int *width, int *height, int front)
++{
++	api().ReadGameScreen2(dest, width, height, front);
++}
++
+ EXPORT void CALL SetRenderingCallback(void (*callback)(int))
+ {
+ 	api().SetRenderingCallback(callback);
+diff --git a/src/PluginAPI.h b/src/PluginAPI.h
+index 33a8d45d..d62dfdc6 100644
+--- a/src/PluginAPI.h
++++ b/src/PluginAPI.h
+@@ -82,6 +82,7 @@ public:
+ 	// MupenPlus
+ 	void ResizeVideoOutput(int _Width, int _Height);
+ 	void ReadScreen2(void * _dest, int * _width, int * _height, int _front);
++	void ReadGameScreen2(void * _dest, int * _width, int * _height, int _front);
+ 
+ 	m64p_error PluginStartup(m64p_dynlib_handle _CoreLibHandle, void * Context, void (*DebugCallback)(void *, int, const char *));
+ #ifdef M64P_GLIDENUI
+diff --git a/src/mupenplus/MupenPlusAPIImpl.cpp b/src/mupenplus/MupenPlusAPIImpl.cpp
+index f0595819..1a3482d0 100644
+--- a/src/mupenplus/MupenPlusAPIImpl.cpp
++++ b/src/mupenplus/MupenPlusAPIImpl.cpp
+@@ -175,3 +175,8 @@ void PluginAPI::ReadScreen2(void * _dest, int * _width, int * _height, int _fron
+ {
+ 	dwnd().readScreen2(_dest, _width, _height, _front);
+ }
++
++void PluginAPI::ReadGameScreen2(void * _dest, int * _width, int * _height, int _front)
++{
++	dwnd().readGameScreen2(_dest, _width, _height, _front);
++}
+diff --git a/src/mupenplus/video_api_export.ver b/src/mupenplus/video_api_export.ver
+index 7acc31de..0977e5e9 100644
+--- a/src/mupenplus/video_api_export.ver
++++ b/src/mupenplus/video_api_export.ver
+@@ -15,6 +15,7 @@ UpdateScreen;
+ ViStatusChanged;
+ ViWidthChanged;
+ ReadScreen2;
++IntegralReadGameScreen2;
+ SetRenderingCallback;
+ ResizeVideoOutput;
+ FBRead;
+

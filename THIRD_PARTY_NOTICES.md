@@ -23,6 +23,8 @@ IR受信OFF遅延を追加しています。0指定で上流動作となり、�
 
 `THIRD_PARTY_LOCK.json`は、対象コンポーネントのupstream baseline、収録範囲、hash、patchを記録します。libmobileは同ディレクトリの`INTEGRAL_REVISION.txt`でrevisionを記録し、専用スクリプトでsource treeを検証します。
 
+N64の`mupen64plus-core-current-rdram.patch`はIntegral独自の創作物ではなく、Rosalie Wanders氏によるMupen64Plus coreの[「Fix RDRAM initialization」](https://github.com/mupen64plus/mupen64plus-core/commit/b954248ad7944acdfc8d0f5edb4e752b76891394)と[「Implement register mirroring」](https://github.com/mupen64plus/mupen64plus-core/commit/a70a6cca5a29b1711dcd3dc0ee15a9ffad8f45d0)から、旧baselineに必要な変更を選んで移植したものです。対象の上流ソースファイルはGPL version 2またはそれ以降を許諾しています。パッチの対象・hashは`THIRD_PARTY_LOCK.json`を参照してください。
+
 第三者コードには、それぞれの上流プロジェクトのライセンスと著作権表示が適用されます。各third-partyディレクトリに収録されたライセンス、README、ファイルヘッダー等の原文を参照してください。本書の説明と原文が異なる場合は、原文が優先します。
 
 ## C Clientバイナリ配布物

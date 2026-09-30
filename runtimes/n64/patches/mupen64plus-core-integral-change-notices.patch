@@ -1,0 +1,203 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Change notices for the patched upstream files; upstream licenses remain intact.
+--- a/src/api/api_export.ver
++++ b/src/api/api_export.ver
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-20: mupen64plus-core-transferpak-memory.patch:
++ *   Use in-memory Transfer Pak ROM, save and RTC state.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ { global:
+ IntegralSetTransferPakMemory;
+ ConfigExternalGetParameter;
+--- a/src/api/vidext.c
++++ b/src/api/vidext.c
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-17: mupen64plus-core-startup-focus.patch:
++ *   Activate the game window at startup.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus-core - api/vidext.c                                       *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/api/vidext_sdl2_compat.h
++++ b/src/api/vidext_sdl2_compat.h
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-17: mupen64plus-core-startup-focus.patch:
++ *   Activate the game window at startup.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /*
+   Simple DirectMedia Layer
+   Copyright (C) 1997-2012 Sam Lantinga <slouken@libsdl.org>
+--- a/src/device/gb/gb_cart.c
++++ b/src/device/gb/gb_cart.c
+@@ -1,3 +1,11 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch:
++ *   Preserve Transfer Pak MBC3 RTC sidecar state.
++ * 2026-09-20: mupen64plus-core-transferpak-memory.patch:
++ *   Use in-memory Transfer Pak ROM, save and RTC state.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - gb_cart.c                                               *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/device/gb/gb_cart.h
++++ b/src/device/gb/gb_cart.h
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch:
++ *   Preserve Transfer Pak MBC3 RTC sidecar state.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - gb_cart.h                                               *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/device/gb/mbc3_rtc.c
++++ b/src/device/gb/mbc3_rtc.c
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch:
++ *   Preserve Transfer Pak MBC3 RTC sidecar state.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - mbc3_rtc.c                                              *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/device/gb/mbc3_rtc.h
++++ b/src/device/gb/mbc3_rtc.h
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-transferpak-mbc3-rtc-sidecar.patch:
++ *   Preserve Transfer Pak MBC3 RTC sidecar state.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - mbc3_rtc.h                                              *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/device/rcp/ri/ri_controller.h
++++ b/src/device/rcp/ri/ri_controller.h
+@@ -1,3 +1,11 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-28: mupen64plus-core-current-rdram.patch:
++ *   Partial backport of Mupen64Plus upstream RDRAM fixes by Rosalie Wanders
++ *   (commits b954248ad7944acdfc8d0f5edb4e752b76891394 and
++ *   a70a6cca5a29b1711dcd3dc0ee15a9ffad8f45d0).
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - ri_controller.h                                         *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/device/rdram/rdram.c
++++ b/src/device/rdram/rdram.c
+@@ -1,3 +1,11 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-28: mupen64plus-core-current-rdram.patch:
++ *   Partial backport of Mupen64Plus upstream RDRAM fixes by Rosalie Wanders
++ *   (commits b954248ad7944acdfc8d0f5edb4e752b76891394 and
++ *   a70a6cca5a29b1711dcd3dc0ee15a9ffad8f45d0).
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - rdram.c                                                 *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/device/rdram/rdram.h
++++ b/src/device/rdram/rdram.h
+@@ -1,3 +1,11 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-28: mupen64plus-core-current-rdram.patch:
++ *   Partial backport of Mupen64Plus upstream RDRAM fixes by Rosalie Wanders
++ *   (commits b954248ad7944acdfc8d0f5edb4e752b76891394 and
++ *   a70a6cca5a29b1711dcd3dc0ee15a9ffad8f45d0).
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - rdram.h                                                 *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/main/eventloop.c
++++ b/src/main/eventloop.c
+@@ -1,3 +1,13 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-physical-hotkeys.patch:
++ *   Handle physical-key hotkeys for Integral input.
++ * 2026-08-18: mupen64plus-core-deferred-stop-confirmation.patch:
++ *   Defer stop confirmation until the room lifecycle resolves.
++ * 2026-09-17: mupen64plus-core-util-keys.patch:
++ *   Handle screenshot and utility keys.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - eventloop.c                                             *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/main/eventloop.h
++++ b/src/main/eventloop.h
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-deferred-stop-confirmation.patch:
++ *   Defer stop confirmation until the room lifecycle resolves.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - eventloop.h                                             *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/main/main.c
++++ b/src/main/main.c
+@@ -1,3 +1,15 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-core-physical-hotkeys.patch:
++ *   Handle physical-key hotkeys for Integral input.
++ * 2026-08-18: mupen64plus-core-deferred-stop-confirmation.patch:
++ *   Defer stop confirmation until the room lifecycle resolves.
++ * 2026-08-28: mupen64plus-core-homebrew-transferpak.patch:
++ *   Support homebrew Transfer Pak handling.
++ * 2026-09-20: mupen64plus-core-transferpak-memory.patch:
++ *   Use in-memory Transfer Pak ROM, save and RTC state.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - main.c                                                  *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/main/savestates.c
++++ b/src/main/savestates.c
+@@ -1,3 +1,11 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-28: mupen64plus-core-current-rdram.patch:
++ *   Partial backport of Mupen64Plus upstream RDRAM fixes by Rosalie Wanders
++ *   (commits b954248ad7944acdfc8d0f5edb4e752b76891394 and
++ *   a70a6cca5a29b1711dcd3dc0ee15a9ffad8f45d0).
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - savestates.c                                            *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/main/screenshot.c
++++ b/src/main/screenshot.c
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-17: mupen64plus-core-util-keys.patch:
++ *   Handle screenshot and utility keys.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus - screenshot.c                                            *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
