@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Change notices for the patched upstream files; upstream licenses remain intact.
+--- a/src/DisplayWindow.cpp
++++ b/src/DisplayWindow.cpp
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #include <assert.h>
+ #include <cstdlib>
+ #include "Config.h"
+--- a/src/DisplayWindow.h
++++ b/src/DisplayWindow.h
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #pragma once
+ #include "Types.h"
+ #include "GraphicsDrawer.h"
+--- a/src/FrameBuffer.cpp
++++ b/src/FrameBuffer.cpp
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #include <assert.h>
+ #include <math.h>
+ #include <algorithm>
+--- a/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp
++++ b/src/Graphics/OpenGLContext/mupen64plus/mupen64plus_DisplayWindow.cpp
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #include <stdio.h>
+ #include <cstdlib>
+ #include <Graphics/Context.h>
+--- a/src/MupenPlusPluginAPI.cpp
++++ b/src/MupenPlusPluginAPI.cpp
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #include "PluginAPI.h"
+ #include "Types.h"
+ #include "mupenplus/GLideN64_mupenplus.h"
+--- a/src/PluginAPI.h
++++ b/src/PluginAPI.h
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #ifndef COMMONPLUGINAPI_H
+ #define COMMONPLUGINAPI_H
+ 
+--- a/src/mupenplus/MupenPlusAPIImpl.cpp
++++ b/src/mupenplus/MupenPlusAPIImpl.cpp
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ #include "GLideN64_mupenplus.h"
+ #include "../PluginAPI.h"
+ #include "../GLideN64.h"
+--- a/src/mupenplus/video_api_export.ver
++++ b/src/mupenplus/video_api_export.ver
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-09-26: gliden64-integral-game-viewport.patch:
++ *   Capture the game viewport independently of window size.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ { global:
+ PluginStartup;
+ PluginConfig;

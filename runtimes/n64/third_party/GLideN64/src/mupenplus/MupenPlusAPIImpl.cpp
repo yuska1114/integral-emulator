@@ -1,3 +1,9 @@
+/*
+ * Integral Emulator modification notice (2026-09-30):
+ * 2026-09-26: gliden64-integral-game-viewport.patch:
+ *   Capture the game viewport independently of window size.
+ * Original upstream copyright and license notices follow unchanged.
+ */
 #include "GLideN64_mupenplus.h"
 #include "../PluginAPI.h"
 #include "../GLideN64.h"

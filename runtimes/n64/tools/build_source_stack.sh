@@ -81,6 +81,8 @@ build_make_component()
     if [ "$component" = "mupen64plus-audio-sdl" ]; then
         apply_patch_once "$component_build" \
             "$project_root/patches/mupen64plus-audio-sdl-remote-media.patch"
+        apply_patch_once "$component_build" \
+            "$project_root/patches/mupen64plus-audio-sdl-integral-change-notices.patch"
     fi
     make -C "$component_build/projects/unix" -j"$jobs" \
         $make_uname \
@@ -154,6 +156,7 @@ apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-current-r
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-startup-focus.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-util-keys.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-transferpak-memory.patch"
+apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-integral-change-notices.patch"
 cp "$project_root/../common/n64_transfer_memory.h" "$core_build/src/backends/integral_transfer_memory.h"
 cp "$project_root/../common/screenshot_path.h" "$core_build/src/main/integral_screenshot_path.h"
 cp "$project_root/../common/window_focus.h" "$core_build/src/api/integral_window_focus.h"
@@ -190,6 +193,7 @@ echo "[2/6] Building SDL input plugin"
 export_source_tree mupen64plus-input-sdl "$input_build"
 apply_patch_once "$input_build" "$project_root/patches/mupen64plus-input-sdl-physical-scancode.patch"
 apply_patch_once "$input_build" "$project_root/patches/mupen64plus-input-sdl-remote-controller2.patch"
+apply_patch_once "$input_build" "$project_root/patches/mupen64plus-input-sdl-integral-change-notices.patch"
 make -C "$input_build/projects/unix" -j"$jobs" \
     $make_uname \
     CC="$mupen_cc" \

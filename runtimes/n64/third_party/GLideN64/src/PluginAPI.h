@@ -1,3 +1,9 @@
+/*
+ * Integral Emulator modification notice (2026-09-30):
+ * 2026-09-26: gliden64-integral-game-viewport.patch:
+ *   Capture the game viewport independently of window size.
+ * Original upstream copyright and license notices follow unchanged.
+ */
 #ifndef COMMONPLUGINAPI_H
 #define COMMONPLUGINAPI_H
 

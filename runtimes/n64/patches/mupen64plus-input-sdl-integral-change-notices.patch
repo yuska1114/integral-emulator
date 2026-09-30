@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Change notices for the patched upstream files; upstream licenses remain intact.
+--- a/src/config.c
++++ b/src/config.c
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-input-sdl-physical-scancode.patch:
++ *   Map controller keys by physical scancode.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus-input-sdl - config.c                                      *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
+--- a/src/plugin.c
++++ b/src/plugin.c
+@@ -1,3 +1,9 @@
++/*
++ * Integral Emulator modification notice (2026-09-30):
++ * 2026-08-18: mupen64plus-input-sdl-remote-controller2.patch:
++ *   Accept remote second-controller input.
++ * Original upstream copyright and license notices follow unchanged.
++ */
+ /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+  *   Mupen64plus-input-sdl - plugin.c                                      *
+  *   Mupen64Plus homepage: https://mupen64plus.org/                        *
