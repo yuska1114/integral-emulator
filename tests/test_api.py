@@ -24,7 +24,7 @@ from pathlib import Path
 
 import integral_emulator.allowed_roms as allowed_rom_catalog
 from integral_emulator.allowed_roms import AllowedRom, allowed_roms
-from integral_emulator.api import AUTH_JSON_BODY_BYTES, MAX_JSON_BODY_BYTES, LeagueApplication, RateLimitExceeded, RequestBodyTooLarge, create_handler, normalized_public_base_path
+from integral_emulator.api import AUTH_JSON_BODY_BYTES, CORRESPONDING_SOURCE_URL, MAX_JSON_BODY_BYTES, SERVER_VERSION, LeagueApplication, RateLimitExceeded, RequestBodyTooLarge, create_handler, normalized_public_base_path
 from integral_emulator.errors import (
     AlreadyInRoomError,
     AuthenticationError,
@@ -264,8 +264,13 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(require_identity.call_count, 1)
 
     def test_health_and_time_skip_request_reconcile(self) -> None:
+        self.assertIn(f"server-v{SERVER_VERSION}.zip", CORRESPONDING_SOURCE_URL)
         with patch.object(self.app, "reconcile_session_lifecycle") as reconcile:
-            self.assertEqual(self.app.handle_request("GET", "/health"), {"ok": True})
+            self.assertEqual(self.app.handle_request("GET", "/health"), {
+                "ok": True,
+                "server_version": SERVER_VERSION,
+                "corresponding_source_url": CORRESPONDING_SOURCE_URL,
+            })
             self.app.handle_request("GET", "/time")
         reconcile.assert_not_called()
 
@@ -1692,7 +1697,11 @@ class ApiTests(unittest.TestCase):
                 self.assertNotIn(b"<script", data)
             status, _headers, data = request("GET", "/health")
             self.assertEqual(status, 200)
-            self.assertEqual(json.loads(data), {"ok": True})
+            self.assertEqual(json.loads(data), {
+                "ok": True,
+                "server_version": SERVER_VERSION,
+                "corresponding_source_url": CORRESPONDING_SOURCE_URL,
+            })
             for path in ("/admin/users", "/admin/operations", "/me"):
                 status, _headers, _data = request("GET", path)
                 self.assertEqual(status, 401)
