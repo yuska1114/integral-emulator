@@ -33,11 +33,11 @@
           "license": "MIT",
           "order": 3,
           "path": "runtimes/gb/patches/sameboy-integral-sgb-game-border.patch",
-          "sha256": "7e464960f684126695a134e11d1882a89f0f0f0b9ff8c666b96618fe7d284c8a"
+          "sha256": "37df3e6021cd08df4ad3c77ba8d2c4226ba6bf6bc90d6a46c7a11a29ced48c13"
         }
       ],
       "public_source_file_count": 75,
-      "public_source_tree_sha256": "f59061d95e490d73acb1e55230b400720a58ac7c865d30fec4d3947d84a0ead2",
+      "public_source_tree_sha256": "e7b7ec04283799c9a46467af1f15898040bc2202ac636324fee7bbaa5d1826ed",
       "source_path": "runtimes/gb/third_party/SameBoy",
       "upstream_archive_sha256": "aca79238ef23c220b6332abb28b6a4bbe467995ff7a26073dcb3070a7054eab6",
       "upstream_archive_url": "https://codeload.github.com/LIJI32/SameBoy/tar.gz/208ba4afabffab9edde416f2dbb8ae459e34adb8",
@@ -47,7 +47,7 @@
       "upstream_tree_oid": "74605c44c72c74979907e1f0680e982410af050f",
       "upstream_tree_sha256": "6c0a825ce2ea2bbbf4aefe420ed39935653c77fe08f67f648d21a4cfe1dd5f23",
       "vendored_file_count": 631,
-      "vendored_tree_sha256": "651e82949ff141fad4ceea518f125b1ace04e9e041d6e902bf60ca9427b378dd"
+      "vendored_tree_sha256": "c6c49309da798e5a6aaa71c6753743d0cfcb9c5daf4943f4ac298b40f3e56ed9"
     },
     {
       "build_patches": [
