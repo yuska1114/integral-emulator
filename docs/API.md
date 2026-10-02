@@ -19,6 +19,10 @@ PYTHONPATH=src python3 -m integral_emulator run \
 curl http://127.0.0.1:8080/health
 ```
 
+`GET /health`は稼働状態に加え、`server_version`と
+`corresponding_source_url`を返します。後者は稼働版と対応する固定タグの
+ソースアーカイブで、GitHubの可変な`main`ではありません。
+
 `INTEGRAL_EMULATOR_PUBLIC_BASE_PATH`は、リバースプロキシ経由で公開する際の外部向け
 パス接頭辞です。リバースプロキシは接頭辞を取り除いてIntegral Serverへ転送します。
 `127.0.0.1`へ直接接続する場合は、通常この接頭辞を付けません。

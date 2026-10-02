@@ -104,6 +104,10 @@ def read_project_version() -> str:
 
 
 SERVER_VERSION = read_project_version()
+CORRESPONDING_SOURCE_URL = (
+    "https://github.com/yuska1114/integral-emulator/"
+    "archive/refs/tags/server-v0.2.0-beta.zip"
+)
 
 GSC_ROOM_BASE_PORT = 25100
 GSC_ROOM_PORTS_PER_ROOM = 2
@@ -653,7 +657,11 @@ class LeagueApplication:
         segments = [segment for segment in path.split("/") if segment]
         body = body or {}
         if method == "GET" and segments == ["health"]:
-            return {"ok": True}
+            return {
+                "ok": True,
+                "server_version": SERVER_VERSION,
+                "corresponding_source_url": CORRESPONDING_SOURCE_URL,
+            }
         if method == "GET" and segments == ["time"]:
             now = datetime.now(timezone.utc)
             return {"server_time": {"unix_time": int(now.timestamp()), "iso": now.isoformat()}}
