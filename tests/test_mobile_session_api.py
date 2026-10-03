@@ -27,6 +27,9 @@ def encoded(value: bytes) -> str:
     return base64.b64encode(value).decode("ascii")
 
 
+INITIAL_GB_SAVE_DATA = b"\xff" * (32 * 1024)
+
+
 class MobileSessionApiV2Tests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -47,6 +50,7 @@ class MobileSessionApiV2Tests(unittest.TestCase):
             "platform": "gb",
             "region": "JP",
             "rom_header_title": "INTEGRAL DEMO A",
+            "generated_initial_save_data": encoded(INITIAL_GB_SAVE_DATA),
         }]})
         self.slot = result["slots"][0]
         self.create_sequence = 0
@@ -375,6 +379,7 @@ class MobileSessionApiV2Tests(unittest.TestCase):
             "platform": "gb",
             "region": "JP",
             "rom_header_title": "INTEGRAL DEMO A",
+            "generated_initial_save_data": encoded(INITIAL_GB_SAVE_DATA),
         }]}, second_token)["slots"][0]
         second = self.app.handle_request("POST", "/mobile-sessions", {
             "save_id": second_slot["save_id"], "rom_id": second_slot["rom_id"],

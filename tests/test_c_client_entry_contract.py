@@ -37,7 +37,12 @@ class ClientEntryContractTests(unittest.TestCase):
     def test_view_does_not_mutate_session_or_save_state(self):
         view = (CLIENT / "client_view.c").read_text(encoding="utf-8")
         self.assertNotRegex(view, r"(?<!const )AppState \*")
-        self.assertNotRegex(view, r"state->[^;\n]*?(?<![=!<>])=(?!=)")
+        state_member_assignment = re.compile(
+            r"\bstate\s*->\s*[A-Za-z_]\w*"
+            r"(?:(?:\s*->|\s*\.)\s*[A-Za-z_]\w*|\s*\[[^\]\n]*\])*"
+            r"\s*(?<![=!<>])=(?!=)"
+        )
+        self.assertNotRegex(view, state_member_assignment)
         for operation in ("integral_api_", "integral_save_upload", "memset(state", "free("):
             self.assertNotIn(operation, view)
 
