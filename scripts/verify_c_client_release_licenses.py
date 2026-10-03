@@ -34,6 +34,12 @@ MACOS_NOTICE_REFERENCES = ("Mozilla CA Certificate Store",)
 LINUX_REQUIRED = (
     "LICENSES/runtime-dependencies/OpenH264/copyright",
 )
+WINDOWS_REQUIRED = (
+    "LICENSES/runtime-dependencies/libgcc/COPYING.RUNTIME",
+    "LICENSES/runtime-dependencies/libgcc/COPYING3",
+    "LICENSES/runtime-dependencies/libstdc++/COPYING.RUNTIME",
+    "LICENSES/runtime-dependencies/libstdc++/COPYING3",
+)
 NOTICE_REFERENCES = (
     "LICENSES/third-party/mupen64plus-core/gpl-license",
     "LICENSES/third-party/mupen64plus-core/lgpl-license",
@@ -48,6 +54,8 @@ def verify(root: Path, platform: str) -> None:
         required += MACOS_REQUIRED
     elif platform == "linux":
         required += LINUX_REQUIRED
+    elif platform == "windows":
+        required += WINDOWS_REQUIRED
     failures: list[str] = []
     for relative in required:
         safe = PurePosixPath(relative)
@@ -96,6 +104,16 @@ def verify(root: Path, platform: str) -> None:
             else ""
         )
         for reference in LINUX_REQUIRED:
+            if reference not in dependencies:
+                failures.append(f"runtime dependency reference missing: {reference}")
+    elif platform == "windows":
+        dependencies_path = root / "RUNTIME_DEPENDENCIES.md"
+        dependencies = (
+            dependencies_path.read_text(encoding="utf-8")
+            if dependencies_path.is_file()
+            else ""
+        )
+        for reference in WINDOWS_REQUIRED:
             if reference not in dependencies:
                 failures.append(f"runtime dependency reference missing: {reference}")
 

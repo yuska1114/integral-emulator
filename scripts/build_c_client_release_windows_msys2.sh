@@ -209,7 +209,8 @@ for allowed in "${allowed_dlls[@]}"; do [ -f "${DLL_DIR}/${allowed}" ] || { echo
 
 license_files=(
   brotli/LICENSE bzip2/LICENSE freetype/FTL.TXT freetype/GPLv2.TXT
-  gcc-libs/COPYING.LIB gcc-libs/COPYING.RUNTIME gcc-libs/COPYING3 gcc-libs/README
+  libgcc/COPYING.RUNTIME libgcc/COPYING3
+  libstdc++/COPYING.RUNTIME libstdc++/COPYING3
   gettext-runtime/COPYING glib2/COPYING graphite2/COPYING graphite2/LICENSE
   harfbuzz/COPYING libiconv/COPYING libiconv/COPYING.LIB libiconv/README
   libpng/LICENSE libwinpthread/COPYING openssl/LICENSE pcre2/COPYING pcre2/LICENCE.md
@@ -239,7 +240,8 @@ cat > "${PACKAGE_DIR}/RUNTIME_DEPENDENCIES.md" <<'EOF'
 | libbz2-1.dll | bzip2 | bzip2/LICENSE |
 | libcrypto-3-x64.dll, libssl-3-x64.dll | OpenSSL | openssl/LICENSE |
 | libfreetype-6.dll | FreeType | freetype/FTL.TXT, freetype/GPLv2.TXT |
-| libgcc_s_seh-1.dll, libstdc++-6.dll | GCC runtime | gcc-libs/COPYING.LIB, COPYING.RUNTIME, COPYING3, README |
+| libgcc_s_seh-1.dll | libgcc | LICENSES/runtime-dependencies/libgcc/COPYING3, LICENSES/runtime-dependencies/libgcc/COPYING.RUNTIME |
+| libstdc++-6.dll | libstdc++ | LICENSES/runtime-dependencies/libstdc++/COPYING3, LICENSES/runtime-dependencies/libstdc++/COPYING.RUNTIME |
 | libglib-2.0-0.dll | GLib | glib2/COPYING |
 | libgraphite2.dll | Graphite2 | graphite2/COPYING, graphite2/LICENSE |
 | libharfbuzz-0.dll | HarfBuzz | harfbuzz/COPYING |
