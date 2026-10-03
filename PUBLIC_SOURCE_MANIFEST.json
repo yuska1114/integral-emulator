@@ -1,5 +1,5 @@
 {
-  "content_manifest_sha256": "c510665b9f261adf32406c12c4301d5a1bff98c0cbe4d8d89a9a8df3953517e9",
+  "content_manifest_sha256": "768fbafe61c06680bfa3ac72a5e9df057090c3b2944847f02cdf288f92cc3208",
   "file_count": 1551,
   "file_modes": {
     ".gitignore": "100644",
@@ -3084,12 +3084,12 @@
     "tests/test_allowed_roms.py": "ad1d0076deceef16d60155ef248117152a534abcd5e1a9ecfc79022f49487f5b",
     "tests/test_api.py": "e8221e89c3912311925b876b82a7a7d5a795970aa29168e9cf0a7e1b58b37adc",
     "tests/test_app_icon_assets.py": "6efeeb2d58eb9847c32988ee8b27da5458279faf701e2175899199e457140689",
-    "tests/test_c_client_entry_contract.py": "e4f676e902c91c2dbfe879b277293f5011fb278d0dd003bbd685f382008c4ea1",
-    "tests/test_game_window_focus.py": "5629626c69356799db0c5fe6103902316285791a7c35f84857cfd825c45a01b8",
+    "tests/test_c_client_entry_contract.py": "390f0f465894460d39b98dbe2d02195594390b55f35dc7b66176ad6fbd3007b4",
+    "tests/test_game_window_focus.py": "0f8bcb35ce6668769ec941d130fa3a5ac8d590b4f09b623d58ba09bb0851a2ec",
     "tests/test_gb_runtime_link_modes.py": "edd56139b88a42d5dbc8f071af1b4a0ce136b5b4ab1c3be5ce69cf3a7fcf1536",
     "tests/test_initial_save_import_contract.py": "acb5b4abfc44d09276ea0039155fda2fcb27be42bb877c69f4621d1b1c4b909b",
     "tests/test_macos_ca_bundle.py": "e54d508fe4397caa18f1b735f492fd8b7204a4b5f0db122bfe15e2ecb056e641",
-    "tests/test_mobile_session_api.py": "204b75e029cba86e0693818a9bdf093fc4b24ebdb795bd0200235313b2040000",
+    "tests/test_mobile_session_api.py": "a19546014853410b644e93528b85ba2a0a7261f93dcafd5f595d10e280dbb781",
     "tests/test_n64_runtime_media_relay.py": "4a56040face3b39a108bfa45adb038af65df70bba5d8c752dcc1f394527bd689",
     "tests/test_naming_contract.py": "1b3c5d2988fcdbc6e41b822ab789c8301590047eb92d7e9ce8b9cd462df32fb1",
     "tests/test_release_provenance.py": "ad528c7002add505592ad64a38daa82f6241673b6bb916d5524697034dfe0c10",
@@ -3109,6 +3109,6 @@
   },
   "format": 4,
   "release_status": "FORMAL",
-  "source_commit": "0aad63c07d96e3e757fa1c202c31e05754c6d9d7",
-  "source_date_epoch": 1790986294
+  "source_commit": "fc71966093aac59fec1e0ef698616e15b5fdc34f",
+  "source_date_epoch": 1791033215
 }
