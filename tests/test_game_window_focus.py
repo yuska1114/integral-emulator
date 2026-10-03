@@ -59,7 +59,7 @@ int main(void) {
     def test_local_gb_and_server2(self):
         self.assert_creation_only("runtimes/gb/src/server/video_window.c", "window->window")
         source = (ROOT / "runtimes/gb/src/server/main.c").read_text(encoding="utf-8")
-        self.assertIn("integral_gb_runtime_video_window_open_titled_sized(", source)
+        self.assertIn("integral_gb_runtime_video_window_open_titled_sized_content(", source)
 
     def test_mobile(self):
         source = (ROOT / "runtimes/gb/src/mobile/mobile_runtime.c").read_text(encoding="utf-8")
