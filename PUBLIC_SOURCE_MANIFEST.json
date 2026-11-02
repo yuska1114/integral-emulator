@@ -1,5 +1,5 @@
 {
-  "content_manifest_sha256": "70a976d6a6d9a956f89674959289b4d501d77b36ef5cd496df169b78d9fe8af0",
+  "content_manifest_sha256": "8a408925b3339d2ac5eaa658bf2f2c17829e418372d6c0f792d8860e53e387b2",
   "file_count": 1552,
   "file_modes": {
     ".gitignore": "100644",
@@ -1643,7 +1643,7 @@
     "c_client/client_screenshots.h": "fe758b501f5c8c6a0e025b15e5015a08915b209be8ba07bebb43dc7ff472e2af",
     "c_client/client_screenshots_test.c": "39d441c8001a3e88a49b801755a99966bf8da9153b57ff09616db9e2d20d4978",
     "c_client/client_state.h": "c65d8212b4064accd8e51a4a2fe7547c76c72f644587470c626b00c5b89d2431",
-    "c_client/client_ui_account.c": "f14d22c3c62d760d60a3be3b1f893df000c514ab9355311b6d66aaee021853e9",
+    "c_client/client_ui_account.c": "1dada700250d9becf5ae74cdd90f3abdd4958a1e5a5b50698e10c1b89f260db6",
     "c_client/client_ui_account.h": "3b041fbcf506b9f853785f09fb9b099a3dab7091e7f84477a2e9131523fc1f50",
     "c_client/client_ui_common.c": "4d3fd713a0c06ebd38ac0b9c26d9f5e2bac298d3f436e6aa95e07d459584350e",
     "c_client/client_ui_common.h": "699c1e7fe8348c85a249395a27642e5189d3c8d156efd51fb32067964c963bc1",
@@ -3111,6 +3111,6 @@
   },
   "format": 4,
   "release_status": "FORMAL",
-  "source_commit": "eb298d47769c831f7b7af8d5f776f938128041a1",
-  "source_date_epoch": 1793663389
+  "source_commit": "020879fb9de95225e927b54a5691903c3754bfa9",
+  "source_date_epoch": 1793663497
 }
