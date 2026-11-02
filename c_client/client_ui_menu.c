@@ -226,7 +226,7 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
 
-    integral_client_ui_draw_header(renderer, "LOCAL", view->username, view->server, view->version);
+    integral_client_ui_draw_header(renderer, "PLAY GAME", view->username, view->server, view->version);
     const char *labels[] = {
         "GB MODE",
         "MOBILE MODE",

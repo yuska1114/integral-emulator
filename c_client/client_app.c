@@ -802,7 +802,7 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
             if (state->ui.main_selected == 0) {
                 state->ui.screen = SCREEN_LOCAL_MODE;
                 state->local.local_mode_selected = 0;
-                copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+                copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             }
             else if (state->ui.main_selected == 1) {
                 state->ui.screen = SCREEN_ROOM_MODE;

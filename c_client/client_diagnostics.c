@@ -1217,7 +1217,7 @@ void client_diagnostics_prepare_screen(AppState *state, int argc, char **argv)
                 state->ui.screen = SCREEN_LOCAL_MODE;
                 state->local.local_mode_selected = 0;
                 copy_text(state->login.username, sizeof(state->login.username), "TESTUSER1");
-                copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+                copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             }
             else if (strcmp(argv[i + 1], "local") == 0) {
                 state->ui.screen = SCREEN_LOCAL;

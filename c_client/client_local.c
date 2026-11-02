@@ -365,7 +365,7 @@ void handle_local_key(AppState *state, const SDL_KeyboardEvent *key)
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
             state->ui.screen = SCREEN_LOCAL_MODE;
-            copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+            copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
@@ -424,7 +424,7 @@ void handle_n64_runtime_key(AppState *state, const SDL_KeyboardEvent *key)
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
             state->ui.screen = SCREEN_LOCAL_MODE;
-            copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+            copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
