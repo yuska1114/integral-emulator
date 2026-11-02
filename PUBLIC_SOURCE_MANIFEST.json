@@ -1,5 +1,5 @@
 {
-  "content_manifest_sha256": "8a408925b3339d2ac5eaa658bf2f2c17829e418372d6c0f792d8860e53e387b2",
+  "content_manifest_sha256": "502970c39225311ebdcc08e1fc9da96e44cb067ad17659c02c58a736c815601e",
   "file_count": 1552,
   "file_modes": {
     ".gitignore": "100644",
@@ -1588,12 +1588,12 @@
     "c_client/client_account.c": "dc1db6b916a12845bb9b531b3bf41f962cde3fec8cf2d934d56a0b9de1536a6d",
     "c_client/client_account.h": "cd7c50c4a582bbee74dc5005a2a07c3a438debb03f4ebc98094abce9a1ec51ec",
     "c_client/client_account_test.c": "518630bbad4f1c9ba6453789e79af5ad0f8dc2c19ae006fe81b2c78bea47f057",
-    "c_client/client_app.c": "3a07a367850f4b6f53eb3ddcd57f9b1643bf1ffed8b432d72f5fda694dbecd97",
+    "c_client/client_app.c": "2be70ea85848fb21cbc9998d60391b151688fd7012c0c5773139ff3bebd620f2",
     "c_client/client_app.h": "b5fd2d01357867787dbf52e18c4254ab0c0336b18723fd5f901f2ddff5fe9bb7",
     "c_client/client_config.c": "3a828d82447e45833c1b38f1a48e294d0cac9f941a43a3d5dc3129831fc4b7a8",
     "c_client/client_config.h": "dd3cc5d057e950beee7d2a59213f27385e4c8ae75b44bbb7f031695a5e1b1892",
     "c_client/client_config_controller_test.c": "1d9be3df5a1713a7eed9cfab2ae66671dcb9ad1b609a5bea19671a421663f970",
-    "c_client/client_diagnostics.c": "b4007debbf9cb50944f8015ca25dca7c4384349a4e12bc6d67add058fe55eaed",
+    "c_client/client_diagnostics.c": "ac0d20471f3ffb8594e88a6425313779d35cd4e132c280837be702adb492e5f8",
     "c_client/client_diagnostics.h": "5e3e690ac6375e396bbad7168bab3dc50566284bea9cb360870dbf3118685cf7",
     "c_client/client_export_test.c": "6986ce1888c3754da0fc65491411b7e2c1b7e3d066f30b174e8c12d1f80854d8",
     "c_client/client_file_io.c": "58efc619a80fa7df150072c4780bf68a7edb6fa954dfdabb84106189acd48606",
@@ -1611,7 +1611,7 @@
     "c_client/client_launch_n64_local.c": "4b48b551c4bb4206f3b310b4beaf34d279153ab3a1ac249b73145493494488f1",
     "c_client/client_launch_n64_local.h": "a700df3cfc6a61828addc25203e5a6d9cc1b8cd4124330829d6ae75f1b173ff8",
     "c_client/client_launch_prepare_test.c": "93d2584ae0d640c297458a429efa86071b4d44609c9bbd0f6f7d579bfa8a5dbe",
-    "c_client/client_local.c": "13d0bce665dad3e1d49665e06bc1b8655d2c054dbbc858517efb01b6a3ff22bf",
+    "c_client/client_local.c": "cb03f04adaf9e429efb92003dbee8bb72115395c98799faaebefbd1c57fed312",
     "c_client/client_local.h": "0d35f37f51af06c4d322553425ff293b152f64dee8b80d3e5336bb13de807041",
     "c_client/client_log.c": "c83a470db65d6debcedb04cb8bf79e1ee2d61cb376a959c6e9f7ce66b4ddaf7a",
     "c_client/client_log.h": "2439dcf168a21a18385e0be9e4b2a2da11c8c28c7d0f432def79335685b5b830",
@@ -1647,7 +1647,7 @@
     "c_client/client_ui_account.h": "3b041fbcf506b9f853785f09fb9b099a3dab7091e7f84477a2e9131523fc1f50",
     "c_client/client_ui_common.c": "4d3fd713a0c06ebd38ac0b9c26d9f5e2bac298d3f436e6aa95e07d459584350e",
     "c_client/client_ui_common.h": "699c1e7fe8348c85a249395a27642e5189d3c8d156efd51fb32067964c963bc1",
-    "c_client/client_ui_menu.c": "83935d7764896a88d1b0fd565572cd980de91635865e0b81899f8a61d874298b",
+    "c_client/client_ui_menu.c": "a24c086070670f6b1288b7e3bc0151b26bd998487bd65a95c149fd0d539db36f",
     "c_client/client_ui_menu.h": "14ccccfc6ee510276982112b537233ae06e527af45feadca3ff31cfe6ddcb8ae",
     "c_client/client_user_config.c": "54784466935062662632bc0c50a22e704eaf6c3cc831f811cdb43e2104855ded",
     "c_client/client_user_config.h": "b58276247e2c24e371ced782f5d5e6ee31a3ae495be82a582d7c508b06a39376",
@@ -3111,6 +3111,6 @@
   },
   "format": 4,
   "release_status": "FORMAL",
-  "source_commit": "020879fb9de95225e927b54a5691903c3754bfa9",
-  "source_date_epoch": 1793663497
+  "source_commit": "b6103c9c7bfedb9c5c4e7ddfb9c929ab717033f5",
+  "source_date_epoch": 1793663827
 }
