@@ -119,7 +119,7 @@ SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
 
 5. GBのゲームを開始します。
    必要に応じてMAIN MENU → SETTINGS → GB KEYS CONFIGでキーやコントローラーを設定します。
-   LOCAL → GB MODEを開き、SLOT1の行で左右キーを押して登録済みのROMを選びます。
+   PLAY GAME → GB MODEを開き、SLOT1の行で左右キーを押して登録済みのROMを選びます。
    1画面で遊ぶ場合はSLOT2を空にします。設定済みならSLOT2の行でBackspaceを押すと
    解除できます。STARTを選んでEnterを押すとゲームが起動します。
 
@@ -130,7 +130,7 @@ SAVが必要です。保存と終了の方法は、後述の「セーブデー�
 
 ほかのモードを使う場合
 
-- N64：ROM REGISTERでN64 ROMを登録し、LOCAL → N64 MODEのN64 SLOTで選びます。
+- N64：ROM REGISTERでN64 ROMを登録し、PLAY GAME → N64 MODEのN64 SLOTで選びます。
   N64の1～4Pキー設定はSETTINGS → N64 KEYS CONFIGで行い、画面上部の
   N64 CONTROLLERを左右キーで切り替えます。必要に応じてSLOT1～SLOT4に
   Transfer Pak用のGB ROMを選び、STARTで開始します。
@@ -139,7 +139,7 @@ SAVが必要です。保存と終了の方法は、後述の「セーブデー�
   入室後、各自のROMなど必要な項目を設定し、両者がREADYにします。
   Link Cable ROOM／N64 ROOMの作成側（User1）は、相手が使用するGB ROMも自分のPCに
   用意し、ROM REGISTERのROM1～ROM8へ登録してください。相手のROMは転送されません。
-- Mobile：LOCAL → MOBILE MODEでSLOT1とSCENARIOを選び、STARTで開始します。
+- Mobile：PLAY GAME → MOBILE MODEでSLOT1とSCENARIOを選び、STARTで開始します。
   対象ROMに対応した追加パッケージを、サーバー管理者が導入している必要があります。
   Clientの導入だけでは利用できません。SCENARIOがNOT AVAILABLEの場合は、ROMの
   選択とサーバー側の対応状況を管理者へ確認してください。

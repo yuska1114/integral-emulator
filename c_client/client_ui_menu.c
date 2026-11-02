@@ -19,7 +19,7 @@ void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralCli
 
     integral_client_ui_draw_header(renderer, "MAIN MENU", view->username, view->server, view->version);
     const char *labels[] = {
-        "LOCAL",
+        "PLAY GAME",
         "CREATE ROOM",
         "JOIN ROOM",
         "ROM REGISTER",
