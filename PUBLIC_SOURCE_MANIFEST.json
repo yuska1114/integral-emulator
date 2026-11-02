@@ -1,5 +1,5 @@
 {
-  "content_manifest_sha256": "7e2684c052fdf1eb89f756e476c21edb7b7239246e7d2cc50b657308fbc46c6c",
+  "content_manifest_sha256": "70a976d6a6d9a956f89674959289b4d501d77b36ef5cd496df169b78d9fe8af0",
   "file_count": 1552,
   "file_modes": {
     ".gitignore": "100644",
@@ -1578,7 +1578,7 @@
     "c_client/BINARY_LICENSE_SCOPE.md": "b4a0a8e25c12c7a8162ec6cf1cf5450508b34722bc56ce0578348fc392978cc8",
     "c_client/BINARY_THIRD_PARTY_NOTICES.md": "58864fcead5a17b0122006cc330f1ce37120143c74ce0e47a6be74e55d0081f9",
     "c_client/Makefile": "d0a31fb56a9fe38ca285c3cf6437a9a845caa23776d2430a4f79b8c1f1a00112",
-    "c_client/RELEASE_README.txt": "e5f6f91be619786afefa4940666c3686075036bffab2a48d0c2fc391800b8228",
+    "c_client/RELEASE_README.txt": "009784b76af57d349a498b394d2ea4387bbd8df4e28ad6d218ddcf54cb2252ca",
     "c_client/api_account.c": "b1e9e008c5f0b3f6d3e581186f358ea995112b84c652ec897c167b4fc5b61ee4",
     "c_client/api_fixed_host.c": "5dfacb9a5973fea818544bdbc55072e7ddef540faad051a3d126adf06517bd4d",
     "c_client/api_mobile.c": "213f60154051684c2ab269eab2d95efef88b4e8d80737805e4e26779b82db918",
@@ -1647,7 +1647,7 @@
     "c_client/client_ui_account.h": "3b041fbcf506b9f853785f09fb9b099a3dab7091e7f84477a2e9131523fc1f50",
     "c_client/client_ui_common.c": "4d3fd713a0c06ebd38ac0b9c26d9f5e2bac298d3f436e6aa95e07d459584350e",
     "c_client/client_ui_common.h": "699c1e7fe8348c85a249395a27642e5189d3c8d156efd51fb32067964c963bc1",
-    "c_client/client_ui_menu.c": "763bd6734d1e9132c732882930f64312a5ab1fbab06dec94d057fce24c614209",
+    "c_client/client_ui_menu.c": "83935d7764896a88d1b0fd565572cd980de91635865e0b81899f8a61d874298b",
     "c_client/client_ui_menu.h": "14ccccfc6ee510276982112b537233ae06e527af45feadca3ff31cfe6ddcb8ae",
     "c_client/client_user_config.c": "54784466935062662632bc0c50a22e704eaf6c3cc831f811cdb43e2104855ded",
     "c_client/client_user_config.h": "b58276247e2c24e371ced782f5d5e6ee31a3ae495be82a582d7c508b06a39376",
@@ -3111,6 +3111,6 @@
   },
   "format": 4,
   "release_status": "FORMAL",
-  "source_commit": "5ffc658fb8aa4ac40787a54fd65cd5f67f341396",
-  "source_date_epoch": 1793663309
+  "source_commit": "eb298d47769c831f7b7af8d5f776f938128041a1",
+  "source_date_epoch": 1793663389
 }
