@@ -20,34 +20,35 @@ void integral_client_ui_draw_login(SDL_Renderer *renderer, const IntegralClientL
     integral_client_ui_draw_header(renderer, "ACCOUNT LOGIN", NULL, NULL, view->version);
     integral_client_ui_draw_field(renderer, 88, "SERVER", view->server,
                                    view->selected == FIELD_SERVER, view->editing);
-    integral_client_ui_draw_field(renderer, 142, "ENV", view->server_label,
+    integral_client_ui_draw_field(renderer, 138, "ENV", view->server_label,
                                    view->selected == FIELD_ENV, false);
-    integral_client_ui_draw_field(renderer, 196, "USERNAME", view->username,
+    integral_client_ui_draw_field(renderer, 188, "USERNAME", view->username,
                                    view->selected == FIELD_USERNAME, view->editing);
-    integral_client_ui_draw_field(renderer, 250, "PASSWORD", view->password_display,
+    integral_client_ui_draw_field(renderer, 238, "PASSWORD", view->password_display,
                                    view->selected == FIELD_PASSWORD, view->editing);
 
     if (view->selected == FIELD_ACTION) {
         SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-        SDL_Rect highlight = {.x = 112, .y = 352, .w = 180, .h = 42};
+        SDL_Rect highlight = {.x = 112, .y = 330, .w = 180, .h = 42};
         SDL_RenderFillRect(renderer, &highlight);
-        integral_sdl_draw_text(renderer, 122, 364, ">", 3, selected);
-        integral_sdl_draw_text(renderer, 140, 364, "LOGIN", 3, selected);
+        integral_sdl_draw_text(renderer, 122, 342, ">", 3, selected);
+        integral_sdl_draw_text(renderer, 140, 342, "LOGIN", 3, selected);
     }
     else {
-        integral_client_ui_draw_panel(renderer, 112, 352, 180, 42, (SDL_Color){55, 64, 70, 255});
-        integral_sdl_draw_text(renderer, 140, 364, "LOGIN", 3, value);
+        integral_client_ui_draw_panel(renderer, 112, 330, 180, 42, (SDL_Color){55, 64, 70, 255});
+        integral_sdl_draw_text(renderer, 140, 342, "LOGIN", 3, value);
     }
+    integral_sdl_draw_text(renderer, 172, 382, "LOCAL MODE", 1, muted);
 
     if (view->selected == FIELD_REMEMBER) {
         SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
-        SDL_Rect highlight = {.x = 14, .y = 306, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 34};
+        SDL_Rect highlight = {.x = 14, .y = 290, .w = INTEGRAL_CLIENT_UI_WIDTH - 28, .h = 34};
         SDL_RenderFillRect(renderer, &highlight);
-        integral_sdl_draw_text(renderer, 24, 316, ">", 1, selected);
+        integral_sdl_draw_text(renderer, 24, 300, ">", 1, selected);
     }
     integral_sdl_draw_text(renderer,
                            48,
-                           316,
+                           300,
                            view->remember_login ? "[ON] REMEMBER LOGIN" : "[OFF] REMEMBER LOGIN",
                            1,
                            view->selected == FIELD_REMEMBER ? selected : value);
