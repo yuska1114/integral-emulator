@@ -102,8 +102,14 @@
         {
           "license": "GPL-2.0-or-later",
           "order": 9,
+          "path": "runtimes/n64/patches/mupen64plus-core-transferpak-zero-read.patch",
+          "sha256": "1e447c30a0264cd9ffee14acf3ab7a76748690afa265f4d15c1a8e6a5cff9c35"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 10,
           "path": "runtimes/n64/patches/mupen64plus-core-integral-change-notices.patch",
-          "sha256": "54c0ffab6575cf2c4f2398f727b028d2ff5db61748313ce864e9dec92c9aef39"
+          "sha256": "295a7b01ca211b0fcda067afafec0b09b419ccfb315debaad9e4945ab873fcd1"
         }
       ],
       "component": "mupen64plus-core",

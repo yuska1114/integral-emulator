@@ -1,0 +1,11 @@
+--- a/src/device/controllers/paks/transferpak.c
++++ b/src/device/controllers/paks/transferpak.c
+@@ -91,6 +91,8 @@
+ 
+     DebugMessage(M64MSG_VERBOSE, "tpak read: %04x", address);
+ 
++    memset(data, 0, size);
++
+     switch(address >> 12)
+     {
+     case 0x8:

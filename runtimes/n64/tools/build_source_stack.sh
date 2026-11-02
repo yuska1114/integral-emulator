@@ -156,6 +156,7 @@ apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-current-r
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-startup-focus.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-util-keys.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-transferpak-memory.patch"
+apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-transferpak-zero-read.patch"
 apply_patch_once "$core_build" "$project_root/patches/mupen64plus-core-integral-change-notices.patch"
 cp "$project_root/../common/n64_transfer_memory.h" "$core_build/src/backends/integral_transfer_memory.h"
 cp "$project_root/../common/screenshot_path.h" "$core_build/src/main/integral_screenshot_path.h"

@@ -15,7 +15,8 @@
 
 - `mupen64plus-core-util-keys.patch`: 設定STOPの確認、共通の撮影名、撮影結果通知
 - `mupen64plus-core-transferpak-memory.patch`: ROOM専用のGB RAM・RTCメモリ保存層（LOCALのファイル保存は維持）
-- `mupen64plus-core-integral-change-notices.patch`: 上記core patchの適用後、変更対象15ファイル内へ日付・内容・patch名を表示
+- `mupen64plus-core-transferpak-zero-read.patch`: 未対応アドレスと無効化中の読み取りをゼロ初期化し、Transfer Pak以外のパックと誤認される問題を修正
+- `mupen64plus-core-integral-change-notices.patch`: 上記core patchの適用後、変更対象16ファイル内へ日付・内容・patch名を表示
 
 ## mupen64plus-input-sdl
 
