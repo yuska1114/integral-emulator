@@ -314,6 +314,10 @@ void handle_local_mode_key(AppState *state, const SDL_KeyboardEvent *key)
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
+            if (state->ui.offline_local_mode) {
+                copy_text(state->login.status, sizeof(state->login.status), "LOGIN REQUIRED");
+                break;
+            }
             if (state->local.local_mode_selected == 0) {
                 state->ui.screen = SCREEN_LOCAL;
                 state->local.local_selected = 0;

@@ -820,7 +820,7 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
-            if (state->ui.offline_local_mode) {
+            if (state->ui.offline_local_mode && state->ui.main_selected != 0) {
                 copy_text(state->login.status, sizeof(state->login.status), "LOGIN REQUIRED");
                 break;
             }
