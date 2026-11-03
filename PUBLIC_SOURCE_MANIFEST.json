@@ -1,5 +1,5 @@
 {
-  "content_manifest_sha256": "14a65d69bc97599951cd1f415d5679596963577f94a71d05822a5f49102108ae",
+  "content_manifest_sha256": "d648fd2e0b2931c81c4afda67f2476133af81d31f51424839faaf7443d6f063e",
   "file_count": 1552,
   "file_modes": {
     ".gitignore": "100644",
@@ -1578,7 +1578,7 @@
     "c_client/BINARY_LICENSE_SCOPE.md": "b4a0a8e25c12c7a8162ec6cf1cf5450508b34722bc56ce0578348fc392978cc8",
     "c_client/BINARY_THIRD_PARTY_NOTICES.md": "58864fcead5a17b0122006cc330f1ce37120143c74ce0e47a6be74e55d0081f9",
     "c_client/Makefile": "d0a31fb56a9fe38ca285c3cf6437a9a845caa23776d2430a4f79b8c1f1a00112",
-    "c_client/RELEASE_README.txt": "ccab37a2425a156c9091c5a4337916574990239d425b64868c8c7b3e4303f54e",
+    "c_client/RELEASE_README.txt": "9d81d98b04e8d9e1161363558081a31f4fadfb81cc12457e9bb701a4a4ae648d",
     "c_client/api_account.c": "b1e9e008c5f0b3f6d3e581186f358ea995112b84c652ec897c167b4fc5b61ee4",
     "c_client/api_fixed_host.c": "5dfacb9a5973fea818544bdbc55072e7ddef540faad051a3d126adf06517bd4d",
     "c_client/api_mobile.c": "213f60154051684c2ab269eab2d95efef88b4e8d80737805e4e26779b82db918",
@@ -1588,7 +1588,7 @@
     "c_client/client_account.c": "dc1db6b916a12845bb9b531b3bf41f962cde3fec8cf2d934d56a0b9de1536a6d",
     "c_client/client_account.h": "ac28cdc91125d08810ae665f47b0c4b5a90ea48a4db5a221a1a44cbbedc392a1",
     "c_client/client_account_test.c": "518630bbad4f1c9ba6453789e79af5ad0f8dc2c19ae006fe81b2c78bea47f057",
-    "c_client/client_app.c": "964a67419f62e4ee4e87647211f9e994c6d03531de53ada3090d46b35091d3d6",
+    "c_client/client_app.c": "26254e7536d34e8b62e9c6c74f20be5e4f72868086c2d2ae52f4d61fdbc2aadd",
     "c_client/client_app.h": "b5fd2d01357867787dbf52e18c4254ab0c0336b18723fd5f901f2ddff5fe9bb7",
     "c_client/client_config.c": "3a828d82447e45833c1b38f1a48e294d0cac9f941a43a3d5dc3129831fc4b7a8",
     "c_client/client_config.h": "dd3cc5d057e950beee7d2a59213f27385e4c8ae75b44bbb7f031695a5e1b1892",
@@ -1611,7 +1611,7 @@
     "c_client/client_launch_n64_local.c": "4b48b551c4bb4206f3b310b4beaf34d279153ab3a1ac249b73145493494488f1",
     "c_client/client_launch_n64_local.h": "a700df3cfc6a61828addc25203e5a6d9cc1b8cd4124330829d6ae75f1b173ff8",
     "c_client/client_launch_prepare_test.c": "93d2584ae0d640c297458a429efa86071b4d44609c9bbd0f6f7d579bfa8a5dbe",
-    "c_client/client_local.c": "cb03f04adaf9e429efb92003dbee8bb72115395c98799faaebefbd1c57fed312",
+    "c_client/client_local.c": "028b0c1fc696df1dc6309281c4bf1ddfd29cc5061b6377a92b1a2b36f39c5e19",
     "c_client/client_local.h": "0d35f37f51af06c4d322553425ff293b152f64dee8b80d3e5336bb13de807041",
     "c_client/client_log.c": "c83a470db65d6debcedb04cb8bf79e1ee2d61cb376a959c6e9f7ce66b4ddaf7a",
     "c_client/client_log.h": "2439dcf168a21a18385e0be9e4b2a2da11c8c28c7d0f432def79335685b5b830",
@@ -3111,6 +3111,6 @@
   },
   "format": 4,
   "release_status": "FORMAL",
-  "source_commit": "6c39e9a7204f90c66c4885ed70b55dcb0c364c79",
-  "source_date_epoch": 1793664107
+  "source_commit": "d1e3d212947f5fb1241df21f4adef6f540adc518",
+  "source_date_epoch": 1793664174
 }
