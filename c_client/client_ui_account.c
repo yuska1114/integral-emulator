@@ -38,7 +38,14 @@ void integral_client_ui_draw_login(SDL_Renderer *renderer, const IntegralClientL
         integral_client_ui_draw_panel(renderer, 112, 330, 180, 42, (SDL_Color){55, 64, 70, 255});
         integral_sdl_draw_text(renderer, 140, 342, "LOGIN", 3, value);
     }
-    integral_sdl_draw_text(renderer, 172, 382, "LOCAL MODE", 1, muted);
+    if (view->selected == FIELD_LOCAL_MODE) {
+        SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
+        SDL_Rect highlight = {.x = 112, .y = 378, .w = 180, .h = 16};
+        SDL_RenderFillRect(renderer, &highlight);
+        integral_sdl_draw_text(renderer, 156, 382, ">", 1, selected);
+    }
+    integral_sdl_draw_text(renderer, 172, 382, "LOCAL MODE", 1,
+                           view->selected == FIELD_LOCAL_MODE ? selected : muted);
 
     if (view->selected == FIELD_REMEMBER) {
         SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
@@ -65,7 +72,8 @@ void integral_client_ui_draw_login(SDL_Renderer *renderer, const IntegralClientL
                  view->selected == FIELD_PASSWORD ? "ENTER PASSWORD" :
                  view->selected == FIELD_SERVER ? "ENTER SERVER URL" :
                  view->selected == FIELD_ENV ? "LEFT/RIGHT SELECT ENVIRONMENT" :
-                 view->selected == FIELD_REMEMBER ? "ENTER TOGGLE REMEMBER LOGIN" : "ENTER LOGIN";
+                 view->selected == FIELD_REMEMBER ? "ENTER TOGGLE REMEMBER LOGIN" :
+                 view->selected == FIELD_LOCAL_MODE ? "ENTER LOCAL MODE" : "ENTER LOGIN";
     }
     integral_sdl_draw_text_fit(renderer, 22, plain_http ? 416 : 408,
                                status, 1, muted,

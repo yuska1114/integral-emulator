@@ -16,6 +16,7 @@ typedef enum LoginField {
     FIELD_PASSWORD,
     FIELD_REMEMBER,
     FIELD_ACTION,
+    FIELD_LOCAL_MODE,
 } LoginField;
 
 typedef enum PasswordChangeField {

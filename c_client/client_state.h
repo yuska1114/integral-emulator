@@ -15,6 +15,7 @@ typedef struct {
     unsigned window_height;
     bool window_size_dirty;
     unsigned main_selected;
+    bool offline_local_mode;
     unsigned settings_selected;
     unsigned options_selected;
     unsigned options_ir_off_delay_ticks;

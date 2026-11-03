@@ -38,7 +38,7 @@
 #include <SDL.h>
 
 
-#define INTEGRAL_FIELD_COUNT 6
+#define INTEGRAL_FIELD_COUNT 7
 #define INTEGRAL_PASSWORD_CHANGE_ROWS 3
 #ifdef _WIN32
 #ifndef X_OK
@@ -278,6 +278,7 @@ void submit_login(AppState *app)
         client_log(app, "login_failed", "error=%s", error);
         return;
     }
+    app->ui.offline_local_mode = false;
     app->catalog.allow_user_initial_save_import = allow_user_initial_save_import != 0;
     client_log(app, "login_ok", "must_change_password=%d", must_change_password);
     save_authenticated_login(state, app->base_config_path, must_change_password != 0);
@@ -397,7 +398,7 @@ static void handle_key(LoginState *state, const SDL_KeyboardEvent *key)
             else if (state->selected == FIELD_ENV) {
                 cycle_login_server(state);
             }
-            else if (state->selected != FIELD_ACTION) {
+            else if (state->selected != FIELD_ACTION && state->selected != FIELD_LOCAL_MODE) {
                 state->editing = true;
                 SDL_StartTextInput();
                 copy_text(state->status, sizeof(state->status), "TEXT INPUT ACTIVE");
@@ -418,6 +419,9 @@ static void handle_key(LoginState *state, const SDL_KeyboardEvent *key)
         case SDLK_KP_ENTER:
             if (state->selected == FIELD_ACTION) {
                 copy_text(state->status, sizeof(state->status), "PRESS ENTER TO LOGIN");
+            }
+            else if (state->selected == FIELD_LOCAL_MODE) {
+                copy_text(state->status, sizeof(state->status), "ENTER LOCAL MODE");
             }
             else if (state->selected == FIELD_REMEMBER) {
                 state->remember_login = !state->remember_login;
@@ -453,6 +457,17 @@ void handle_login_key(AppState *app, const SDL_KeyboardEvent *key)
     if ((key->keysym.sym == SDLK_RETURN || key->keysym.sym == SDLK_KP_ENTER) &&
         state->selected == FIELD_ACTION) {
         submit_login(app);
+        return;
+    }
+    if ((key->keysym.sym == SDLK_RETURN || key->keysym.sym == SDLK_KP_ENTER) &&
+        state->selected == FIELD_LOCAL_MODE) {
+        memset(state->token, 0, sizeof(state->token));
+        state->editing = false;
+        SDL_StopTextInput();
+        app->ui.offline_local_mode = true;
+        app->ui.screen = SCREEN_MAIN_MENU;
+        app->ui.main_selected = 0;
+        copy_text(state->status, sizeof(state->status), "LOCAL MODE");
         return;
     }
     char before_server_id[sizeof(state->server_id)];
@@ -785,10 +800,16 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
     }
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
-            leave_current_room(&state->room, false);
+            if (state->ui.offline_local_mode) {
+                copy_text(state->login.status, sizeof(state->login.status), "ACCOUNT LOGIN");
+            }
+            else {
+                leave_current_room(&state->room, false);
+                copy_text(state->login.status, sizeof(state->login.status), "LOGGED OUT LOCAL UI");
+            }
+            state->ui.offline_local_mode = false;
             state->ui.screen = SCREEN_LOGIN;
             state->login.selected = FIELD_ACTION;
-            copy_text(state->login.status, sizeof(state->login.status), "LOGGED OUT LOCAL UI");
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
@@ -799,6 +820,10 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
+            if (state->ui.offline_local_mode) {
+                copy_text(state->login.status, sizeof(state->login.status), "LOGIN REQUIRED");
+                break;
+            }
             if (state->ui.main_selected == 0) {
                 state->ui.screen = SCREEN_LOCAL_MODE;
                 state->local.local_mode_selected = 0;

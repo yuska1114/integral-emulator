@@ -104,6 +104,8 @@ SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
 3. Clientを起動してログインします。
    ACCOUNT LOGIN画面でSERVERとENVを確認し、USERNAMEとPASSWORDを入力します。
    入力欄を選んでF2を押すと編集できます。LOGINを選んでEnterを押してください。
+   LOCAL MODEを選んでEnterを押すと、ログインせずにMAIN MENUを表示します。
+   現在は各項目を選ぶとLOGIN REQUIREDと表示され、先へは進めません。
    パスワード変更を求められた場合は、画面の案内に従って変更します。
 
 4. ROMを登録します。

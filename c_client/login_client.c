@@ -312,8 +312,10 @@ int main(int argc, char **argv)
                 }
             }
         }
-        poll_server_state(&state.room);
-        poll_local_save_notice(&state);
+        if (!state.ui.offline_local_mode) {
+            poll_server_state(&state.room);
+            poll_local_save_notice(&state);
+        }
         /* Focus may already be restored before queued events are consumed. */
         if (SDL_GetKeyboardFocus() == window) clear_local_launch_notice(&state);
         client_diagnostics_tick(&state, &diagnostics);

@@ -170,12 +170,12 @@ static void draw_password_change(SDL_Renderer *renderer, const AppState *app)
 static IntegralClientMenuView menu_view(const AppState *state, unsigned selected)
 {
     return (IntegralClientMenuView){
-        .username = state->login.username,
-        .server = state->login.server,
+        .username = state->ui.offline_local_mode ? NULL : state->login.username,
+        .server = state->ui.offline_local_mode ? NULL : state->login.server,
         .version = INTEGRAL_CLIENT_VERSION,
         .status = state->login.status,
-        .save_notice = state->local.save_sync_notice,
-        .save_error = state->local.save_sync_error,
+        .save_notice = state->ui.offline_local_mode ? NULL : state->local.save_sync_notice,
+        .save_error = state->ui.offline_local_mode ? NULL : state->local.save_sync_error,
         .selected = selected,
     };
 }
