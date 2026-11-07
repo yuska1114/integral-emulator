@@ -219,7 +219,7 @@ def _git(root: Path, *args: str) -> str:
     ).strip()
 
 
-def source_identity(root: Path) -> dict[str, Any]:
+def source_identity(root: Path, allow_dirty_preview: bool = False) -> dict[str, Any]:
     root = root.resolve()
     manifest_path = root / MANIFEST_NAME
     has_git = False
@@ -234,7 +234,7 @@ def source_identity(root: Path) -> dict[str, Any]:
         checkout_dirty = bool(_git(root, "status", "--porcelain=v1", "--untracked-files=all"))
         if re.fullmatch(r"[0-9a-f]{40,64}", checkout_commit) is None:
             raise IntegrityError("Git checkout commit is invalid")
-    if manifest_path.is_file():
+    if manifest_path.is_file() and not (allow_dirty_preview and checkout_dirty):
         manifest = verify_directory(root)
         return {
             "source_kind": "public_git_checkout" if has_git else "public_source_archive",

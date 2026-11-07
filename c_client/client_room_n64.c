@@ -674,7 +674,7 @@ static bool request_n64_runtime_media_session(IntegralRoomContext *state)
                state->n64.n64_runtime_media_relay_transport);
     if (strcmp(state->n64.n64_runtime_media_relay_transport, "plain") == 0) {
         copy_text(state->login->status, sizeof(state->login->status),
-                  "WARNING PLAIN LOCAL NETWORK  WAITING PEER");
+                  "WARNING PLAIN LAN  WAITING PEER");
     }
     else {
         snprintf(state->login->status,
@@ -1745,7 +1745,7 @@ static N64TransferSend *prepare_n64_transfer_saves(IntegralRoomContext *state, c
                 result == 404 || result == 422 || (result == 0);
             if (state->n64.preflight_failed)
                 snprintf(state->login->status, sizeof(state->login->status),
-                         "SLOT%d SAV INVALID: RUN IN LOCAL, EXIT NORMALLY, THEN RETRY.", i+1);
+                         "SLOT%d SAV INVALID: RUN N64 MODE WHILE LOGGED IN, EXIT, RETRY.", i+1);
             transfer_sav_pair_clear(&send->pair);
             free(send);
             return NULL;
@@ -1759,7 +1759,7 @@ static N64TransferSend *prepare_n64_transfer_saves(IntegralRoomContext *state, c
                 send->pair.saves[i].data, send->pair.lengths[i])) {
             state->n64.preflight_failed = true;
             snprintf(state->login->status, sizeof(state->login->status),
-                     "SLOT%d: RUN IN LOCAL, EXIT NORMALLY, THEN RETRY.", i+1);
+                     "SLOT%d: RUN N64 MODE WHILE LOGGED IN, EXIT, RETRY.", i+1);
             transfer_sav_pair_clear(&send->pair);
             free(send);
             return NULL;

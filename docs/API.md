@@ -141,8 +141,8 @@ ROOM番号として利用できる範囲は、Link Cableが`1–64`、N64が`65�
 既定で有効になる範囲は、Link Cableが`1–16`、N64が`65–80`です。
 有効にするROOM番号はサーバー設定で変更できます。
 
-`POST /game/start`は、ROOMを使用しないLOCAL実行またはN64 Runtime実行の
-Game Session Lock取得に使用します。
+`POST /game/start`は、ログイン後にROOMを使わずGB MODE／N64 MODEを実行する場合の
+Game Session Lock取得に使用します。ログイン不要のLOCAL MODEはこのAPIを呼びません。
 
 ## GB Runtime fixed Host通信
 
@@ -161,7 +161,7 @@ ROOM開始時に発行されたfixed HostセッションIDに対して、次の�
 HostのSAV検査で開始できない場合、`blocked`へ`rtc_save_required`または
 `rom_unreadable`を送信し、manifestの`state=BLOCKED`と`blocked_reason`を両者で共有します。
 BLOCKED中はpreflightとticket発行を停止します。RTC未準備の場合はROOMを退出し、
-LOCALで起動・正常終了してから新しいROOMを作成してください。
+ログイン後の`PLAY GAME > GB MODE`で起動・正常終了してから新しいROOMを作成してください。
 
 基本フローは、ROOM開始、両参加者のpreflight、HostによるSAVスナップショット取得、
 両参加者のrelay ticket取得、Runtime実行、両者の終了結果確認、確定処理の順です。
@@ -190,7 +190,7 @@ BattleではSAVを更新しません。Tradeでは、両者の候補SAV、base r
 サーバーは、導入済みのMobileパッケージからRuntime契約を作成します。
 Mobileセッションは配信設定、ハートビート、Game Session Lockを管理します。
 
-SAVの取得と更新には、LOCAL実行と同じ`GET /saves/{save_id}`と
+SAVの取得と更新には、ログイン後のGB MODEと同じ`GET /saves/{save_id}`と
 `PUT /saves/{save_id}`を使用します。
 
 ## N64 Runtime mediaセッション

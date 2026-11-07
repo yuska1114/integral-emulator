@@ -41,18 +41,31 @@ void integral_n64_local_arguments(const IntegralN64LocalLaunch *launch,
     argv[20] = launch->input;
     argv[21] = "--rsp";
     argv[22] = launch->rsp;
-    argv[23] = "--transfer-storage";
-    argv[24] = launch->transfer_dir;
-    argv[25] = "--controller1";
-    argv[26] = "keyboard";
-    argv[27] = "--controller-map1";
-    argv[28] = launch->controller_map;
-    argv[29] = "--interactive";
-    argv[30] = "--hotkeys";
-    argv[31] = launch->hotkeys;
+    unsigned count = 23;
+    if (launch->transfer_dir) {
+        argv[count++] = "--transfer-storage";
+        argv[count++] = launch->transfer_dir;
+    }
+    else {
+        static const char *rom_options[] = {"--transfer-rom1", "--transfer-rom2", "--transfer-rom3", "--transfer-rom4"};
+        static const char *save_options[] = {"--transfer-save1", "--transfer-save2", "--transfer-save3", "--transfer-save4"};
+        for (unsigned i = 0; i < 4; i++) {
+            if (!launch->transfer_rom_paths[i]) continue;
+            argv[count++] = rom_options[i];
+            argv[count++] = launch->transfer_rom_paths[i];
+            argv[count++] = save_options[i];
+            argv[count++] = launch->transfer_save_paths[i];
+        }
+    }
+    argv[count++] = "--controller1";
+    argv[count++] = "keyboard";
+    argv[count++] = "--controller-map1";
+    argv[count++] = launch->controller_map;
+    argv[count++] = "--interactive";
+    argv[count++] = "--hotkeys";
+    argv[count++] = launch->hotkeys;
     static const char *modes[] = {"--controller2", "--controller3", "--controller4"};
     static const char *maps[] = {"--controller-map2", "--controller-map3", "--controller-map4"};
-    unsigned count = 32;
     for (unsigned i = 0; i < 3; i++) {
         argv[count++] = modes[i];
         argv[count++] = "auto";
@@ -62,6 +75,37 @@ void integral_n64_local_arguments(const IntegralN64LocalLaunch *launch,
         }
     }
     argv[count] = NULL;
+}
+
+void integral_n64_offline_start(const IntegralN64LocalLaunch *launch,
+                                IntegralChildProcess *monitor_out,
+                                char *status, size_t status_size)
+{
+    const char *runtime_argv[INTEGRAL_N64_LOCAL_ARGV_CAPACITY];
+    integral_n64_local_arguments(launch, runtime_argv);
+#ifdef _WIN32
+    intptr_t spawned = integral_windows_spawnv(_P_NOWAIT, launch->frontend, runtime_argv);
+    if (spawned == -1) {
+        snprintf(status, status_size, "N64_RUNTIME START FAILED");
+        return;
+    }
+    if (monitor_out) *monitor_out = (IntegralChildProcess)spawned;
+    else CloseHandle((HANDLE)spawned);
+#else
+    pid_t spawned = fork();
+    if (spawned < 0) {
+        snprintf(status, status_size, "N64_RUNTIME START FAILED");
+        return;
+    }
+    if (spawned == 0) {
+        execv(launch->frontend, (char *const *)runtime_argv);
+        _exit(127);
+    }
+    if (monitor_out) *monitor_out = spawned;
+#endif
+    unsigned transfer_count = 0;
+    for (unsigned i = 0; i < 4; i++) if (launch->transfer_rom_paths[i]) transfer_count++;
+    snprintf(status, status_size, "N64_RUNTIME STARTED TP:%u", transfer_count);
 }
 
 static void launch_log(const IntegralN64LocalRequest *request,

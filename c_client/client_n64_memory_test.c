@@ -138,7 +138,7 @@ int main(int argc,char **argv)
     const char *roms[2]={rom_path,rom_path};
     for (invalid_save_slot=1;invalid_save_slot<=2;invalid_save_slot++) {
         assert(!prepare_n64_transfer_saves(&state,roms));
-        char message[100];snprintf(message,sizeof(message),"SLOT%d: RUN IN LOCAL, EXIT NORMALLY, THEN RETRY.",invalid_save_slot);
+        char message[100];snprintf(message,sizeof(message),"SLOT%d: RUN N64 MODE WHILE LOGGED IN, EXIT, RETRY.",invalid_save_slot);
         assert(!strcmp(login.status,message));
         assert(!state.n64.n64_runtime_media_host_pid);
         assert(state.n64.preflight_failed);

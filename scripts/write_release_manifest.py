@@ -120,14 +120,16 @@ def executable_paths(platform: str, app_name: str) -> dict[str, str]:
     }
 
 
-def current_source_identity(project_root: Path) -> dict[str, object]:
+def current_source_identity(project_root: Path, preview: bool = False) -> dict[str, object]:
     try:
-        return source_identity(project_root)
+        return source_identity(project_root, allow_dirty_preview=preview)
     except IntegrityError as error:
         raise SystemExit(str(error)) from error
 
 
-def build_source_state(release_dir: Path, platform: str, project_root: Path) -> dict[str, object]:
+def build_source_state(
+    release_dir: Path, platform: str, project_root: Path, preview: bool = False
+) -> dict[str, object]:
     record_path = release_dir / "BUILD_PROVENANCE.json"
     if not record_path.is_file():
         raise SystemExit("release is missing BUILD_PROVENANCE.json")
@@ -161,10 +163,10 @@ def build_source_state(release_dir: Path, platform: str, project_root: Path) -> 
             raise SystemExit(f"release build provenance hash is invalid: {relative}")
         if sha256_file(actual_files[relative]) != expected_hash:
             raise SystemExit(f"release build provenance hash mismatch: {relative}")
-    current_source = current_source_identity(project_root)
-    if dirty:
+    current_source = current_source_identity(project_root, preview)
+    if dirty and not preview:
         raise SystemExit("dirty build artifacts cannot be packaged")
-    if current_source["dirty"]:
+    if current_source["dirty"] and not preview:
         raise SystemExit("release packaging requires a clean checkout")
     if source != current_source:
         raise SystemExit("release build source identity does not match the current source tree")
@@ -207,6 +209,7 @@ def write_manifest(
     minimum_os: str,
     source_archive: dict[str, str] | None,
     project_root: Path,
+    preview: bool = False,
 ) -> None:
     files = regular_files(release_dir)
     hashes = {
@@ -226,9 +229,10 @@ def write_manifest(
     missing_legal = sorted(required_legal - set(hashes))
     if missing_legal:
         raise SystemExit(f"release legal files are missing: {', '.join(missing_legal)}")
-    source = build_source_state(release_dir, platform, project_root)
+    source = build_source_state(release_dir, platform, project_root, preview)
     manifest = {
         "format": 3,
+        "preview": preview,
         "platform": platform,
         "version": version,
         "minimum_os": minimum_os or None,
@@ -349,9 +353,12 @@ def main() -> int:
     parser.add_argument("--minimum-os", default="")
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--formal", action="store_true")
+    parser.add_argument("--preview", action="store_true")
     parser.add_argument("--preflight-formal", action="store_true")
     parser.add_argument("--public-source-archive", type=Path)
     args = parser.parse_args()
+    if args.preview and args.formal:
+        parser.error("--preview and --formal cannot be combined")
 
     project_root = Path(__file__).resolve().parent.parent
     public_source = (
@@ -371,7 +378,7 @@ def main() -> int:
     write_sha256s(release_dir)
     write_manifest(
         release_dir, args.platform, args.version, args.app_name,
-        args.minimum_os, source_archive, project_root,
+        args.minimum_os, source_archive, project_root, args.preview,
     )
     verify_release_dir(release_dir)
     if args.archive is not None:

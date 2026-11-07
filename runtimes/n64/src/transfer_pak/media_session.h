@@ -18,6 +18,9 @@ int transfer_pak_media_session_prepare(TransferPakMediaSession *session,
 int transfer_pak_media_session_prepare_mask(TransferPakMediaSession *session,
                                      const char *storage,
                                      unsigned int slot_mask);
+int transfer_pak_media_session_prepare_direct(TransferPakMediaSession *session,
+                                     const char *const rom_paths[4],
+                                     const char *const save_paths[4]);
 int transfer_pak_media_session_finalize(TransferPakMediaSession *session);
 void transfer_pak_media_session_discard(TransferPakMediaSession *session);
 int transfer_pak_media_session_ready(const TransferPakMediaSession *session,

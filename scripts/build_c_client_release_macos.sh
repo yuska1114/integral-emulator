@@ -24,6 +24,7 @@ INTEGRAL_EMULATOR_MACOS_DEPLOYMENT_TARGET="${INTEGRAL_EMULATOR_MACOS_DEPLOYMENT_
 INTEGRAL_EMULATOR_RELEASE_ROOT="${INTEGRAL_EMULATOR_RELEASE_ROOT:-${PROJECT_ROOT}/dist/releases}"
 INTEGRAL_EMULATOR_RELEASE_APP_NAME="${INTEGRAL_EMULATOR_RELEASE_APP_NAME:-INTEGRAL EMULATOR}"
 INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME="${INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME:-}"
+INTEGRAL_EMULATOR_RELEASE_PREVIEW="${INTEGRAL_EMULATOR_RELEASE_PREVIEW:-0}"
 INTEGRAL_EMULATOR_RELEASE_SKIP_CODESIGN="${INTEGRAL_EMULATOR_RELEASE_SKIP_CODESIGN:-0}"
 INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD="${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD:-0}"
 INTEGRAL_EMULATOR_ICON_ICNS="${INTEGRAL_EMULATOR_ICON_ICNS:-${PROJECT_ROOT}/assets/public/integral_emulator_icon.icns}"
@@ -59,6 +60,15 @@ N64_RUNTIME_DIR="${RESOURCES_DIR}/runtimes/n64"
 SSL_DIR="${RESOURCES_DIR}/ssl"
 ZIP_PATH="${RELEASE_ROOT}/${PACKAGE_NAME}.zip"
 FORMAL_ARGS=()
+PROVENANCE_ARGS=()
+if [[ "${INTEGRAL_EMULATOR_RELEASE_PREVIEW}" == "1" ]]; then
+  if [[ "$(cd "${RELEASE_ROOT}" && pwd)" == "${PROJECT_ROOT}/dist/releases" ]]; then
+    echo "Preview packages must use a separate release root." >&2
+    exit 1
+  fi
+  FORMAL_ARGS=(--preview)
+  PROVENANCE_ARGS=(--preview)
+fi
 if [[ "$(cd "${RELEASE_ROOT}" && pwd)" == "${PROJECT_ROOT}/dist/releases" ]]; then
   python3 "${PROJECT_ROOT}/scripts/write_release_manifest.py" --preflight-formal
   FORMAL_ARGS=(--formal)
@@ -515,7 +525,8 @@ if grep -aR -l -F "${PROJECT_ROOT}" "${PACKAGE_DIR}" >/dev/null; then
   exit 1
 fi
 python3 "${PROJECT_ROOT}/scripts/build_artifact_provenance.py" "${PACKAGE_DIR}" \
-  --platform macos --project-root "${PROJECT_ROOT}" --write
+  --platform macos --project-root "${PROJECT_ROOT}" --write \
+  ${PROVENANCE_ARGS[@]+"${PROVENANCE_ARGS[@]}"}
 
 python3 "${PROJECT_ROOT}/scripts/write_release_manifest.py" \
   "${PACKAGE_DIR}" \

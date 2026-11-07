@@ -282,7 +282,7 @@ int main(int argc, char **argv)
     app->ui.screen = SCREEN_GB_MOBILE;
     app->local.local_starting = true;
     for (unsigned i = 0; i < 2; i++) {
-        handle_local_key(app, &enter);
+        handle_gb_mode_key(app, &enter);
         assert(!strcmp(app->login.status, "GAME ALREADY RUNNING"));
         handle_n64_runtime_key(app, &enter);
         assert(!strcmp(app->login.status, "GAME ALREADY RUNNING"));
@@ -297,14 +297,14 @@ int main(int argc, char **argv)
     if (!app->local.local_monitor) { sleep(1); _exit(0); }
 #endif
     for (unsigned i = 0; i < 2; i++) {
-        handle_local_key(app, &enter);
+        handle_gb_mode_key(app, &enter);
         assert(!strcmp(app->login.status, "GAME ALREADY RUNNING"));
         handle_n64_runtime_key(app, &enter);
         assert(!strcmp(app->login.status, "GAME ALREADY RUNNING"));
     }
     int monitor_status = 0;
     waitpid(app->local.local_monitor, &monitor_status, 0);
-    handle_local_key(app, &enter);
+    handle_gb_mode_key(app, &enter);
     assert(!app->local.local_monitor && !strcmp(app->login.status, "SLOT1 ROM REQUIRED"));
     handle_n64_runtime_key(app, &enter);
     assert(!strcmp(app->login.status, "LOGIN TOKEN REQUIRED"));
@@ -322,7 +322,7 @@ int main(int argc, char **argv)
     strcpy(app->login.username, "notice-owner");
     strcpy(app->login.token, "synthetic-token");
     strcpy(app->catalog.server_rom_slots[0].save_id, "notice-save");
-    const AppScreen notice_screens[] = {SCREEN_LOCAL, SCREEN_LOCAL, SCREEN_GB_MOBILE, SCREEN_N64_RUNTIME};
+    const AppScreen notice_screens[] = {SCREEN_GB_MODE, SCREEN_GB_MODE, SCREEN_GB_MOBILE, SCREEN_N64_RUNTIME};
     for (unsigned i = 0; i < 4; ++i) {
         app->ui.screen = notice_screens[i];
         app->local.outbox_checked_ticks = 0;

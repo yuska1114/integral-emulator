@@ -54,10 +54,11 @@ def write_record(
     project_root: Path,
     platform: str,
     source_record: dict[str, object] | None = None,
+    preview: bool = False,
 ) -> Path:
     if source_record is None:
         try:
-            source = source_identity(project_root)
+            source = source_identity(project_root, allow_dirty_preview=preview)
         except IntegrityError as error:
             raise SystemExit(str(error)) from error
     else:
@@ -131,6 +132,7 @@ def main() -> int:
     parser.add_argument("--require-clean", action="store_true")
     parser.add_argument("--source-provenance-root", type=Path)
     parser.add_argument("--match-source", action="store_true")
+    parser.add_argument("--preview", action="store_true")
     args = parser.parse_args()
     if args.write == args.verify:
         parser.error("choose exactly one of --write or --verify")
@@ -152,7 +154,8 @@ def main() -> int:
                 expected_source, True,
             )
         path = write_record(
-            artifact_root, args.project_root.resolve(), args.platform, source_record
+            artifact_root, args.project_root.resolve(), args.platform, source_record,
+            args.preview,
         )
         print(path)
     else:

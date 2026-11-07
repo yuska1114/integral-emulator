@@ -17,6 +17,8 @@ void merge_server_rom_slots(IntegralConfigRomSlot slots[INTEGRAL_CONFIG_ROM_SLOT
 void validate_local_indices(const IntegralConfigRomSlot slots[INTEGRAL_CONFIG_ROM_SLOTS],
                              int local_indices[2], int *room_index);
 int scan_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity);
+int scan_local_gb_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity);
+int scan_local_n64_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity);
 
 void integral_rom_cycle_local(const IntegralConfigRomSlot *slots, int local_indices[2],
     const char *config_path, char *status, size_t status_size, unsigned slot_index, int delta);

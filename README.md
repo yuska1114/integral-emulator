@@ -1,10 +1,12 @@
 # INTEGRAL EMULATOR
 
-INTEGRAL EMULATORは、オープンソースのGame Boyエミュレータです。通信ケーブルによるGame Boy同士の通信、NINTENDO 64との接続、モバイルアダプタGBとの連携が特徴です。また、セーブデータはサーバーで管理する設計になっています。
+INTEGRAL EMULATORは、オープンソースのGame Boyエミュレータです。通信ケーブルによるGame Boy同士の通信、NINTENDO 64との接続、モバイルアダプタGBとの連携が特徴です。ログイン後のプレイではセーブデータをサーバーで管理し、ログイン不要の`LOCAL MODE`ではこのPCに保存します。
 
 本エミュレータは、主に、デスクトップクライアント、Integral Server、GB Runtime、N64 Runtimeから構成されます。
 
 本リポジトリにはゲームROMやSAVデータは含まれていません。
+
+画面の`PLAY GAME`はログイン後と`LOCAL MODE`で共通です。ソースやAPIに残る`local`は従来の「ROOMではなくこのPCで実行する」意味にも使われ、必ずしもログイン不要を示しません。詳しくは[C Clientの用語と保存先](docs/C_CLIENT.md#画面と保存先の用語)を参照してください。
 
 ## 主な構成
 

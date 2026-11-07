@@ -65,6 +65,31 @@ int transfer_pak_media_session_prepare_mask(TransferPakMediaSession *session,
     return 0;
 }
 
+int transfer_pak_media_session_prepare_direct(TransferPakMediaSession *session,
+                                     const char *const rom_paths[4],
+                                     const char *const save_paths[4])
+{
+    if (session == NULL || rom_paths == NULL || save_paths == NULL) return -1;
+    memset(session, 0, sizeof(*session));
+    for (int controller = 0; controller < 4; controller++) {
+        if (!rom_paths[controller] && !save_paths[controller]) continue;
+        if (!rom_paths[controller] || !save_paths[controller] ||
+            strlen(rom_paths[controller]) >= sizeof(session->rom_paths[controller])) goto fail;
+        uint32_t size;
+        if (transfer_pak_storage_file_size(rom_paths[controller], &size) != 0 || size == 0 ||
+            transfer_pak_storage_file_size(save_paths[controller], &size) != 0) goto fail;
+        memcpy(session->rom_paths[controller], rom_paths[controller], strlen(rom_paths[controller]) + 1);
+        if (transfer_pak_save_stage_prepare(&session->saves[controller],
+                session->rom_paths[controller], save_paths[controller],
+                session->ram_paths[controller], sizeof(session->ram_paths[controller])) != 0) goto fail;
+        session->ready[controller] = 1;
+    }
+    return 0;
+fail:
+    transfer_pak_media_session_discard(session);
+    return -1;
+}
+
 int transfer_pak_media_session_finalize(TransferPakMediaSession *session)
 {
     int controller;

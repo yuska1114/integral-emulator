@@ -1,41 +1,66 @@
 # INTEGRAL EMULATOR C Client
 
-C Clientは、ログイン、ROM登録、LOCALプレイ、ROOM参加、GB Mobile Mode、
+C Clientは、ログイン、ROM登録、GB／N64の実行、ROOM参加、GB Mobile Mode、
 GB／N64 Runtimeの起動を行うデスクトップクライアントです。
 
 現行リリースは`0.4.0-beta`です。ログイン時の機械判定値と画面表記にも`0.4.0-beta`を使用します。
 `ASK SERVER ADMIN FOR SUPPORTED VERSION`が表示された場合は、管理者へ対応版を確認してください。
 
-ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として管理します。
+ログインして使用する場合、ROM本体は各利用者のPCに置き、SAVはIntegral Serverを正本として管理します。
+
+## 画面と保存先の用語
+
+- `LOCAL MODE`：ログインしない入口。サーバーと通信せず、`roms/`のROMと同じフォルダーのセーブデータで遊びます。
+- `PLAY GAME`：ログイン後とLOCAL MODEで共通の機種選択画面。`GB MODE`／`N64 MODE`を選びます。`MOBILE MODE`はログイン後のみ使用できます。
+- ログイン後の`GB MODE`／`N64 MODE`：ゲームはこのPCで動きますが、サーバーのGame SessionとSAV同期を使います。
+- `ROOM`：サーバーを介して相手と接続するモードです。
+
+ソースやAPIに残る`local`／`LOCAL_CLIENT`は、従来の「ROOMではなくこのPCで実行する」
+という識別子です。`LOCAL MODE`（ログイン不要）を意味するとは限りません。
 
 RESETの既定キーはOです。保存済みの割当ては維持され、`SETTINGS`内の各キー設定画面にある`RESET DEFAULTS`で既定値へ戻せます。
 
-LOCAL N64の1～4Pは`SETTINGS > N64 KEYS CONFIG`で設定できます。画面上部の
+N64 MODEの1～4Pは`SETTINGS > N64 KEYS CONFIG`で設定できます。画面上部の
 `N64 CONTROLLER 1P`～`4P`を左右キーで切り替えてから`N64 KEYS`を編集します。
-2～4Pの未設定値はAUTOとして扱い、設定値はアカウント別`.conf`の`keys.n64_p2`～
-`keys.n64_p4`へ保存します。LOCAL N64の4ポートはGB SLOTの有無にかかわらず有効です。
+2～4Pの未設定値はAUTOとして扱い、設定値はログイン後ならアカウント別`.conf`、
+LOCAL MODEなら`config/integral_client_local.conf`の`keys.n64_p2`～`keys.n64_p4`へ
+保存します。N64 MODEの4ポートはGB SLOTの有無にかかわらず有効です。
 N64で使用するゲームパッドはゲーム開始前に接続してください。起動後の初接続は対象外です。
-ROM REGISTERではROM1～ROM8の対象行を選び、Enterでサーバーへ登録します。
+ログイン後のROM REGISTERではROM1～ROM8の対象行を選び、Enterでサーバーへ登録します。
 F2はROMパス編集、F4は`roms/`内の一覧表示です。パス編集ではEnterで確定、Escで取消します。
 EXPORTは登録枠番号付きのSAV名で出力し、同名ROMの別枠も別ファイルになります。
 
 OPTIONSの設定値は画面へ入るときに読み込み、表示中の描画は保持した状態だけを参照します。
 値を変更すると設定ファイルへ保存し、再入時に最新値を読み直します。
 
+## LOCAL MODEの設定
+
+ログイン画面の`LOCAL MODE`からメインメニューの`SETTINGS`へ進めます。
+GB／N64／UTILのキー設定と`OPTIONS`は、ログイン用設定とは別の
+`config/integral_client_local.conf`へ保存し、次回LOCAL MODEに入るときに読み込みます。
+設定ファイルの基準パスを変更した場合は、そのファイル名の拡張子の前に`_local`を付けた
+ファイルを使用します。LOCAL MODEのGB／N64起動にもこの設定が適用されます。
+`PLAY GAME > GB MODE`／`N64 MODE`では`roms/`内のROMを選び、サーバーへのROM登録は不要です。
+GB ROMのSAVは同じ場所の同名`.sav`（例：`roms/game.gbc` → `roms/game.sav`）です。
+N64 MODEのTransfer PakもGB ROMの隣の`.sav`を使い、N64本体のセーブ
+（`.eep`／`.sra`／`.fla`など）はROMと同じフォルダーに置きます。
+`SCREENSHOTS`もログイン後と同じように使用できます。
+
 ## GBのIR受信調整（実験的設定）
 
-`SETTINGS > OPTIONS > IR RELEASE DELAY`で変更できます。値はアカウント別設定ファイル
-`config/integral_client_<server>_<user>.conf` の`gb.ir_off_delay_ticks`へ保存します。
+`SETTINGS > OPTIONS > IR RELEASE DELAY`で変更できます。ログイン後はアカウント別設定
+`config/integral_client_<server>_<user>.conf`、LOCAL MODEでは専用設定ファイルの
+`gb.ir_off_delay_ticks`へ保存します。
 既定32、範囲0〜256、0は従来のSameBoy動作です。単位は8MHz tick（32は約3.8μ秒）。
 SERVER2とLink Cable ROOMのHostに適用し、Hostの両コアを同じ値で動かします。
 Remote側の値は使用しません。次回ゲーム起動時に読み込みます。
-1画面LOCAL・Mobile・N64には適用しません。大きくすると短いOFF区間を
+1画面のGB MODE・MOBILE MODE・N64 MODEには適用しません。大きくすると短いOFF区間を
 見失う可能性があり、実機の応答時間を保証する設定ではありません。
 
 ## SGB表示
 
 `SETTINGS > OPTIONS > SGB`で`ENABLE`／`DISABLE`を切り替えます。既定は`ENABLE`です。
-SGBを有効にしてLOCAL GBを1スロットで起動し、対象ROMがSGB2として動作する場合は、
+SGBを有効にしてGB MODEを1スロットで起動し、対象ROMがSGB2として動作する場合は、
 256×224のSGB表示を使用します。SameBootの起動画面は表示せず、ゲーム側がSGBボーダーを
 転送するまでは中央のGB画面だけを表示し、転送後はゲーム側ボーダーも表示します。
 SERVER2、Mobile Mode、Link Cable ROOMでは従来どおり160×144表示です。
@@ -58,15 +83,15 @@ ENTER／ESCAPEにキーボードまたはゲームパッド入力を追加で割
 
 | モード | SCREENSHOT / ESCAPE | RESET | FAST / TURBO |
 |---|---|---|---|
-| LOCAL GB（1スロット） | 有効 | 有効 | 有効 |
-| LOCAL GB SERVER2 | 有効 | 両スロット同時 | 無効 |
-| GB MOBILE | 有効 | 有効 | 無効 |
+| GB MODE（1スロット） | 有効 | 有効 | 有効 |
+| GB MODE（2スロット） | 有効 | 両スロット同時 | 無効 |
+| MOBILE MODE | 有効 | 有効 | 無効 |
 | LINK CABLE ROOM | 有効 | 無効 | 無効 |
-| LOCAL N64 | 有効 | 有効 | 無効 |
+| N64 MODE | 有効 | 有効 | 無効 |
 | N64 ROOM | 有効 | 無効 | 無効 |
 
 撮影ファイル名にはモード・local／host／remote・日時を含めます。
-撮影結果はゲーム画面へ短く表示します（N64 LOCAL／Hostはタイトルへ約2秒）。ESCAPEとウィンドウの閉じる操作は
+撮影結果はゲーム画面へ短く表示します（N64 MODE／ROOM Hostはタイトルへ約2秒）。ESCAPEとウィンドウの閉じる操作は
 終了確認を表示し、キャンセルできます。ROOMの保存方針は変更しません。
 N64 ROOM Hostは親画面にフォーカスがある場合も撮影できます。ゲームパッドの撮影入力は親が受け、Runtimeへ要求します。Remoteは受信表示フレームを保存します。
 画像は縦横比を維持して画面内に収めます。新しく保存した画像は閲覧画面を開き直すと反映されます。
@@ -228,7 +253,7 @@ Mobile Modeでは`SLOT 1 KEYS`と共通操作の割当を使用しますが、�
 OSで選択中のキーボード入力方式は変更しません。
 
 Clientはウィンドウの端をドラッグして自由に大きさを変更でき、終了時のサイズを次回起動時に
-復元します。Clientから起動するGBのLOCAL、Mobile Mode、Link Cable ROOMのHost／Remote
+復元します。Clientから起動するGB MODE、MOBILE MODE、Link Cable ROOMのHost／Remote
 画面は、起動時のClientと同じウィンドウサイズになり、その後は独立して変更できます。
 GB映像は整数倍率・最近傍補間で中央表示し、余った領域は黒い余白になります。
 
@@ -252,15 +277,16 @@ SAVを選択し、確認後に送信できます。
 
 ## Game Sessionと一時SAV
 
-Game Session Lockを取得したClientだけがRuntimeを起動できます。
+ログイン後のPLAY GAMEでは、Game Session Lockを取得したClientだけがRuntimeを起動できます。
+LOCAL MODEではこのサーバーロックを使用しません。
 
-LOCALプレイとMobile Modeでは、サーバーから取得したSAVをセッション用ディレクトリへ
+ログイン後のGB MODE／N64 MODE／MOBILE MODEでは、サーバーから取得したSAVをセッション用ディレクトリへ
 一時的に書き出します。Runtime終了後、変更されたSAVをサーバーへ反映してから
 一時ファイルを削除します。
 
 SERVER2では、同じROMをSLOT1とSLOT2に指定できます。登録枠ごとに異なるSAVを使用し、
 同じSAVを両方へ指定することはできません。
-LOCAL SERVER2は同一プロセス内でLink Cableを接続し、両スロットの入力をSDLで処理します。
+GB MODEの2スロット実行は同一プロセス内でLink Cableを接続し、両スロットの入力をSDLで処理します。
 LAN待受は開始しません。ネットワーク待受は明示的なLAN REMOTE利用時のみです。
 
 通信障害などでSAVを反映できなかった場合は、利用者自身の候補SAVを
@@ -286,15 +312,15 @@ Tradeの終了確認に両者のSAVが更新されない旨を表示し、ROOM�
 
 RTC搭載ROMのSAVにRTC情報がない場合や形式が対応外の場合は、通信開始前に拒否します。
 User1側で両者のSAVを確認し、確認が終わるまで通信接続は開始しません。その場合は
-LOCALで一度ゲームを起動し、正常に終了してから再度お試しください。
+ログイン後のPLAY GAME > GB MODEで一度ゲームを起動し、正常に終了してから再度お試しください。
 対応するRTC情報がある場合は、通信開始時に各SAVの時計をサーバー時刻まで
 個別に進め、その後は通常のエミュレーション進行に合わせて更新します。
 
 ## Mobile Mode
 
 Mobile Modeでは、サーバーが配信したパッケージをGB Runtimeへ渡します。
-SAVの取得、更新、回復方法はLOCALプレイと同じで、サーバー上のSAVが正本です。
-起動時のRTC補正もLOCALプレイと同じです。終了確認から正常終了すると、RTCを含むSAVを
+SAVの取得、更新、回復方法はログイン後のGB MODEと同じで、サーバー上のSAVが正本です。
+起動時のRTC補正もログイン後のGB MODEと同じです。終了確認から正常終了すると、RTCを含むSAVを
 書き出します。Clientは正常終了、battery flush、SAVのサイズとhashを確認してから
 サーバーへ反映し、その後にMobileセッションを完了します。
 

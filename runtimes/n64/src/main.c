@@ -60,6 +60,8 @@ typedef struct Options {
     const char *input_path;
     const char *rsp_path;
     const char *transfer_storage;
+    const char *transfer_rom_paths[4];
+    const char *transfer_save_paths[4];
     const char *remote_input_file;
     const char *remote_media_file;
     const char *stop_request_file;
@@ -182,7 +184,7 @@ static void print_usage(const char *program)
             "Usage: %s --rom FILE --core FILE --config-dir DIR --data-dir DIR\n"
             "          --screenshot-dir DIR --video FILE --audio FILE|dummy\n"
             "          --input FILE --rsp FILE --save-dir SESSION_DIR --save-name NAME\n"
-            "          [--transfer-storage DIR]\n"
+            "          [--transfer-storage DIR | --transfer-rom1 FILE --transfer-save1 FILE ...]\n"
             "          [--remote-input-file FILE]\n"
             "          [--remote-media-file FILE]\n"
             "          [--stop-request-file FILE]\n"
@@ -308,6 +310,16 @@ static bool parse_options(int argc, char **argv, Options *options)
         else if (strcmp(argv[i], "--transfer-storage") == 0) {
             if (!require_value(argc, argv, &i, &options->transfer_storage)) return false;
         }
+        else if (strncmp(argv[i], "--transfer-rom", 14u) == 0 &&
+                 argv[i][14] >= '1' && argv[i][14] <= '4' && argv[i][15] == '\0') {
+            unsigned slot = (unsigned)(argv[i][14] - '1');
+            if (!require_value(argc, argv, &i, &options->transfer_rom_paths[slot])) return false;
+        }
+        else if (strncmp(argv[i], "--transfer-save", 15u) == 0 &&
+                 argv[i][15] >= '1' && argv[i][15] <= '4' && argv[i][16] == '\0') {
+            unsigned slot = (unsigned)(argv[i][15] - '1');
+            if (!require_value(argc, argv, &i, &options->transfer_save_paths[slot])) return false;
+        }
         else if (strcmp(argv[i], "--transfer-sav-session") == 0) {
             if (!require_value(argc, argv, &i, &options->transfer_sav_session)) return false;
         }
@@ -359,6 +371,12 @@ static bool parse_options(int argc, char **argv, Options *options)
         }
     }
 
+    bool direct_transfer = false;
+    for (i = 0; i < 4; ++i) {
+        if (!!options->transfer_rom_paths[i] != !!options->transfer_save_paths[i]) return false;
+        if (options->transfer_rom_paths[i]) direct_transfer = true;
+    }
+    if (direct_transfer && (options->transfer_storage || options->transfer_sav_session)) return false;
     return ((options->transfer_sav_fd < 0 && !options->transfer_sav_session && !options->remote_media_file) ||
             (options->transfer_sav_fd >= 3 && options->transfer_sav_session &&
              options->transfer_storage && options->remote_media_file)) &&
@@ -818,7 +836,11 @@ static bool load_plugin(Frontend *frontend, Plugin *plugin)
 static bool configure_transfer_paks(Frontend *frontend)
 {
     int controller;
-    if (frontend->options.transfer_storage == NULL) {
+    bool direct = false;
+    for (controller = 0; controller < 4; ++controller) {
+        if (frontend->options.transfer_rom_paths[controller]) direct = true;
+    }
+    if (frontend->options.transfer_storage == NULL && !direct) {
         return true;
     }
     for (controller = 0; controller < 4; ++controller) {
@@ -1045,12 +1067,17 @@ static int run_frontend(Frontend *frontend)
             return 5;
         }
         printf("N64 Runtime: Transfer Pak memory ready ports=2 no_save=1\n");
-    } else if (frontend->options.transfer_storage != NULL) {
-        if (transfer_pak_media_session_prepare_mask(
-                &frontend->media_session, frontend->options.transfer_storage,
-                frontend->options.transfer_mask) != 0) {
+    } else if (frontend->options.transfer_storage != NULL || frontend->options.transfer_rom_paths[0] ||
+               frontend->options.transfer_rom_paths[1] || frontend->options.transfer_rom_paths[2] ||
+               frontend->options.transfer_rom_paths[3]) {
+        int transfer_result = frontend->options.transfer_storage != NULL
+            ? transfer_pak_media_session_prepare_mask(&frontend->media_session,
+                  frontend->options.transfer_storage, frontend->options.transfer_mask)
+            : transfer_pak_media_session_prepare_direct(&frontend->media_session,
+                  frontend->options.transfer_rom_paths, frontend->options.transfer_save_paths);
+        if (transfer_result != 0) {
             fprintf(stderr, "N64 Runtime: failed to prepare Transfer Pak storage %s\n",
-                    frontend->options.transfer_storage);
+                    frontend->options.transfer_storage ? frontend->options.transfer_storage : "local ROM paths");
             return 5;
         }
         frontend->media_prepared = true;

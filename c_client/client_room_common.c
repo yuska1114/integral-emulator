@@ -672,7 +672,7 @@ void handle_room_heartbeat_result(IntegralRoomContext *state,
         state->common.room_poll_epoch++;
         state->common.current_room.ready1 = state->common.current_room.ready2 = 0;
         copy_text(state->login->status, sizeof(state->login->status),
-                  "SAV NOT READY: RUN IN LOCAL, EXIT NORMALLY, THEN RETRY.");
+                  "SAV NOT READY: RUN N64 MODE WHILE LOGGED IN, EXIT, RETRY.");
         integral_focus_new_game_window(state->main_window);
         return;
     }

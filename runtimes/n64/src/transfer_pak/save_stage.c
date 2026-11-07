@@ -4,6 +4,7 @@
 #endif
 
 #include "transfer_pak/save_stage.h"
+#include "../../../gb/src/common/utf8_file.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -12,9 +13,21 @@
 #define TRANSFER_PAK_MBC3_RTC_TRAILER_SIZE 48u
 #define TRANSFER_PAK_RTC_REASONABLE_EPOCH 852076800ull
 
+static int remove_path(const char *path)
+{
+#ifdef _WIN32
+    wchar_t *wide = integral_utf8_wide(path);
+    int result = wide ? _wremove(wide) : -1;
+    free(wide);
+    return result;
+#else
+    return remove(path);
+#endif
+}
+
 uint32_t transfer_pak_gb_ram_size(const char *rom_path)
 {
-    FILE *file = fopen(rom_path, "rb");
+    FILE *file = integral_fopen(rom_path, "rb");
     int code;
     if (file == NULL || fseek(file, 0x149L, SEEK_SET) != 0) {
         if (file != NULL) {
@@ -36,7 +49,7 @@ uint32_t transfer_pak_gb_ram_size(const char *rom_path)
 
 static int gb_has_mbc3_rtc(const char *rom_path)
 {
-    FILE *file = fopen(rom_path, "rb");
+    FILE *file = integral_fopen(rom_path, "rb");
     int code;
     if (file == NULL || fseek(file, 0x147L, SEEK_SET) != 0) {
         if (file != NULL) {
@@ -70,8 +83,8 @@ static int copy_range_atomic(const char *source_path, uint32_t offset,
     if (length < 0 || (size_t)length >= sizeof(temporary)) {
         return -1;
     }
-    input = fopen(source_path, "rb");
-    output = fopen(temporary, "wb");
+    input = integral_fopen(source_path, "rb");
+    output = integral_fopen(temporary, "wb");
     if (input != NULL && output != NULL &&
         fseek(input, (long)offset, SEEK_SET) == 0 &&
         transfer_pak_storage_copy(input, output, size) == 0) {
@@ -86,7 +99,7 @@ static int copy_range_atomic(const char *source_path, uint32_t offset,
     }
     if (input != NULL) (void)fclose(input);
     if (output != NULL) (void)fclose(output);
-    if (result != 0) (void)remove(temporary);
+    if (result != 0) (void)remove_path(temporary);
     return result;
 }
 
@@ -177,16 +190,16 @@ static int write_synthetic_mbc3_rtc(const char *target_path)
     if (length < 0 || (size_t)length >= sizeof(temporary)) {
         return -1;
     }
-    output = fopen(temporary, "wb");
+    output = integral_fopen(temporary, "wb");
     if (output == NULL ||
         fwrite(trailer, 1, sizeof(trailer), output) != sizeof(trailer) ||
         fclose(output) != 0) {
         if (output != NULL) (void)fclose(output);
-        (void)remove(temporary);
+        (void)remove_path(temporary);
         return -1;
     }
     if (transfer_pak_storage_replace(temporary, target_path) != 0) {
-        (void)remove(temporary);
+        (void)remove_path(temporary);
         return -1;
     }
     return 0;
@@ -194,7 +207,7 @@ static int write_synthetic_mbc3_rtc(const char *target_path)
 
 static int repair_mbc3_rtc_if_needed(const char *rtc_path)
 {
-    FILE *file = fopen(rtc_path, "rb");
+    FILE *file = integral_fopen(rtc_path, "rb");
     unsigned char trailer[TRANSFER_PAK_MBC3_RTC_TRAILER_SIZE];
     int valid = 0;
     if (file != NULL) {
@@ -316,13 +329,13 @@ int transfer_pak_save_stage_finalize(TransferPakSaveStage *stage)
         working_size < stage->ram_size || original_size != stage->original_size) {
         return -1;
     }
-    working = fopen(stage->working_path, "rb");
-    original = fopen(stage->original_path, "rb");
-    output = fopen(temporary, "wb");
+    working = integral_fopen(stage->working_path, "rb");
+    original = integral_fopen(stage->original_path, "rb");
+    output = integral_fopen(temporary, "wb");
     if (stage->rtc_path[0] != '\0' &&
         transfer_pak_storage_file_size(stage->rtc_path, &rtc_size) == 0 &&
         rtc_size == stage->merged_size - stage->ram_size) {
-        trailer = fopen(stage->rtc_path, "rb");
+        trailer = integral_fopen(stage->rtc_path, "rb");
     }
     if (working == NULL || original == NULL || output == NULL ||
         transfer_pak_storage_copy(working, output, stage->ram_size) != 0 ||
@@ -334,7 +347,7 @@ int transfer_pak_save_stage_finalize(TransferPakSaveStage *stage)
         if (original != NULL) (void)fclose(original);
         if (trailer != NULL) (void)fclose(trailer);
         if (output != NULL) (void)fclose(output);
-        (void)remove(temporary);
+        (void)remove_path(temporary);
         return -1;
     }
     close_failed = fclose(working) != 0;
@@ -343,7 +356,7 @@ int transfer_pak_save_stage_finalize(TransferPakSaveStage *stage)
     close_failed |= fclose(output) != 0;
     if (close_failed ||
         transfer_pak_storage_replace(temporary, stage->original_path) != 0) {
-        (void)remove(temporary);
+        (void)remove_path(temporary);
         return -1;
     }
     transfer_pak_save_stage_discard(stage);
@@ -355,7 +368,7 @@ void transfer_pak_save_stage_discard(TransferPakSaveStage *stage)
     if (stage == NULL) {
         return;
     }
-    if (stage->working_path[0] != '\0') (void)remove(stage->working_path);
-    if (stage->rtc_path[0] != '\0') (void)remove(stage->rtc_path);
+    if (stage->working_path[0] != '\0') (void)remove_path(stage->working_path);
+    if (stage->rtc_path[0] != '\0') (void)remove_path(stage->rtc_path);
     memset(stage, 0, sizeof(*stage));
 }

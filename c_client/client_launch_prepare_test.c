@@ -195,8 +195,13 @@ void monitor_save_sync_process(IntegralChildProcess pid,const char *server,const
 #endif
 static void check_arguments(void)
 {
-    IntegralN64LocalLaunch l={"frontend","日本語 rom.z64","core","config","data","screenshots",
-        "save dir","save-name","video","audio","input","rsp","transfer","map","utils", {NULL,NULL,NULL}};
+    IntegralN64LocalLaunch l={
+        .frontend="frontend", .rom="日本語 rom.z64", .core="core",
+        .config_dir="config", .data="data", .screenshot_dir="screenshots",
+        .save_dir="save dir", .save_name="save-name", .video="video",
+        .audio="audio", .input="input", .rsp="rsp", .transfer_dir="transfer",
+        .controller_map="map", .hotkeys="utils"
+    };
     const char *expected[]={"frontend","--rom","日本語 rom.z64","--core","core","--config-dir","config",
         "--data-dir","data","--screenshot-dir","screenshots","--save-dir","save dir","--save-name",
         "save-name","--video","video","--audio","audio","--input","input","--rsp","rsp",

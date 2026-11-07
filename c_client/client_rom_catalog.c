@@ -7,9 +7,12 @@
 #include "../runtimes/gb/src/common/utf8_file.h"
 #else
 #include <dirent.h>
+#include <sys/stat.h>
 #endif
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 static void copy_text(char *dest, size_t dest_size, const char *src)
 {
@@ -168,6 +171,119 @@ int scan_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX],
 #endif
 }
 
+static bool local_gb_extension(const char *name)
+{
+    const char *dot = strrchr(name, '.');
+    return dot && (strcasecmp(dot, ".gb") == 0 || strcasecmp(dot, ".gbc") == 0);
+}
+
+static bool local_n64_extension(const char *name)
+{
+    const char *dot = strrchr(name, '.');
+    return dot && (strcasecmp(dot, ".z64") == 0 || strcasecmp(dot, ".n64") == 0 ||
+                   strcasecmp(dot, ".v64") == 0);
+}
+
+static int local_gb_path_compare(const void *a, const void *b)
+{
+    return strcmp((const char *)a, (const char *)b);
+}
+
+static int scan_local_rom_directory(const char *folder, const char *relative, bool n64,
+                                   char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity,
+                                   unsigned *count, unsigned depth)
+{
+    if (depth > 16) return 0;
+    char directory[INTEGRAL_CONFIG_PATH_MAX];
+    int length = relative[0] ? snprintf(directory, sizeof(directory), "%s/%s", folder, relative)
+                             : snprintf(directory, sizeof(directory), "%s", folder);
+    if (length < 0 || (size_t)length >= sizeof(directory)) return -1;
+#ifdef _WIN32
+    char pattern[INTEGRAL_CONFIG_PATH_MAX];
+    length = snprintf(pattern, sizeof(pattern), "%s/*", directory);
+    if (length < 0 || (size_t)length >= sizeof(pattern)) return -1;
+    wchar_t *wide_pattern = integral_utf8_wide(pattern);
+    if (!wide_pattern) return -1;
+    WIN32_FIND_DATAW item;
+    HANDLE search = FindFirstFileW(wide_pattern, &item);
+    DWORD error = GetLastError();
+    free(wide_pattern);
+    if (search == INVALID_HANDLE_VALUE) return error == ERROR_FILE_NOT_FOUND ? 0 : -1;
+    int result = 0;
+    do {
+        char name[INTEGRAL_CONFIG_PATH_MAX];
+        if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, item.cFileName,
+                                 -1, name, sizeof(name), NULL, NULL)) { result = -1; break; }
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
+        char child[INTEGRAL_CONFIG_PATH_MAX];
+        length = relative[0] ? snprintf(child, sizeof(child), "%s/%s", relative, name)
+                             : snprintf(child, sizeof(child), "%s", name);
+        if (length < 0 || (size_t)length >= sizeof(child)) continue;
+        if (item.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;
+        if (item.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (scan_local_rom_directory(folder, child, n64, entries, capacity, count, depth + 1) != 0) { result = -1; break; }
+        }
+        else if ((n64 ? local_n64_extension(name) : local_gb_extension(name)) && *count < capacity) {
+            char full[INTEGRAL_CONFIG_PATH_MAX];
+            length = snprintf(full, sizeof(full), "%s/%s", folder, child);
+            IntegralRomMetadata header;
+            if (length > 0 && (size_t)length < sizeof(full) &&
+                integral_rom_metadata_read(full, &header) == 0 && strcmp(header.platform, n64 ? "n64" : "gb") == 0) {
+                copy_text(entries[(*count)++], INTEGRAL_CONFIG_PATH_MAX, child);
+            }
+        }
+    } while (*count < capacity && FindNextFileW(search, &item));
+    if (*count < capacity && result == 0 && GetLastError() != ERROR_NO_MORE_FILES) result = -1;
+    FindClose(search);
+    return result;
+#else
+    DIR *dir = opendir(directory);
+    if (!dir) return -1;
+    int result = 0;
+    struct dirent *item;
+    while (*count < capacity && (item = readdir(dir)) != NULL) {
+        if (strcmp(item->d_name, ".") == 0 || strcmp(item->d_name, "..") == 0) continue;
+        char child[INTEGRAL_CONFIG_PATH_MAX], full[INTEGRAL_CONFIG_PATH_MAX];
+        length = relative[0] ? snprintf(child, sizeof(child), "%s/%s", relative, item->d_name)
+                             : snprintf(child, sizeof(child), "%s", item->d_name);
+        if (length < 0 || (size_t)length >= sizeof(child)) continue;
+        length = snprintf(full, sizeof(full), "%s/%s", folder, child);
+        if (length < 0 || (size_t)length >= sizeof(full)) continue;
+        struct stat info;
+        if (lstat(full, &info) != 0) continue;
+        if (S_ISDIR(info.st_mode)) {
+            if (scan_local_rom_directory(folder, child, n64, entries, capacity, count, depth + 1) != 0) { result = -1; break; }
+        }
+        else if (S_ISREG(info.st_mode) && (n64 ? local_n64_extension(item->d_name) : local_gb_extension(item->d_name))) {
+            IntegralRomMetadata header;
+            if (integral_rom_metadata_read(full, &header) == 0 && strcmp(header.platform, n64 ? "n64" : "gb") == 0) {
+                copy_text(entries[(*count)++], INTEGRAL_CONFIG_PATH_MAX, child);
+            }
+        }
+    }
+    closedir(dir);
+    return result;
+#endif
+}
+
+int scan_local_gb_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity)
+{
+    unsigned count = 0;
+    if (capacity == 0) return 0;
+    if (scan_local_rom_directory(folder, "", false, entries, capacity, &count, 0) != 0) return -1;
+    qsort(entries, count, sizeof(entries[0]), local_gb_path_compare);
+    return (int)count;
+}
+
+int scan_local_n64_rom_paths(const char *folder, char entries[][INTEGRAL_CONFIG_PATH_MAX], unsigned capacity)
+{
+    unsigned count = 0;
+    if (capacity == 0) return 0;
+    if (scan_local_rom_directory(folder, "", true, entries, capacity, &count, 0) != 0) return -1;
+    qsort(entries, count, sizeof(entries[0]), local_gb_path_compare);
+    return (int)count;
+}
+
 void integral_rom_cycle_local(const IntegralConfigRomSlot *slots, int local_indices[2],
     const char *config_path, char *status, size_t status_size, unsigned slot_index, int delta)
 {
@@ -211,7 +327,7 @@ void integral_rom_cycle_local(const IntegralConfigRomSlot *slots, int local_indi
         .ir_off_delay_ticks = integral_config_ir_off_delay(config_path),
     };
     if (integral_config_save_local(config_path, &local) != 0) {
-        copy_text(status, status_size, "LOCAL CONFIG SAVE FAILED");
+        copy_text(status, status_size, "GB SLOT CONFIG SAVE FAILED");
         return;
     }
     snprintf(status,
