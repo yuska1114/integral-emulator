@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+--- a/src/plugin/plugin.h
++++ b/src/plugin/plugin.h
+@@ -84,6 +84,7 @@
+ 	ptr_VolumeSetLevel    volumeSetLevel;
+ 	ptr_VolumeMute        volumeMute;
+ 	ptr_VolumeGetString   volumeGetString;
++    int (CALL *corePacing)(int enabled, int *correction_ppm);
+ } audio_plugin_functions;
+ 
+ extern audio_plugin_functions audio;
+--- a/src/plugin/plugin.c
++++ b/src/plugin/plugin.c
+@@ -88,7 +88,8 @@
+     dummyaudio_VolumeGetLevel,
+     dummyaudio_VolumeSetLevel,
+     dummyaudio_VolumeMute,
+-    dummyaudio_VolumeGetString
++    dummyaudio_VolumeGetString,
++    NULL
+ };
+ 
+ static const input_plugin_functions dummy_input = {
+@@ -332,6 +333,9 @@
+             return M64ERR_INCOMPATIBLE;
+         }
+ 
++        /* Optional Integral extension. Older and third-party audio plugins
++         * keep their existing synchronization behavior. */
++        GET_FUNC(int (CALL *)(int, int *), audio.corePacing, "IntegralAudioCorePacing");
+         l_AudioAttached = 1;
+     }
+     else
+--- a/src/main/main.c
++++ b/src/main/main.c
+@@ -967,6 +967,8 @@
+     static int resetOnce = 0;
+     static int lastSpeedFactor = 100;
+     static unsigned int StartFPSTime = 0;
++    static int lastAudioPacing = 0;
++    static double audioPacingMilliseconds = 0.0;
+     static const double defaultSpeedFactor = 100.0;
+     unsigned int CurrentFPSTime = SDL_GetTicks();
+ 
+@@ -974,20 +976,28 @@
+     const double VILimitMilliseconds = 1000.0 / g_dev.vi.expected_refresh_rate;
+     const double SpeedFactorMultiple = defaultSpeedFactor/l_SpeedFactor;
+     const double AdjustedLimit = VILimitMilliseconds * SpeedFactorMultiple;
++    int correction_ppm = 0;
++    int audio_pacing = audio.corePacing != NULL &&
++        audio.corePacing(l_MainSpeedLimit && !netplay_is_init(), &correction_ppm);
+ 
+     //if this is the first time or we are resuming from pause
+-    if(StartFPSTime == 0 || !resetOnce || lastSpeedFactor != l_SpeedFactor)
++    if(StartFPSTime == 0 || !resetOnce || lastSpeedFactor != l_SpeedFactor ||
++       lastAudioPacing != audio_pacing)
+     {
+        StartFPSTime = CurrentFPSTime;
+        totalVIs = 0;
++       audioPacingMilliseconds = 0.0;
+        resetOnce = 1;
+     }
+     else
+     {
+         ++totalVIs;
++        if (audio_pacing)
++            audioPacingMilliseconds += AdjustedLimit * correction_ppm / 1000000.0;
+     }
+ 
+     lastSpeedFactor = l_SpeedFactor;
++    lastAudioPacing = audio_pacing;
+ 
+ #if defined(PROFILE)
+     timed_section_start(TIMED_SECTION_IDLE);
+@@ -997,7 +1007,7 @@
+     if(g_DebuggerActive) DebuggerCallback(DEBUG_UI_VI, 0);
+ #endif
+ 
+-    double totalElapsedGameTime = AdjustedLimit*totalVIs;
++    double totalElapsedGameTime = AdjustedLimit*totalVIs + audioPacingMilliseconds;
+     double elapsedRealTime = CurrentFPSTime - StartFPSTime;
+     double sleepTime = totalElapsedGameTime - elapsedRealTime;
+ 
+@@ -1013,10 +1023,15 @@
+         totalVIs += (unsigned long)(minSleepNeeded/AdjustedLimit);
+     }
+ 
+-    if(l_MainSpeedLimit && sleepTime > 0 && sleepTime < maxSleepNeeded*SpeedFactorMultiple)
++    if(l_MainSpeedLimit && sleepTime > 0 && sleepTime < maxSleepNeeded*SpeedFactorMultiple &&
++       (!audio_pacing || sleepTime >= 1.0))
+     {
+         while(sleepTime >= 0) {
+             SDL_Delay((unsigned int) sleepTime);
++            /* The next VI accounts for rounding and scheduler overshoot on
++             * the shared deadline. Avoid polling with SDL_Delay(0). */
++            if (audio_pacing)
++                break;
+ 
+             CurrentFPSTime = SDL_GetTicks();
+             elapsedRealTime = CurrentFPSTime - StartFPSTime;
+@@ -1930,6 +1945,9 @@
+     {
+         goto on_audio_open_failure;
+     }
++    if (audio.corePacing != NULL)
++        audio.corePacing(l_MainSpeedLimit && !netplay_is_init(), NULL);
++
+     if (!input.romOpen())
+     {
+         goto on_input_open_failure;

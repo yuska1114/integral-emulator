@@ -114,8 +114,14 @@
         {
           "license": "GPL-2.0-or-later",
           "order": 10,
+          "path": "runtimes/n64/patches/mupen64plus-core-audio-pacing.patch",
+          "sha256": "e28bf16d00f9106257e3501580cfcb8a50e19dd9efb3cfee0a3829c3c8ef9b34"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 11,
           "path": "runtimes/n64/patches/mupen64plus-core-integral-change-notices.patch",
-          "sha256": "295a7b01ca211b0fcda067afafec0b09b419ccfb315debaad9e4945ab873fcd1"
+          "sha256": "810c5fcdff0e2ac250fa68859096a1d9d7e3116d116f9145abca5b36e9b25cb3"
         }
       ],
       "component": "mupen64plus-core",
@@ -223,8 +229,14 @@
         {
           "license": "GPL-2.0-or-later",
           "order": 2,
+          "path": "runtimes/n64/patches/mupen64plus-audio-sdl-core-pacing.patch",
+          "sha256": "6066c18b4ddd1d34e11c57d5b94265d9e24932d1b9aa2d3cd1ec9a89eba7dbf6"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 3,
           "path": "runtimes/n64/patches/mupen64plus-audio-sdl-integral-change-notices.patch",
-          "sha256": "050918a7f079f7d3adfdd955bae06434159a0215a5eb4e60adad62a667249b5b"
+          "sha256": "783c2b7745754ac90a78b47e5d2c1642874f54e58f23221df870eed887050639"
         }
       ],
       "component": "mupen64plus-audio-sdl",
