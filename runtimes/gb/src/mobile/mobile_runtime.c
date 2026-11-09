@@ -491,7 +491,7 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
           &window, o.scale, 1, "INTEGRAL EMULATOR MOBILE MODE",
           o.window_width, o.window_height))
     running = false;
-  if (running && window && integral_gb_runtime_audio_player_open(&audio, 120u))
+  if (running && window && integral_gb_runtime_audio_player_open(&audio, 120u, false))
     running = false;
   unsigned frame = 0;
   uint64_t deadline = 0;
@@ -544,7 +544,7 @@ int integral_gb_runtime_mobile_runtime_main(int argc, char **argv) {
         fprintf(stdout, "screenshot_frame_%u=%s\n", frame, path);
       }
     }
-    integral_gb_runtime_audio_player_queue_slot(audio, &slot);
+    integral_gb_runtime_audio_player_queue_slot(audio, &slot, false);
     if (window && integral_gb_runtime_video_window_render(window, &slot, NULL))
       running = false;
     if (window && running)

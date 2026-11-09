@@ -70,10 +70,10 @@ static const char *screen_name(AppScreen screen)
             return "password_change";
         case SCREEN_MAIN_MENU:
             return "main";
-        case SCREEN_LOCAL_MODE:
-            return "local_mode";
-        case SCREEN_LOCAL:
-            return "local";
+        case SCREEN_PLAY_GAME_MODE:
+            return "play_game_mode";
+        case SCREEN_GB_MODE:
+            return "gb_mode";
         case SCREEN_GB_MOBILE:
             return "gb_mobile";
         case SCREEN_ROOM_MODE:

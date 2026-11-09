@@ -151,7 +151,7 @@ int main(int argc, char **argv)
     CHECK(press(SDLK_RETURN, 0) == ROM_ACTION_NONE);
     CHECK(strcmp(status, "UNCHANGED") == 0 && !editor.pending_paths[0]);
     press(SDLK_F2, 0); text("x"); press(SDLK_BACKSPACE, 0); press(SDLK_RETURN, 0);
-    CHECK(strcmp(status, "LOCAL ROM PATH SAVED") == 0 && !editor.pending_paths[0]);
+    CHECK(strcmp(status, "ROM PATH SAVED") == 0 && !editor.pending_paths[0]);
     press(SDLK_F2, 0); text(".missing"); press(SDLK_RETURN, 0);
     CHECK(strcmp(status, "FILE NOT FOUND - EDIT ROM PATH") == 0);
     CHECK(!strcmp(slots[0].rom_id, "same-rom") && !strcmp(slots[0].save_id, "save-one"));

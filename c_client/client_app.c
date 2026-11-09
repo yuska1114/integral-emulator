@@ -38,7 +38,7 @@
 #include <SDL.h>
 
 
-#define INTEGRAL_FIELD_COUNT 6
+#define INTEGRAL_FIELD_COUNT 7
 #define INTEGRAL_PASSWORD_CHANGE_ROWS 3
 #ifdef _WIN32
 #ifndef X_OK
@@ -145,6 +145,37 @@ static void activate_user_config(AppState *state)
                            state->config_path,
                            sizeof(state->config_path));
     load_active_user_config(state);
+}
+
+
+static bool activate_local_config(AppState *state)
+{
+    const char *base = state->base_config_path;
+    const char *slash = strrchr(base, '/');
+    const char *backslash = strrchr(base, '\\');
+    if (backslash && (!slash || backslash > slash)) slash = backslash;
+    const char *dot = strrchr(base, '.');
+    char path[sizeof(state->config_path)];
+    int length = dot && (!slash || dot > slash)
+        ? snprintf(path, sizeof(path), "%.*s_local%s", (int)(dot - base), base, dot)
+        : snprintf(path, sizeof(path), "%s_local", base);
+    if (length <= 0 || (size_t)length >= sizeof(path)) return false;
+    copy_text(state->config_path, sizeof(state->config_path), path);
+    integral_keys_defaults(&state->keys);
+    (void)integral_config_load_keys(state->config_path, &state->keys);
+    integral_keys_apply_defaults_for_missing(&state->keys);
+    memset(state->ui.client_alias_held, 0, sizeof(state->ui.client_alias_held));
+    return true;
+}
+
+
+static void restore_login_config(AppState *state)
+{
+    copy_text(state->config_path, sizeof(state->config_path), state->base_config_path);
+    integral_keys_defaults(&state->keys);
+    (void)integral_config_load_keys(state->config_path, &state->keys);
+    integral_keys_apply_defaults_for_missing(&state->keys);
+    memset(state->ui.client_alias_held, 0, sizeof(state->ui.client_alias_held));
 }
 
 
@@ -278,6 +309,7 @@ void submit_login(AppState *app)
         client_log(app, "login_failed", "error=%s", error);
         return;
     }
+    app->ui.offline_local_mode = false;
     app->catalog.allow_user_initial_save_import = allow_user_initial_save_import != 0;
     client_log(app, "login_ok", "must_change_password=%d", must_change_password);
     save_authenticated_login(state, app->base_config_path, must_change_password != 0);
@@ -397,7 +429,7 @@ static void handle_key(LoginState *state, const SDL_KeyboardEvent *key)
             else if (state->selected == FIELD_ENV) {
                 cycle_login_server(state);
             }
-            else if (state->selected != FIELD_ACTION) {
+            else if (state->selected != FIELD_ACTION && state->selected != FIELD_LOCAL_MODE) {
                 state->editing = true;
                 SDL_StartTextInput();
                 copy_text(state->status, sizeof(state->status), "TEXT INPUT ACTIVE");
@@ -418,6 +450,9 @@ static void handle_key(LoginState *state, const SDL_KeyboardEvent *key)
         case SDLK_KP_ENTER:
             if (state->selected == FIELD_ACTION) {
                 copy_text(state->status, sizeof(state->status), "PRESS ENTER TO LOGIN");
+            }
+            else if (state->selected == FIELD_LOCAL_MODE) {
+                copy_text(state->status, sizeof(state->status), "ENTER LOCAL MODE");
             }
             else if (state->selected == FIELD_REMEMBER) {
                 state->remember_login = !state->remember_login;
@@ -453,6 +488,21 @@ void handle_login_key(AppState *app, const SDL_KeyboardEvent *key)
     if ((key->keysym.sym == SDLK_RETURN || key->keysym.sym == SDLK_KP_ENTER) &&
         state->selected == FIELD_ACTION) {
         submit_login(app);
+        return;
+    }
+    if ((key->keysym.sym == SDLK_RETURN || key->keysym.sym == SDLK_KP_ENTER) &&
+        state->selected == FIELD_LOCAL_MODE) {
+        if (!activate_local_config(app)) {
+            copy_text(state->status, sizeof(state->status), "LOCAL CONFIG PATH TOO LONG");
+            return;
+        }
+        memset(state->token, 0, sizeof(state->token));
+        state->editing = false;
+        SDL_StopTextInput();
+        app->ui.offline_local_mode = true;
+        app->ui.screen = SCREEN_MAIN_MENU;
+        app->ui.main_selected = 0;
+        copy_text(state->status, sizeof(state->status), "LOCAL MODE");
         return;
     }
     char before_server_id[sizeof(state->server_id)];
@@ -785,10 +835,17 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
     }
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
-            leave_current_room(&state->room, false);
+            if (state->ui.offline_local_mode) {
+                restore_login_config(state);
+                copy_text(state->login.status, sizeof(state->login.status), "ACCOUNT LOGIN");
+            }
+            else {
+                leave_current_room(&state->room, false);
+                copy_text(state->login.status, sizeof(state->login.status), "LOGGED OUT");
+            }
+            state->ui.offline_local_mode = false;
             state->ui.screen = SCREEN_LOGIN;
             state->login.selected = FIELD_ACTION;
-            copy_text(state->login.status, sizeof(state->login.status), "LOGGED OUT LOCAL UI");
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
@@ -799,10 +856,15 @@ void handle_main_key(AppState *state, const SDL_KeyboardEvent *key)
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
+            if (state->ui.offline_local_mode && state->ui.main_selected != 0 &&
+                state->ui.main_selected != 4 && state->ui.main_selected != 5) {
+                copy_text(state->login.status, sizeof(state->login.status), "LOGIN REQUIRED");
+                break;
+            }
             if (state->ui.main_selected == 0) {
-                state->ui.screen = SCREEN_LOCAL_MODE;
-                state->local.local_mode_selected = 0;
-                copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+                state->ui.screen = SCREEN_PLAY_GAME_MODE;
+                state->local.play_game_mode_selected = 0;
+                copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             }
             else if (state->ui.main_selected == 1) {
                 state->ui.screen = SCREEN_ROOM_MODE;

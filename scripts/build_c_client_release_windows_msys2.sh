@@ -23,6 +23,7 @@ export CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS:-} ${PREFIX_MAP_FLAGS}"
 INTEGRAL_EMULATOR_RELEASE_ROOT="${INTEGRAL_EMULATOR_RELEASE_ROOT:-${PROJECT_ROOT}/dist/windows}"
 INTEGRAL_EMULATOR_RELEASE_APP_NAME="${INTEGRAL_EMULATOR_RELEASE_APP_NAME:-INTEGRAL EMULATOR}"
 INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME="${INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME:-}"
+INTEGRAL_EMULATOR_RELEASE_PREVIEW="${INTEGRAL_EMULATOR_RELEASE_PREVIEW:-0}"
 INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD="${INTEGRAL_EMULATOR_RELEASE_SKIP_BUILD:-0}"
 RELEASE_ROOT="${INTEGRAL_EMULATOR_RELEASE_ROOT}"
 APP_NAME="${INTEGRAL_EMULATOR_RELEASE_APP_NAME}"
@@ -36,6 +37,10 @@ VERSION_TAG="$(printf '%s' "${VERSION}" | tr '[:upper:]' '[:lower:]')"
 PACKAGE_NAME="${INTEGRAL_EMULATOR_RELEASE_PACKAGE_NAME:-INTEGRAL_EMULATOR_CLIENT_VER${VERSION_TAG}}"
 PACKAGE_DIR="${RELEASE_ROOT}/${PACKAGE_NAME}"
 ZIP_PATH="${RELEASE_ROOT}/${PACKAGE_NAME}.zip"
+PREVIEW_ARGS=()
+if [ "${INTEGRAL_EMULATOR_RELEASE_PREVIEW}" = "1" ]; then
+  PREVIEW_ARGS=(--preview)
+fi
 DLL_DIR="${PACKAGE_DIR}/dll"
 CLIENT_DIR="${PACKAGE_DIR}/client"
 GB_RUNTIME_DIR="${PACKAGE_DIR}/runtimes/gb"
@@ -278,12 +283,14 @@ if grep -aR -l -F "${PROJECT_ROOT}" "${PACKAGE_DIR}" >/dev/null || \
 fi
 python3 "${PROJECT_ROOT}/scripts/verify_c_client_release_licenses.py" "${PACKAGE_DIR}" --platform windows
 python3 "${PROJECT_ROOT}/scripts/build_artifact_provenance.py" "${PACKAGE_DIR}" \
-  --platform windows --project-root "${PROJECT_ROOT}" --write
+  --platform windows --project-root "${PROJECT_ROOT}" --write \
+  ${PREVIEW_ARGS[@]+"${PREVIEW_ARGS[@]}"}
 
 python3 "${PROJECT_ROOT}/scripts/write_release_manifest.py" \
   "${PACKAGE_DIR}" \
   --platform windows \
-  --version "${VERSION}"
+  --version "${VERSION}" \
+  ${PREVIEW_ARGS[@]+"${PREVIEW_ARGS[@]}"}
 
 echo "Creating zip..."
 (
@@ -292,7 +299,8 @@ echo "Creating zip..."
   sha256sum "$(basename "${ZIP_PATH}")" > "$(basename "${ZIP_PATH}").sha256"
 )
 python3 "${PROJECT_ROOT}/scripts/write_release_manifest.py" \
-  "${PACKAGE_DIR}" --platform windows --version "${VERSION}" --archive "${ZIP_PATH}"
+  "${PACKAGE_DIR}" --platform windows --version "${VERSION}" --archive "${ZIP_PATH}" \
+  ${PREVIEW_ARGS[@]+"${PREVIEW_ARGS[@]}"}
 
 echo "Release folder: ${PACKAGE_DIR}"
 echo "Release zip: ${ZIP_PATH}"

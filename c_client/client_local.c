@@ -11,6 +11,7 @@
 #include "client_file_io.h"
 #include "client_rom_catalog.h"
 #include "client_save_outbox.h"
+#include "../runtimes/gb/src/server/slot.h"
 #include <stdbool.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -56,8 +57,8 @@ void clear_local_launch_notice(AppState *state)
 #endif
     }
     const char *status = state->login.status;
-    if (strcmp(status, "GB_RUNTIME LOCAL STARTED") == 0 ||
-        strcmp(status, "GB_RUNTIME SERVER2 STARTED") == 0 ||
+    if (strcmp(status, "GB MODE STARTED") == 0 ||
+        strcmp(status, "GB MODE 2P STARTED") == 0 ||
         strcmp(status, "MOBILE MODE STARTED") == 0 ||
         strncmp(status, "N64_RUNTIME STARTED TP:", 22) == 0) {
         state->login.status[0] = '\0';
@@ -85,8 +86,8 @@ static void cycle_mobile_scenario(AppState *state, int delta);
 static void cycle_local_rom_slot(AppState *state, unsigned slot_index, int delta);
 static void cycle_n64_runtime_n64_slot(AppState *state, int delta);
 static void cycle_n64_runtime_transfer_slot(AppState *state, unsigned transfer_slot, int delta);
-static void move_local_selection(AppState *state, int delta);
-static void move_local_mode_selection(AppState *state, int delta);
+static void move_gb_screen_selection(AppState *state, int delta);
+static void move_play_game_mode_selection(AppState *state, int delta);
 static void clear_local_slot(AppState *state);
 static int sync_slot_from_server(AppState *state,
                                  const IntegralConfigRomSlot *slot,
@@ -108,6 +109,7 @@ static int n64_local_prepare_save(void *context, const IntegralConfigRomSlot *sl
 static int n64_local_prepare_transfer(void *context, unsigned index, const char *directory,
                                        IntegralConfigRomSlot *slot, LocalSyncSlot *sync);
 static void start_local_n64_runtime(AppState *state);
+static void start_offline_n64_runtime(AppState *state);
 static void start_local_gb_mobile(AppState *state);
 static bool gb_local_recover(void *context, const char *save_id);
 static int gb_local_download(void *context, const IntegralConfigRomSlot *slot,
@@ -115,6 +117,96 @@ static int gb_local_download(void *context, const IntegralConfigRomSlot *slot,
 static bool gb_local_rtc(void *context, char *out, size_t size);
 static void gb_local_window(void *context, unsigned *width, unsigned *height);
 static void start_local_gb_runtime(AppState *state);
+static void start_offline_gb_runtime(AppState *state);
+
+#define INTEGRAL_OFFLINE_ROM_LIMIT 256u
+
+static void cycle_offline_rom_slot(AppState *state, unsigned slot_index, int delta)
+{
+    char (*entries)[INTEGRAL_CONFIG_PATH_MAX] = calloc(INTEGRAL_OFFLINE_ROM_LIMIT, sizeof(*entries));
+    if (!entries) {
+        copy_text(state->login.status, sizeof(state->login.status), "ROM LIST UNAVAILABLE");
+        return;
+    }
+    int count = scan_local_gb_rom_paths(INTEGRAL_ROM_FOLDER, entries, INTEGRAL_OFFLINE_ROM_LIMIT);
+    if (count <= 0) {
+        copy_text(state->login.status, sizeof(state->login.status),
+                  count == 0 ? "NO GB ROM IN roms/" : "ROM FOLDER UNAVAILABLE");
+        free(entries);
+        return;
+    }
+    const char *other = state->local.offline_rom_paths[1 - slot_index];
+    const char *current = state->local.offline_rom_paths[slot_index];
+    int position = -1;
+    for (int i = 0; i < count; i++) {
+        if (strcmp(entries[i], current) == 0) { position = i; break; }
+    }
+    for (int tried = 0; tried < count; tried++) {
+        position = (position + delta + count) % count;
+        if (strcmp(entries[position], other) == 0) continue;
+        copy_text(state->local.offline_rom_paths[slot_index], INTEGRAL_CONFIG_PATH_MAX, entries[position]);
+        snprintf(state->login.status, sizeof(state->login.status), "SLOT%u ROM SELECTED", slot_index + 1);
+        free(entries);
+        return;
+    }
+    copy_text(state->login.status, sizeof(state->login.status), "NO OTHER GB ROM AVAILABLE");
+    free(entries);
+}
+
+static bool offline_save_path(const char *relative, char *rom, char *save)
+{
+    if (!relative[0] || strstr(relative, "../") || relative[0] == '/' || strchr(relative, '\\')) return false;
+    int length = snprintf(rom, INTEGRAL_CONFIG_PATH_MAX, "%s/%s", INTEGRAL_ROM_FOLDER, relative);
+    if (length <= 0 || length >= INTEGRAL_CONFIG_PATH_MAX) return false;
+    copy_text(save, INTEGRAL_CONFIG_PATH_MAX, rom);
+    char *dot = strrchr(save, '.');
+    if (!dot || (strcasecmp(dot, ".gb") != 0 && strcasecmp(dot, ".gbc") != 0)) return false;
+    if ((size_t)(dot - save) + strlen(".sav") >= INTEGRAL_CONFIG_PATH_MAX) return false;
+    copy_text(dot, INTEGRAL_CONFIG_PATH_MAX - (size_t)(dot - save), ".sav");
+    return true;
+}
+
+static void cycle_offline_n64_slot(AppState *state, unsigned selected, int delta)
+{
+    char (*entries)[INTEGRAL_CONFIG_PATH_MAX] = calloc(INTEGRAL_OFFLINE_ROM_LIMIT, sizeof(*entries));
+    if (!entries) {
+        copy_text(state->login.status, sizeof(state->login.status), "ROM LIST UNAVAILABLE");
+        return;
+    }
+    bool n64 = selected == 1;
+    int count = n64 ? scan_local_n64_rom_paths(INTEGRAL_ROM_FOLDER, entries, INTEGRAL_OFFLINE_ROM_LIMIT)
+                    : scan_local_gb_rom_paths(INTEGRAL_ROM_FOLDER, entries, INTEGRAL_OFFLINE_ROM_LIMIT);
+    if (count <= 0) {
+        copy_text(state->login.status, sizeof(state->login.status),
+                  count == 0 ? (n64 ? "NO N64 ROM IN roms/" : "NO GB ROM IN roms/") : "ROM FOLDER UNAVAILABLE");
+        free(entries);
+        return;
+    }
+    char *current = n64 ? state->local.offline_n64_rom_path : state->local.offline_transfer_paths[selected - 2];
+    int position = -1;
+    for (int i = 0; i < count; i++) {
+        if (strcmp(entries[i], current) == 0) { position = i; break; }
+    }
+    for (int tried = 0; tried < count; tried++) {
+        position = (position + delta + count) % count;
+        bool duplicate = false;
+        if (!n64) {
+            for (unsigned i = 0; i < 4; i++) {
+                if (i != selected - 2 && strcmp(entries[position], state->local.offline_transfer_paths[i]) == 0) {
+                    duplicate = true;
+                    break;
+                }
+            }
+        }
+        if (duplicate) continue;
+        copy_text(current, INTEGRAL_CONFIG_PATH_MAX, entries[position]);
+        copy_text(state->login.status, sizeof(state->login.status), "ROM SELECTED");
+        free(entries);
+        return;
+    }
+    copy_text(state->login.status, sizeof(state->login.status), "NO OTHER GB ROM AVAILABLE");
+    free(entries);
+}
 
 void init_n64_runtime_selection(AppState *state)
 {
@@ -138,7 +230,7 @@ void init_n64_runtime_selection(AppState *state)
 }
 
 
-const IntegralConfigRomSlot *local_selected_rom_slot(const AppState *state, unsigned local_slot)
+const IntegralConfigRomSlot *registered_gb_slot_for_screen(const AppState *state, unsigned local_slot)
 {
     if (local_slot >= 2) {
         return NULL;
@@ -182,7 +274,7 @@ const IntegralConfigRomSlot *selected_transfer_rom_slot(const AppState *state, u
 
 static void refresh_mobile_scenarios(AppState *state)
 {
-    const IntegralConfigRomSlot *slot = local_selected_rom_slot(state, 0);
+    const IntegralConfigRomSlot *slot = registered_gb_slot_for_screen(state, 0);
     state->local.mobile_scenario_count = 0;
     state->local.mobile_scenario_selected = 0;
     state->local.mobile_scenario_rom_id[0] = '\0';
@@ -267,35 +359,35 @@ void gb_launch_window_size(const AppState *state,
 }
 
 
-static void move_local_selection(AppState *state, int delta)
+static void move_gb_screen_selection(AppState *state, int delta)
 {
     unsigned row_count = state->ui.screen == SCREEN_GB_MOBILE ? INTEGRAL_GB_RUNTIME_MOBILE_MODE_ROWS
                                                            : INTEGRAL_GB_RUNTIME_MODE_ROWS;
-    int selected = (int)state->local.local_selected + delta;
+    int selected = (int)state->local.gb_screen_selected + delta;
     if (selected < 0) {
         selected = (int)row_count - 1;
     }
     if (selected >= (int)row_count) {
         selected = 0;
     }
-    state->local.local_selected = (unsigned)selected;
+    state->local.gb_screen_selected = (unsigned)selected;
 }
 
 
-static void move_local_mode_selection(AppState *state, int delta)
+static void move_play_game_mode_selection(AppState *state, int delta)
 {
-    int selected = (int)state->local.local_mode_selected + delta;
+    int selected = (int)state->local.play_game_mode_selected + delta;
     if (selected < 0) {
-        selected = INTEGRAL_LOCAL_MODE_ROWS - 1;
+        selected = INTEGRAL_PLAY_GAME_MODE_ROWS - 1;
     }
-    if (selected >= INTEGRAL_LOCAL_MODE_ROWS) {
+    if (selected >= INTEGRAL_PLAY_GAME_MODE_ROWS) {
         selected = 0;
     }
-    state->local.local_mode_selected = (unsigned)selected;
+    state->local.play_game_mode_selected = (unsigned)selected;
 }
 
 
-void handle_local_mode_key(AppState *state, const SDL_KeyboardEvent *key)
+void handle_play_game_mode_key(AppState *state, const SDL_KeyboardEvent *key)
 {
     if (key->repeat) {
         return;
@@ -307,25 +399,30 @@ void handle_local_mode_key(AppState *state, const SDL_KeyboardEvent *key)
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
-            move_local_mode_selection(state, 1);
+            move_play_game_mode_selection(state, 1);
             break;
         case SDLK_UP:
-            move_local_mode_selection(state, -1);
+            move_play_game_mode_selection(state, -1);
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
-            if (state->local.local_mode_selected == 0) {
-                state->ui.screen = SCREEN_LOCAL;
-                state->local.local_selected = 0;
+            if (state->ui.offline_local_mode && state->local.play_game_mode_selected == 1) {
+                copy_text(state->login.status, sizeof(state->login.status), "LOGIN REQUIRED");
+                break;
+            }
+            if (state->local.play_game_mode_selected == 0) {
+                state->ui.screen = SCREEN_GB_MODE;
+                state->local.gb_screen_selected = 0;
                 copy_text(state->login.status, sizeof(state->login.status), "GB MODE");
             }
-            else if (state->local.local_mode_selected == 1) {
+            else if (state->local.play_game_mode_selected == 1) {
                 state->ui.screen = SCREEN_GB_MOBILE;
-                state->local.local_selected = 0;
+                state->local.gb_screen_selected = 0;
                 refresh_mobile_scenarios(state);
             }
             else {
-                init_n64_runtime_selection(state);
+                if (state->ui.offline_local_mode) state->local.integral_n64_runtime_selected = 0;
+                else init_n64_runtime_selection(state);
                 state->ui.screen = SCREEN_N64_RUNTIME;
                 copy_text(state->login.status, sizeof(state->login.status), "N64 MODE");
             }
@@ -338,10 +435,15 @@ void handle_local_mode_key(AppState *state, const SDL_KeyboardEvent *key)
 
 static void clear_local_slot(AppState *state)
 {
-    if (state->local.local_selected < 1 || state->local.local_selected > 2) {
+    if (state->local.gb_screen_selected < 1 || state->local.gb_screen_selected > 2) {
         return;
     }
-    unsigned slot_index = state->local.local_selected - 1;
+    unsigned slot_index = state->local.gb_screen_selected - 1;
+    if (state->ui.offline_local_mode) {
+        state->local.offline_rom_paths[slot_index][0] = '\0';
+        snprintf(state->login.status, sizeof(state->login.status), "SLOT %u CLEARED", slot_index + 1);
+        return;
+    }
     state->local.local_slot_indices[slot_index] = -1;
     IntegralConfigLocal local = {
         .slot1_index = state->local.local_slot_indices[0],
@@ -356,7 +458,7 @@ static void clear_local_slot(AppState *state)
 }
 
 
-void handle_local_key(AppState *state, const SDL_KeyboardEvent *key)
+void handle_gb_mode_key(AppState *state, const SDL_KeyboardEvent *key)
 {
     bool mobile_mode = state->ui.screen == SCREEN_GB_MOBILE;
     if (key->repeat) {
@@ -364,51 +466,55 @@ void handle_local_key(AppState *state, const SDL_KeyboardEvent *key)
     }
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
-            state->ui.screen = SCREEN_LOCAL_MODE;
-            copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+            state->ui.screen = SCREEN_PLAY_GAME_MODE;
+            copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
-            move_local_selection(state, 1);
+            move_gb_screen_selection(state, 1);
             break;
         case SDLK_UP:
-            move_local_selection(state, -1);
+            move_gb_screen_selection(state, -1);
             break;
         case SDLK_RIGHT:
-            if (state->local.local_selected == 1 || (!mobile_mode && state->local.local_selected == 2)) {
-                cycle_local_rom_slot(state, state->local.local_selected - 1, 1);
+            if (state->local.gb_screen_selected == 1 || (!mobile_mode && state->local.gb_screen_selected == 2)) {
+                if (state->ui.offline_local_mode) cycle_offline_rom_slot(state, state->local.gb_screen_selected - 1, 1);
+                else cycle_local_rom_slot(state, state->local.gb_screen_selected - 1, 1);
                 if (mobile_mode) refresh_mobile_scenarios(state);
             }
-            else if (mobile_mode && state->local.local_selected == 2) cycle_mobile_scenario(state, 1);
+            else if (mobile_mode && state->local.gb_screen_selected == 2) cycle_mobile_scenario(state, 1);
             break;
         case SDLK_LEFT:
-            if (state->local.local_selected == 1 || (!mobile_mode && state->local.local_selected == 2)) {
-                cycle_local_rom_slot(state, state->local.local_selected - 1, -1);
+            if (state->local.gb_screen_selected == 1 || (!mobile_mode && state->local.gb_screen_selected == 2)) {
+                if (state->ui.offline_local_mode) cycle_offline_rom_slot(state, state->local.gb_screen_selected - 1, -1);
+                else cycle_local_rom_slot(state, state->local.gb_screen_selected - 1, -1);
                 if (mobile_mode) refresh_mobile_scenarios(state);
             }
-            else if (mobile_mode && state->local.local_selected == 2) cycle_mobile_scenario(state, -1);
+            else if (mobile_mode && state->local.gb_screen_selected == 2) cycle_mobile_scenario(state, -1);
             break;
         case SDLK_BACKSPACE:
-            if (!mobile_mode || state->local.local_selected == 1) {
+            if (!mobile_mode || state->local.gb_screen_selected == 1) {
                 clear_local_slot(state);
                 if (mobile_mode) refresh_mobile_scenarios(state);
             }
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
-            if (state->local.local_selected == 0) {
+            if (state->local.gb_screen_selected == 0) {
                 if (mobile_mode) {
                     start_local_gb_mobile(state);
                 }
                 else {
-                    start_local_gb_runtime(state);
+                    if (state->ui.offline_local_mode) start_offline_gb_runtime(state);
+                    else start_local_gb_runtime(state);
                 }
             }
-            else if (state->local.local_selected == 1 || (!mobile_mode && state->local.local_selected == 2)) {
-                cycle_local_rom_slot(state, state->local.local_selected - 1, 1);
+            else if (state->local.gb_screen_selected == 1 || (!mobile_mode && state->local.gb_screen_selected == 2)) {
+                if (state->ui.offline_local_mode) cycle_offline_rom_slot(state, state->local.gb_screen_selected - 1, 1);
+                else cycle_local_rom_slot(state, state->local.gb_screen_selected - 1, 1);
                 if (mobile_mode) refresh_mobile_scenarios(state);
             }
-            else if (mobile_mode && state->local.local_selected == 2) cycle_mobile_scenario(state, 1);
+            else if (mobile_mode && state->local.gb_screen_selected == 2) cycle_mobile_scenario(state, 1);
             break;
         default:
             break;
@@ -423,8 +529,8 @@ void handle_n64_runtime_key(AppState *state, const SDL_KeyboardEvent *key)
     }
     switch (key->keysym.sym) {
         case SDLK_ESCAPE:
-            state->ui.screen = SCREEN_LOCAL_MODE;
-            copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+            state->ui.screen = SCREEN_PLAY_GAME_MODE;
+            copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             break;
         case SDLK_TAB:
         case SDLK_DOWN:
@@ -435,30 +541,48 @@ void handle_n64_runtime_key(AppState *state, const SDL_KeyboardEvent *key)
             break;
         case SDLK_RIGHT:
             if (state->local.integral_n64_runtime_selected == 1) {
-                cycle_n64_runtime_n64_slot(state, 1);
+                if (state->ui.offline_local_mode) cycle_offline_n64_slot(state, 1, 1);
+                else cycle_n64_runtime_n64_slot(state, 1);
             }
             else if (state->local.integral_n64_runtime_selected >= 2 && state->local.integral_n64_runtime_selected <= 5) {
-                cycle_n64_runtime_transfer_slot(state, state->local.integral_n64_runtime_selected - 2, 1);
+                if (state->ui.offline_local_mode) cycle_offline_n64_slot(state, state->local.integral_n64_runtime_selected, 1);
+                else cycle_n64_runtime_transfer_slot(state, state->local.integral_n64_runtime_selected - 2, 1);
             }
             break;
         case SDLK_LEFT:
             if (state->local.integral_n64_runtime_selected == 1) {
-                cycle_n64_runtime_n64_slot(state, -1);
+                if (state->ui.offline_local_mode) cycle_offline_n64_slot(state, 1, -1);
+                else cycle_n64_runtime_n64_slot(state, -1);
             }
             else if (state->local.integral_n64_runtime_selected >= 2 && state->local.integral_n64_runtime_selected <= 5) {
-                cycle_n64_runtime_transfer_slot(state, state->local.integral_n64_runtime_selected - 2, -1);
+                if (state->ui.offline_local_mode) cycle_offline_n64_slot(state, state->local.integral_n64_runtime_selected, -1);
+                else cycle_n64_runtime_transfer_slot(state, state->local.integral_n64_runtime_selected - 2, -1);
+            }
+            break;
+        case SDLK_BACKSPACE:
+            if (state->ui.offline_local_mode && state->local.integral_n64_runtime_selected == 1) {
+                state->local.offline_n64_rom_path[0] = '\0';
+                copy_text(state->login.status, sizeof(state->login.status), "N64 SLOT CLEARED");
+            }
+            else if (state->ui.offline_local_mode && state->local.integral_n64_runtime_selected >= 2 &&
+                     state->local.integral_n64_runtime_selected <= 5) {
+                state->local.offline_transfer_paths[state->local.integral_n64_runtime_selected - 2][0] = '\0';
+                copy_text(state->login.status, sizeof(state->login.status), "TRANSFER SLOT CLEARED");
             }
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
             if (state->local.integral_n64_runtime_selected == 0) {
-                start_local_n64_runtime(state);
+                if (state->ui.offline_local_mode) start_offline_n64_runtime(state);
+                else start_local_n64_runtime(state);
             }
             else if (state->local.integral_n64_runtime_selected == 1) {
-                cycle_n64_runtime_n64_slot(state, 1);
+                if (state->ui.offline_local_mode) cycle_offline_n64_slot(state, 1, 1);
+                else cycle_n64_runtime_n64_slot(state, 1);
             }
             else if (state->local.integral_n64_runtime_selected >= 2 && state->local.integral_n64_runtime_selected <= 5) {
-                cycle_n64_runtime_transfer_slot(state, state->local.integral_n64_runtime_selected - 2, 1);
+                if (state->ui.offline_local_mode) cycle_offline_n64_slot(state, state->local.integral_n64_runtime_selected, 1);
+                else cycle_n64_runtime_transfer_slot(state, state->local.integral_n64_runtime_selected - 2, 1);
             }
             break;
         default:
@@ -616,7 +740,7 @@ static bool server_rtc_offset_text(AppState *state, char *out, size_t out_size)
     char error[160];
     if (integral_api_get_server_time(state->login.server, &server_time, error, sizeof(error)) != 0) {
         copy_text(out, out_size, "0");
-        snprintf(state->login.status, sizeof(state->login.status), "SERVER RTC LOCAL FALLBACK: %.80s", error);
+        snprintf(state->login.status, sizeof(state->login.status), "SERVER RTC DEVICE CLOCK FALLBACK: %.80s", error);
         client_log(state, "server_rtc_failed", "error=%s", error);
         return true;
     }
@@ -683,6 +807,122 @@ static bool n64_local_paths(IntegralN64LocalPaths *paths)
         paths->audio, sizeof(paths->audio), paths->input, sizeof(paths->input),
         paths->rsp, sizeof(paths->rsp), paths->data, sizeof(paths->data)) &&
         integral_runtime_frontend_access(paths->frontend) == 0;
+}
+
+static void start_offline_n64_runtime(AppState *state)
+{
+    clear_local_launch_notice(state);
+    if (state->local.local_starting || state->local.local_monitor) {
+        copy_text(state->login.status, sizeof(state->login.status), "GAME ALREADY RUNNING");
+        return;
+    }
+    const char *selected = state->local.offline_n64_rom_path;
+    if (!selected[0] || strstr(selected, "../") || selected[0] == '/' || strchr(selected, '\\')) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64 ROM REQUIRED");
+        return;
+    }
+    char n64_rom[INTEGRAL_CONFIG_PATH_MAX];
+    int length = snprintf(n64_rom, sizeof(n64_rom), "%s/%s", INTEGRAL_ROM_FOLDER, selected);
+    if (length <= 0 || (size_t)length >= sizeof(n64_rom)) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64 ROM PATH INVALID");
+        return;
+    }
+    IntegralConfigRomSlot slot = {0};
+    copy_text(slot.rom_path, sizeof(slot.rom_path), n64_rom);
+    if (!slot_is_supported_n64(&slot)) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64 ROM UNAVAILABLE");
+        return;
+    }
+    IntegralN64LocalPaths paths;
+    if (!n64_local_paths(&paths)) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64_RUNTIME NOT FOUND");
+        return;
+    }
+    char *slash = strrchr(n64_rom, '/');
+    char save_dir[INTEGRAL_CONFIG_PATH_MAX], save_name[INTEGRAL_CONFIG_PATH_MAX];
+    if (!slash) return;
+    size_t dir_length = (size_t)(slash - n64_rom);
+    memcpy(save_dir, n64_rom, dir_length);
+    save_dir[dir_length] = '\0';
+    copy_text(save_name, sizeof(save_name), slash + 1);
+    char *extension = strrchr(save_name, '.');
+    if (!extension) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64 ROM PATH INVALID");
+        return;
+    }
+    *extension = '\0';
+    if (!save_name[0] || strlen(save_name) >= 256u) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64 SAVE NAME TOO LONG");
+        return;
+    }
+    char transfer_roms[4][INTEGRAL_CONFIG_PATH_MAX];
+    char transfer_saves[4][INTEGRAL_CONFIG_PATH_MAX];
+    const char *rom_paths[4] = {0}, *save_paths[4] = {0};
+    for (unsigned i = 0; i < 4; i++) {
+        const char *relative = state->local.offline_transfer_paths[i];
+        if (!relative[0]) continue;
+        if (!offline_save_path(relative, transfer_roms[i], transfer_saves[i])) {
+            copy_text(state->login.status, sizeof(state->login.status), "TRANSFER ROM PATH INVALID");
+            return;
+        }
+        copy_text(slot.rom_path, sizeof(slot.rom_path), transfer_roms[i]);
+        if (!slot_is_supported_gb(&slot)) {
+            snprintf(state->login.status, sizeof(state->login.status), "TRANSFER SLOT%u ROM UNAVAILABLE", i + 1);
+            return;
+        }
+        for (unsigned j = 0; j < i; j++) {
+            if (save_paths[j] && strcmp(transfer_saves[i], transfer_saves[j]) == 0) {
+                copy_text(state->login.status, sizeof(state->login.status), "TRANSFER SAV PATHS MUST DIFFER");
+                return;
+            }
+        }
+        rom_paths[i] = transfer_roms[i];
+        save_paths[i] = transfer_saves[i];
+    }
+    char controller_map[512], extra_maps[3][512] = {{0}}, hotkeys[640];
+    if (!make_n64_runtime_keymap_spec(state->keys.n64_p1, controller_map, sizeof(controller_map)) ||
+        !make_n64_runtime_util_hotkeys(&state->keys, true, hotkeys, sizeof(hotkeys))) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64 KEY CONFIG INVALID");
+        return;
+    }
+    const char *extra_keys[3] = {state->keys.n64_p2, state->keys.n64_p3, state->keys.n64_p4};
+    for (unsigned i = 0; i < 3; i++) {
+        if (extra_keys[i][0] && !make_n64_runtime_keymap_spec(extra_keys[i], extra_maps[i], sizeof(extra_maps[i]))) {
+            snprintf(state->login.status, sizeof(state->login.status), "N64 P%u KEY CONFIG INVALID", i + 2);
+            return;
+        }
+    }
+    if (ensure_private_runtime_directory("runtime") != 0 ||
+        ensure_private_runtime_directory("runtime/offline-n64") != 0 ||
+        ensure_private_runtime_directory("runtime/offline-n64/config") != 0 ||
+        ensure_directory("screenshot") != 0) {
+        copy_text(state->login.status, sizeof(state->login.status), "N64_RUNTIME DIRECTORY FAILED");
+        return;
+    }
+    for (unsigned i = 0; i < 4; i++) {
+        if (!rom_paths[i] || local_file_exists(save_paths[i])) continue;
+        unsigned char initial[INTEGRAL_MAX_SAVE_BYTES];
+        size_t initial_size = 0;
+        if (integral_gb_runtime_initial_battery_for_rom(rom_paths[i], initial, sizeof(initial), &initial_size) != 0 ||
+            write_binary_file(save_paths[i], initial, initial_size) != 0) {
+            snprintf(state->login.status, sizeof(state->login.status), "TRANSFER SLOT%u SAV CREATE FAILED", i + 1);
+            return;
+        }
+    }
+    const IntegralN64LocalLaunch launch = {
+        .frontend = paths.frontend, .rom = n64_rom, .core = paths.core,
+        .config_dir = "runtime/offline-n64/config", .data = paths.data,
+        .screenshot_dir = "screenshot", .save_dir = save_dir, .save_name = save_name,
+        .video = paths.video, .audio = paths.audio, .input = paths.input, .rsp = paths.rsp,
+        .controller_map = controller_map, .hotkeys = hotkeys,
+        .transfer_rom_paths = {rom_paths[0], rom_paths[1], rom_paths[2], rom_paths[3]},
+        .transfer_save_paths = {save_paths[0], save_paths[1], save_paths[2], save_paths[3]},
+        .extra_controller_maps = {extra_maps[0], extra_maps[1], extra_maps[2]},
+    };
+    state->local.local_starting = true;
+    integral_n64_offline_start(&launch, &state->local.local_monitor,
+                               state->login.status, sizeof(state->login.status));
+    state->local.local_starting = false;
 }
 
 
@@ -754,7 +994,7 @@ static void start_local_gb_mobile(AppState *state)
         copy_text(state->login.status, sizeof(state->login.status), "GAME ALREADY RUNNING");
         return;
     }
-    const IntegralConfigRomSlot *selected = local_selected_rom_slot(state, 0);
+    const IntegralConfigRomSlot *selected = registered_gb_slot_for_screen(state, 0);
     if (!selected) {
         copy_text(state->login.status, sizeof(state->login.status), "SLOT1 ROM REQUIRED");
         return;
@@ -822,7 +1062,8 @@ static void gb_local_game_window(void *context, unsigned *width, unsigned *heigh
 {
     AppState *state = context;
     gb_launch_window_size(state, width, height);
-    if (!local_selected_rom_slot(state, 1)) return;
+    if (state->ui.offline_local_mode ? !state->local.offline_rom_paths[1][0]
+                                     : !registered_gb_slot_for_screen(state, 1)) return;
     SDL_Rect usable;
     unsigned available_width = 0u, available_height = 0u;
     /* GB Runtime currently creates its window centered on display 0. */
@@ -840,13 +1081,81 @@ static void gb_local_game_window(void *context, unsigned *width, unsigned *heigh
                                        width, height);
 }
 
+static void start_offline_gb_runtime(AppState *state)
+{
+    clear_local_launch_notice(state);
+    if (state->local.local_monitor) {
+        copy_text(state->login.status, sizeof(state->login.status), "GB GAME ALREADY RUNNING");
+        return;
+    }
+    const char *first = state->local.offline_rom_paths[0];
+    const char *second = state->local.offline_rom_paths[1];
+    if (!first[0]) {
+        copy_text(state->login.status, sizeof(state->login.status), "SLOT1 ROM REQUIRED");
+        return;
+    }
+    if (second[0] && strcmp(first, second) == 0) {
+        copy_text(state->login.status, sizeof(state->login.status), "SLOT1 AND SLOT2 MUST DIFFER");
+        return;
+    }
+    char rom1[INTEGRAL_CONFIG_PATH_MAX], save1[INTEGRAL_CONFIG_PATH_MAX];
+    char rom2[INTEGRAL_CONFIG_PATH_MAX], save2[INTEGRAL_CONFIG_PATH_MAX];
+    if (!offline_save_path(first, rom1, save1) ||
+        (second[0] && !offline_save_path(second, rom2, save2))) {
+        copy_text(state->login.status, sizeof(state->login.status), "ROM PATH INVALID");
+        return;
+    }
+    if (second[0] &&
+#ifdef _WIN32
+        strcasecmp(save1, save2) == 0) {
+#else
+        strcmp(save1, save2) == 0) {
+#endif
+        copy_text(state->login.status, sizeof(state->login.status), "SLOT SAV PATHS MUST DIFFER");
+        return;
+    }
+    IntegralConfigRomSlot slot = {0};
+    copy_text(slot.rom_path, sizeof(slot.rom_path), rom1);
+    if (!slot_is_supported_gb(&slot)) {
+        copy_text(state->login.status, sizeof(state->login.status), "SLOT1 GB ROM UNAVAILABLE");
+        return;
+    }
+    if (second[0]) {
+        copy_text(slot.rom_path, sizeof(slot.rom_path), rom2);
+        if (!slot_is_supported_gb(&slot)) {
+            copy_text(state->login.status, sizeof(state->login.status), "SLOT2 GB ROM UNAVAILABLE");
+            return;
+        }
+    }
+    const char *runtime = integral_gb_runtime_server_path();
+    if (access(runtime, X_OK) != 0) {
+        copy_text(state->login.status, sizeof(state->login.status), "GB_RUNTIME SERVER NOT FOUND");
+        return;
+    }
+    char width_text[16], height_text[16], delay_text[16];
+    unsigned width, height;
+    gb_local_game_window(state, &width, &height);
+    snprintf(width_text, sizeof(width_text), "%u", width);
+    snprintf(height_text, sizeof(height_text), "%u", height);
+    snprintf(delay_text, sizeof(delay_text), "%u", integral_config_ir_off_delay(state->config_path));
+    const IntegralGbLocalLaunch launch = {
+        .runtime = runtime, .rom1 = rom1, .save1 = save1,
+        .rom2 = second[0] ? rom2 : NULL, .save2 = second[0] ? save2 : NULL,
+        .rtc_offset = "0", .ir_off_delay_ticks = delay_text,
+        .sgb = integral_config_sgb_enabled(state->config_path) ? "enable" : "disable",
+        .window_width = width_text, .window_height = height_text, .keys = &state->keys,
+    };
+    integral_gb_offline_start(&launch, &state->local.local_monitor,
+                              state->login.status, sizeof(state->login.status));
+}
+
 static void start_local_gb_runtime(AppState *state)
 {
     const IntegralGbLocalRequest request = {
         .monitor_out = &state->local.local_monitor,
         .config_path = state->config_path,
-        .slot1 = local_selected_rom_slot(state, 0),
-        .slot2 = local_selected_rom_slot(state, 1),
+        .slot1 = registered_gb_slot_for_screen(state, 0),
+        .slot2 = registered_gb_slot_for_screen(state, 1),
         .runtime = integral_gb_runtime_server_path(), .port = INTEGRAL_GB_RUNTIME_PORT,
         .server = state->login.server, .token = state->login.token,
         .keys = &state->keys, .status = state->login.status,

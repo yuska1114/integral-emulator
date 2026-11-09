@@ -15,6 +15,7 @@ typedef struct {
     unsigned window_height;
     bool window_size_dirty;
     unsigned main_selected;
+    bool offline_local_mode; /* LOCAL MODE: no login, server API, or server SAV sync. */
     unsigned settings_selected;
     unsigned options_selected;
     unsigned options_ir_off_delay_ticks;
@@ -33,15 +34,18 @@ typedef struct {
 } IntegralClientCatalogState;
 
 typedef struct {
-    unsigned local_mode_selected;
+    unsigned play_game_mode_selected;
     IntegralChildProcess local_monitor;
     bool local_starting;
     Uint32 outbox_checked_ticks;
     char save_sync_notice[64];
     char save_sync_error[160];
     char save_notice_server[160], save_notice_account[64];
-    unsigned local_selected;
+    unsigned gb_screen_selected;
     int local_slot_indices[2];
+    char offline_rom_paths[2][INTEGRAL_CONFIG_PATH_MAX];
+    char offline_n64_rom_path[INTEGRAL_CONFIG_PATH_MAX];
+    char offline_transfer_paths[4][INTEGRAL_CONFIG_PATH_MAX];
     IntegralApiMobileScenario mobile_scenarios[INTEGRAL_API_MOBILE_SCENARIOS_MAX];
     unsigned mobile_scenario_count;
     unsigned mobile_scenario_selected;

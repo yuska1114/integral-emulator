@@ -85,7 +85,7 @@ void integral_gb_local_run(const IntegralGbLocalRequest *request)
                                  &fencing_token,
                                  error,
                                  sizeof(error)) != 0) {
-        snprintf(request->status, request->status_size, "LOCAL GAME LOCK FAILED %s", error);
+        snprintf(request->status, request->status_size, "SAVE SESSION LOCK FAILED %s", error);
         return;
     }
     if (!runtime_session_id_is_path_safe(game_session_id)) {
@@ -225,6 +225,35 @@ void integral_gb_local_arguments(const IntegralGbLocalLaunch *launch,
     argv[n] = NULL;
 }
 
+void integral_gb_offline_start(const IntegralGbLocalLaunch *launch,
+                               IntegralChildProcess *monitor_out,
+                               char *status, size_t status_size)
+{
+    const char *runtime_argv[INTEGRAL_GB_LOCAL_ARGV_CAPACITY];
+    integral_gb_local_arguments(launch, runtime_argv);
+#ifdef _WIN32
+    intptr_t spawned = integral_windows_spawnv(_P_NOWAIT, launch->runtime, runtime_argv);
+    if (spawned == -1) {
+        snprintf(status, status_size, "GB_RUNTIME START FAILED");
+        return;
+    }
+    if (monitor_out) *monitor_out = (IntegralChildProcess)spawned;
+    else CloseHandle((HANDLE)spawned);
+#else
+    pid_t spawned = fork();
+    if (spawned < 0) {
+        snprintf(status, status_size, "GB_RUNTIME START FAILED");
+        return;
+    }
+    if (spawned == 0) {
+        execv(launch->runtime, (char *const *)runtime_argv);
+        _exit(127);
+    }
+    if (monitor_out) *monitor_out = spawned;
+#endif
+    snprintf(status, status_size, "GB MODE STARTED");
+}
+
 void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
                              const IntegralGbLocalSession *session,
                              char *status, size_t status_size,
@@ -254,7 +283,7 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
     }
     snprintf(status,
               status_size,
-              launch->rom2 ? "GB_RUNTIME SERVER2 STARTED" : "GB_RUNTIME LOCAL STARTED");
+              launch->rom2 ? "GB MODE 2P STARTED" : "GB MODE STARTED");
     snprintf(detail, sizeof(detail), "pid=%ld", (long)spawned);
     if (log) log(log_context, "gb_runtime_server_started", detail);
     start_save_sync_thread(spawned, session->server, session->token, session->game_session_id, session->fencing_token, session->slots, session->count, true);
@@ -287,7 +316,7 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
     if (session->monitor_out) *session->monitor_out = monitor_pid;
     snprintf(status,
               status_size,
-              launch->rom2 ? "GB_RUNTIME SERVER2 STARTED" : "GB_RUNTIME LOCAL STARTED");
+              launch->rom2 ? "GB MODE 2P STARTED" : "GB MODE STARTED");
     snprintf(detail, sizeof(detail), "pid=%ld", (long)monitor_pid);
     if (log) log(log_context, "gb_runtime_server_monitor_started", detail);
 #endif

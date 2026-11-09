@@ -113,7 +113,7 @@ static void apply_rom_path_to_slot(RomEditContext *state, const char *path)
         state->editor->rom_initial_save_import_slot = -1;
         state->editor->rom_initial_save_import_path[0] = '\0';
     }
-    snprintf(state->status, state->status_size, "ROM%u LOCAL READY", state->editor->rom_selected + 1);
+    snprintf(state->status, state->status_size, "ROM%u FILE READY", state->editor->rom_selected + 1);
 }
 
 static void apply_rom_path_to_slot_index(RomEditContext *state, unsigned slot_index, const char *path)
@@ -128,7 +128,7 @@ static void apply_rom_path_to_slot_index(RomEditContext *state, unsigned slot_in
         state->editor->rom_initial_save_import_slot = -1;
         state->editor->rom_initial_save_import_path[0] = '\0';
     }
-    snprintf(state->status, state->status_size, "ROM%u LOCAL READY", slot_index + 1);
+    snprintf(state->status, state->status_size, "ROM%u FILE READY", slot_index + 1);
 }
 
 static void apply_browser_rom(RomEditContext *state)
@@ -263,14 +263,14 @@ static void finish_rom_edit(RomEditContext *state)
         for (unsigned i = 0; i < INTEGRAL_ROM_SLOTS; i++)
             confirmed[i] = state->editor->pending_paths[i] ? state->editor->confirmed_slots[i] : state->rom_slots[i];
         if (integral_config_save_rom_slots(state->config_path, confirmed, INTEGRAL_ROM_SLOTS) != 0) {
-            copy_text(state->status, state->status_size, "LOCAL ROM PATH SAVE FAILED");
+            copy_text(state->status, state->status_size, "ROM PATH SAVE FAILED");
         }
         else {
-            copy_text(state->status, state->status_size, "LOCAL ROM PATH SAVED");
+            copy_text(state->status, state->status_size, "ROM PATH SAVED");
         }
     }
     else {
-        copy_text(state->status, state->status_size, "LOCAL READY");
+        copy_text(state->status, state->status_size, "ROM FILE READY");
     }
     state->editor->rom_edit_target = ROM_EDIT_NONE;
     SDL_StopTextInput();

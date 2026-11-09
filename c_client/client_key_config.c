@@ -520,7 +520,7 @@ static void apply_captured_binding(KeyEditContext *state,
             state->keys->escape, state->keys->turbo_hold, state->keys->reset};
         SDL_Keycode captured = integral_gb_runtime_key_config_key_from_name(name);
         /* FAST/TURBO are enabled only with GB Slot 1. Other utilities also
-         * share active input with SERVER2 and every LOCAL N64 controller. */
+         * share active input with two-slot GB MODE and every N64 MODE controller. */
         bool all_modes = state->editor->key_capture_step != 0 && state->editor->key_capture_step != 3;
         if (captured != SDLK_UNKNOWN &&
             (key_spec_contains_binding(state->keys->slot1, captured) ||

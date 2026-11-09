@@ -11,12 +11,15 @@
 struct IntegralGBRuntimeAudioPlayer {
     SDL_AudioDeviceID device;
     unsigned max_queue_bytes;
+    unsigned startup_queue_bytes;
     unsigned packets_queued;
     unsigned frames_queued;
     unsigned queue_resets;
+    unsigned queue_timeouts;
 };
 
-int integral_gb_runtime_audio_player_open(IntegralGBRuntimeAudioPlayer **player_out, unsigned max_queue_ms)
+int integral_gb_runtime_audio_player_open(IntegralGBRuntimeAudioPlayer **player_out, unsigned max_queue_ms,
+                                          bool buffered_start)
 {
     if (max_queue_ms == 0) {
         max_queue_ms = 120;
@@ -48,15 +51,63 @@ int integral_gb_runtime_audio_player_open(IntegralGBRuntimeAudioPlayer **player_
         return -1;
     }
 
-    player->max_queue_bytes = max_queue_ms *
+    player->max_queue_bytes = (uint64_t)max_queue_ms *
                               INTEGRAL_GB_RUNTIME_AUDIO_SAMPLE_RATE *
                               INTEGRAL_GB_RUNTIME_AUDIO_BYTES_PER_FRAME / 1000u;
-    SDL_PauseAudioDevice(player->device, 0);
+    if (buffered_start) {
+        const unsigned two_periods = 2u * want.samples * INTEGRAL_GB_RUNTIME_AUDIO_BYTES_PER_FRAME;
+        player->startup_queue_bytes = SDL_min(two_periods, player->max_queue_bytes);
+    }
+    else {
+        SDL_PauseAudioDevice(player->device, 0);
+    }
     *player_out = player;
     return 0;
 }
 
-void integral_gb_runtime_audio_player_queue_slot(IntegralGBRuntimeAudioPlayer *player, IntegralGBRuntimeSlot *slot)
+static void queue_samples(IntegralGBRuntimeAudioPlayer *player, const int16_t *samples,
+                          unsigned frames, bool wait_for_space)
+{
+    if (!player || !samples || frames == 0 || player->device == 0) {
+        return;
+    }
+
+    const unsigned bytes = frames * INTEGRAL_GB_RUNTIME_AUDIO_BYTES_PER_FRAME;
+    unsigned queued = SDL_GetQueuedAudioSize(player->device);
+    if (queued > player->max_queue_bytes) {
+        if (wait_for_space) {
+            /* Keep playing queued audio, with a deadline in case the device stops draining. */
+            const Uint64 deadline = SDL_GetTicks64() + 40u;
+            do {
+                SDL_Delay(1u);
+                queued = SDL_GetQueuedAudioSize(player->device);
+            } while (queued > player->max_queue_bytes && SDL_GetTicks64() < deadline);
+            if (queued > player->max_queue_bytes) {
+                player->queue_timeouts++;
+                return;
+            }
+        }
+        else {
+            SDL_ClearQueuedAudio(player->device);
+            player->queue_resets++;
+        }
+    }
+
+    if (SDL_QueueAudio(player->device, samples, bytes) != 0) {
+        fprintf(stderr, "SDL_QueueAudio failed: %s\n", SDL_GetError());
+        return;
+    }
+    player->packets_queued++;
+    player->frames_queued += frames;
+
+    if (player->startup_queue_bytes && queued + bytes >= player->startup_queue_bytes) {
+        SDL_PauseAudioDevice(player->device, 0);
+        player->startup_queue_bytes = 0;
+    }
+}
+
+void integral_gb_runtime_audio_player_queue_slot(IntegralGBRuntimeAudioPlayer *player, IntegralGBRuntimeSlot *slot,
+                                                 bool wait_for_space)
 {
     if (!player || !slot || player->device == 0) {
         return;
@@ -64,30 +115,12 @@ void integral_gb_runtime_audio_player_queue_slot(IntegralGBRuntimeAudioPlayer *p
 
     int16_t samples[INTEGRAL_GB_RUNTIME_AUDIO_MAX_FRAMES * INTEGRAL_GB_RUNTIME_AUDIO_CHANNELS];
     unsigned frames = integral_gb_runtime_slot_drain_audio(slot, samples, INTEGRAL_GB_RUNTIME_AUDIO_MAX_FRAMES);
-    if (frames == 0) {
-        return;
-    }
-
-    integral_gb_runtime_audio_player_queue_samples(player, samples, frames);
+    queue_samples(player, samples, frames, wait_for_space);
 }
 
 void integral_gb_runtime_audio_player_queue_samples(IntegralGBRuntimeAudioPlayer *player, const int16_t *samples, unsigned frames)
 {
-    if (!player || !samples || frames == 0 || player->device == 0) {
-        return;
-    }
-
-    unsigned queued = SDL_GetQueuedAudioSize(player->device);
-    if (queued > player->max_queue_bytes) {
-        SDL_ClearQueuedAudio(player->device);
-        player->queue_resets++;
-    }
-
-    SDL_QueueAudio(player->device,
-                   samples,
-                   frames * INTEGRAL_GB_RUNTIME_AUDIO_CHANNELS * sizeof(int16_t));
-    player->packets_queued++;
-    player->frames_queued += frames;
+    queue_samples(player, samples, frames, false);
 }
 
 void integral_gb_runtime_audio_player_print_stats(const IntegralGBRuntimeAudioPlayer *player)
@@ -98,6 +131,7 @@ void integral_gb_runtime_audio_player_print_stats(const IntegralGBRuntimeAudioPl
     printf("  local audio packets queued: %u\n", player->packets_queued);
     printf("  local audio frames queued: %u\n", player->frames_queued);
     printf("  local audio queue resets: %u\n", player->queue_resets);
+    printf("  local audio queue timeouts: %u\n", player->queue_timeouts);
 }
 
 void integral_gb_runtime_audio_player_close(IntegralGBRuntimeAudioPlayer *player)

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: MIT
+# Sum the emulated cycles for the full frame, independent of internal timing sync.
+diff --git a/Core/gb.c b/Core/gb.c
+index dce0ca0..1da0c97 100644
+--- a/Core/gb.c
++++ b/Core/gb.c
+@@ -1291,4 +1291,6 @@ uint64_t GB_run_frame(GB_gameboy_t *gb)
+     gb->cycles_since_last_sync = 0;
++    /* Timing sync can reset its counter during a frame. */
++    uint64_t frame_cycles = 0;
+     while (true) {
+-        GB_run(gb);
++        frame_cycles += GB_run(gb);
+         if (gb->vblank_just_occured) {
+@@ -1300,3 +1302,3 @@ uint64_t GB_run_frame(GB_gameboy_t *gb)
+     gb->turbo_cap_multiplier = old_turbo_cap;
+-    return gb->cycles_since_last_sync * 1000000000LL / 2 / GB_get_clock_rate(gb); /* / 2 because we use 8MHz units */
++    return frame_cycles * 1000000000LL / 2 / GB_get_clock_rate(gb); /* / 2 because we use 8MHz units */
+ }

@@ -72,9 +72,9 @@ static void format_link_room_slot(const AppState *state,
                                   size_t label_out_size,
                                   char *detail_out,
                                   size_t detail_out_size);
-static void draw_local_mode(SDL_Renderer *renderer, const AppState *state);
+static void draw_play_game_mode(SDL_Renderer *renderer, const AppState *state);
 static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, bool mobile_mode);
-static void draw_local(SDL_Renderer *renderer, const AppState *state);
+static void draw_gb_mode(SDL_Renderer *renderer, const AppState *state);
 static void draw_gb_mobile(SDL_Renderer *renderer, const AppState *state);
 static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state);
 static void draw_room(SDL_Renderer *renderer, const AppState *state);
@@ -170,12 +170,12 @@ static void draw_password_change(SDL_Renderer *renderer, const AppState *app)
 static IntegralClientMenuView menu_view(const AppState *state, unsigned selected)
 {
     return (IntegralClientMenuView){
-        .username = state->login.username,
-        .server = state->login.server,
+        .username = state->ui.offline_local_mode ? NULL : state->login.username,
+        .server = state->ui.offline_local_mode ? NULL : state->login.server,
         .version = INTEGRAL_CLIENT_VERSION,
         .status = state->login.status,
-        .save_notice = state->local.save_sync_notice,
-        .save_error = state->local.save_sync_error,
+        .save_notice = state->ui.offline_local_mode ? NULL : state->local.save_sync_notice,
+        .save_error = state->ui.offline_local_mode ? NULL : state->local.save_sync_error,
         .selected = selected,
     };
 }
@@ -220,7 +220,11 @@ static void draw_join_room(SDL_Renderer *renderer, const AppState *state)
 
 static void format_local_slot_label(const AppState *state, unsigned local_slot, const char *label, char *out, size_t out_size)
 {
-    const IntegralConfigRomSlot *slot = local_selected_rom_slot(state, local_slot);
+    if (state->ui.offline_local_mode) {
+        copy_text(out, out_size, label);
+        return;
+    }
+    const IntegralConfigRomSlot *slot = registered_gb_slot_for_screen(state, local_slot);
     if (!slot) {
         snprintf(out, out_size, "%s EMPTY", label);
         return;
@@ -247,7 +251,12 @@ static void format_rom_filename_with_header(const IntegralConfigRomSlot *slot, c
 
 static void format_local_slot_detail(const AppState *state, unsigned local_slot, char *out, size_t out_size)
 {
-    const IntegralConfigRomSlot *slot = local_selected_rom_slot(state, local_slot);
+    if (state->ui.offline_local_mode) {
+        copy_text(out, out_size, state->local.offline_rom_paths[local_slot][0]
+                  ? state->local.offline_rom_paths[local_slot] : "LEFT/RIGHT SELECT ROM FROM roms/");
+        return;
+    }
+    const IntegralConfigRomSlot *slot = registered_gb_slot_for_screen(state, local_slot);
     if (!slot) {
         copy_text(out, out_size, "LEFT/RIGHT SELECT ROM1-8");
         return;
@@ -337,10 +346,10 @@ static void format_link_room_slot(const AppState *state,
 }
 
 
-static void draw_local_mode(SDL_Renderer *renderer, const AppState *state)
+static void draw_play_game_mode(SDL_Renderer *renderer, const AppState *state)
 {
-    IntegralClientMenuView view = menu_view(state, state->local.local_mode_selected);
-    integral_client_ui_draw_local_mode(renderer, &view);
+    IntegralClientMenuView view = menu_view(state, state->local.play_game_mode_selected);
+    integral_client_ui_draw_play_game_mode(renderer, &view);
 }
 
 
@@ -356,8 +365,8 @@ static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, b
 
     draw_header(renderer,
                 mobile_mode ? "MOBILE MODE" : "GB MODE",
-                state->login.username,
-                state->login.server);
+                state->ui.offline_local_mode ? NULL : state->login.username,
+                state->ui.offline_local_mode ? NULL : state->login.server);
 
     char slot1[220];
     char slot1_detail[220];
@@ -375,7 +384,7 @@ static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, b
         copy_text(scenario_detail, sizeof(scenario_detail),
                   state->local.mobile_scenarios[state->local.mobile_scenario_selected].display_name);
     }
-    else if (mobile_mode && local_selected_rom_slot(state, 0)) {
+    else if (mobile_mode && registered_gb_slot_for_screen(state, 0)) {
         copy_text(scenario_detail, sizeof(scenario_detail), "NOT AVAILABLE");
     }
     const char *labels[] = {"START", slot1, mobile_mode ? "SCENARIO" : slot2};
@@ -388,30 +397,33 @@ static void draw_gb_slot_screen(SDL_Renderer *renderer, const AppState *state, b
 
     for (unsigned i = 0; i < row_count; i++) {
         int y = 118 + (int)i * 76;
-        if (state->local.local_selected == i) {
+        if (state->local.gb_screen_selected == i) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
             SDL_Rect rect = {.x = 14, .y = y - 10, .w = INTEGRAL_WINDOW_WIDTH - 28, .h = 58};
             SDL_RenderFillRect(renderer, &rect);
             integral_sdl_draw_text(renderer, 24, y, ">", 2, selected);
         }
-        integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.local_selected == i ? selected : label, 390);
+        integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.gb_screen_selected == i ? selected : label, 390);
         if (details[i][0] != '\0') {
             integral_client_ui_draw_text_fit(renderer, 48, y + 28, details[i], 1, value, 390);
         }
     }
 
-    integral_client_ui_draw_text_fit(renderer, 22, 374, state->local.save_sync_notice, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
-    integral_client_ui_draw_text_fit(renderer, 22, 392, state->local.save_sync_error, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
+    if (!state->ui.offline_local_mode) {
+        integral_client_ui_draw_text_fit(renderer, 22, 374, state->local.save_sync_notice, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
+        integral_client_ui_draw_text_fit(renderer, 22, 392, state->local.save_sync_error, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
+    }
     integral_client_ui_draw_text_fit(renderer, 22, 410, state->login.status, 1, muted, INTEGRAL_WINDOW_WIDTH - 44);
-    const char *hint = state->local.local_selected == 0 ? "ENTER START" :
-        mobile_mode && state->local.local_selected == 2 ? "LEFT/RIGHT: SELECT SCENARIO" : "LEFT/RIGHT: SELECT ROM1-8";
+    const char *hint = state->local.gb_screen_selected == 0 ? "ENTER START" :
+        mobile_mode && state->local.gb_screen_selected == 2 ? "LEFT/RIGHT: SELECT SCENARIO" :
+        state->ui.offline_local_mode ? "LEFT/RIGHT: SELECT ROM IN roms/" : "LEFT/RIGHT: SELECT ROM1-8";
     integral_sdl_draw_text(renderer, 22, 438, hint, 1, muted);
-    integral_sdl_draw_text(renderer, 22, 456, "TAB MOVE  ESC LOCAL MODES", 1, muted);
+    integral_sdl_draw_text(renderer, 22, 456, "TAB MOVE  ESC PLAY GAME", 1, muted);
     SDL_RenderPresent(renderer);
 }
 
 
-static void draw_local(SDL_Renderer *renderer, const AppState *state)
+static void draw_gb_mode(SDL_Renderer *renderer, const AppState *state)
 {
     draw_gb_slot_screen(renderer, state, false);
 }
@@ -433,12 +445,19 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
 
-    draw_header(renderer, "N64 MODE", state->login.username, state->login.server);
+    draw_header(renderer, "N64 MODE",
+                state->ui.offline_local_mode ? NULL : state->login.username,
+                state->ui.offline_local_mode ? NULL : state->login.server);
 
     char n64_label[240];
     char n64_detail[240] = "";
-    const IntegralConfigRomSlot *n64_slot = selected_n64_rom_slot(state);
-    if (n64_slot) {
+    const IntegralConfigRomSlot *n64_slot = state->ui.offline_local_mode ? NULL : selected_n64_rom_slot(state);
+    if (state->ui.offline_local_mode) {
+        copy_text(n64_label, sizeof(n64_label), "N64 SLOT");
+        copy_text(n64_detail, sizeof(n64_detail), state->local.offline_n64_rom_path[0]
+                  ? state->local.offline_n64_rom_path : "LEFT/RIGHT SELECT ROM FROM roms/");
+    }
+    else if (n64_slot) {
         snprintf(n64_label,
                  sizeof(n64_label),
                  "N64 SLOT ROM%d",
@@ -451,6 +470,10 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
 
     char transfer_labels[4][240];
     for (unsigned i = 0; i < 4; i++) {
+        if (state->ui.offline_local_mode) {
+            snprintf(transfer_labels[i], sizeof(transfer_labels[i]), "SLOT%u", i + 1);
+            continue;
+        }
         int index = state->local.integral_n64_runtime_transfer_slot_indices[i];
         const IntegralConfigRomSlot *slot = selected_transfer_rom_slot(state, i);
         if (slot) {
@@ -479,10 +502,16 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
             integral_sdl_draw_text(renderer, 24, y + 2, ">", 2, selected);
         }
         integral_client_ui_draw_text_fit(renderer, 48, y, labels[i], 2, state->local.integral_n64_runtime_selected == i ? selected : label, 390);
-        if (i == 1 && n64_slot) {
+        if (i == 1 && (n64_slot || state->ui.offline_local_mode)) {
             integral_client_ui_draw_text_fit(renderer, 48, y + 24, n64_detail, 1, value, 390);
         }
         else if (i >= 2) {
+            if (state->ui.offline_local_mode) {
+                const char *relative = state->local.offline_transfer_paths[i - 2];
+                integral_client_ui_draw_text_fit(renderer, 48, y + 24,
+                    relative[0] ? relative : "LEFT/RIGHT SELECT GB ROM", 1, value, 390);
+                continue;
+            }
             const IntegralConfigRomSlot *slot = selected_transfer_rom_slot(state, i - 2);
             if (slot) {
                 char slot_detail[240];
@@ -492,11 +521,15 @@ static void draw_n64_runtime(SDL_Renderer *renderer, const AppState *state)
         }
     }
 
-    integral_client_ui_draw_text_fit(renderer, 22, 374, state->local.save_sync_notice, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
-    integral_client_ui_draw_text_fit(renderer, 22, 392, state->local.save_sync_error, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
+    if (!state->ui.offline_local_mode) {
+        integral_client_ui_draw_text_fit(renderer, 22, 374, state->local.save_sync_notice, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
+        integral_client_ui_draw_text_fit(renderer, 22, 392, state->local.save_sync_error, 1, value, INTEGRAL_WINDOW_WIDTH - 44);
+    }
     integral_client_ui_draw_text_fit(renderer, 22, 410, state->login.status, 1, muted, INTEGRAL_WINDOW_WIDTH - 44);
-    integral_sdl_draw_text(renderer, 22, 438, "TAB MOVE  ENTER START/SELECT  LEFT/RIGHT ROM1-8", 1, muted);
-    integral_sdl_draw_text(renderer, 22, 456, "ESC LOCAL MODES", 1, muted);
+    integral_sdl_draw_text(renderer, 22, 438, state->ui.offline_local_mode
+                           ? "TAB MOVE  ENTER START/SELECT  LEFT/RIGHT ROM"
+                           : "TAB MOVE  ENTER START/SELECT  LEFT/RIGHT ROM1-8", 1, muted);
+    integral_sdl_draw_text(renderer, 22, 456, "ESC PLAY GAME", 1, muted);
     SDL_RenderPresent(renderer);
 }
 
@@ -1201,8 +1234,8 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
         integral_client_ui_draw_text_fit(renderer, 48, 126, util_line2, 1, value, 400);
         integral_client_ui_draw_text_fit(renderer, 48, 144, util_line3, 1, value, 400);
 
-        integral_sdl_draw_text(renderer, 22, 162, "FAST / TURBO: LOCAL GB 1P ONLY", 1, muted);
-        integral_sdl_draw_text(renderer, 22, 180, "RESET: LOCAL MODES", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 162, "FAST / TURBO: GB MODE 1P ONLY", 1, muted);
+        integral_sdl_draw_text(renderer, 22, 180, "RESET: GB/N64 MODES", 1, muted);
         integral_sdl_draw_text(renderer, 22, 198, "SCREENSHOT / ESCAPE: ALL MODES", 1, muted);
         if (state->key_editor.key_selected == 1u) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);
@@ -1255,7 +1288,7 @@ static void draw_key_config(SDL_Renderer *renderer, const AppState *state)
 
 enum {
     ROM_SLOT_WARNING_SERVER_UNREGISTERED = 1u << 0,
-    ROM_SLOT_WARNING_LOCAL_NOT_FOUND = 1u << 1,
+    ROM_SLOT_WARNING_ROM_FILE_NOT_FOUND = 1u << 1,
 };
 
 
@@ -1319,7 +1352,7 @@ static unsigned format_rom_slot_summary(const IntegralConfigRomSlot *slot,
         warnings |= ROM_SLOT_WARNING_SERVER_UNREGISTERED;
     }
     if (!local_found) {
-        warnings |= ROM_SLOT_WARNING_LOCAL_NOT_FOUND;
+        warnings |= ROM_SLOT_WARNING_ROM_FILE_NOT_FOUND;
     }
     return warnings;
 }
@@ -1361,14 +1394,14 @@ static void draw_rom_register(SDL_Renderer *renderer, const AppState *state)
                 format_rom_slot_summary(&display_slot, &state->catalog.server_rom_slots[i], summary, sizeof(summary));
             char warning_text[64] = "";
             if ((warnings & ROM_SLOT_WARNING_SERVER_UNREGISTERED) &&
-                (warnings & ROM_SLOT_WARNING_LOCAL_NOT_FOUND)) {
-                copy_text(warning_text, sizeof(warning_text), "SERVER UNREGISTERED  LOCAL NOT FOUND");
+                (warnings & ROM_SLOT_WARNING_ROM_FILE_NOT_FOUND)) {
+                copy_text(warning_text, sizeof(warning_text), "SERVER UNREGISTERED  ROM FILE NOT FOUND");
             }
             else if (warnings & ROM_SLOT_WARNING_SERVER_UNREGISTERED) {
                 copy_text(warning_text, sizeof(warning_text), "SERVER UNREGISTERED");
             }
-            else if (warnings & ROM_SLOT_WARNING_LOCAL_NOT_FOUND) {
-                copy_text(warning_text, sizeof(warning_text), "LOCAL NOT FOUND");
+            else if (warnings & ROM_SLOT_WARNING_ROM_FILE_NOT_FOUND) {
+                copy_text(warning_text, sizeof(warning_text), "ROM FILE NOT FOUND");
             }
 
             integral_sdl_draw_text(renderer, 48, y, label_text, 2, state->catalog.rom_editor.rom_selected == i ? selected : label);
@@ -1528,11 +1561,11 @@ void draw_app(SDL_Renderer *renderer, const AppState *state)
         case SCREEN_SCREENSHOTS:
             integral_screenshots_draw(renderer, state->screenshots);
             break;
-        case SCREEN_LOCAL_MODE:
-            draw_local_mode(renderer, state);
+        case SCREEN_PLAY_GAME_MODE:
+            draw_play_game_mode(renderer, state);
             break;
-        case SCREEN_LOCAL:
-            draw_local(renderer, state);
+        case SCREEN_GB_MODE:
+            draw_gb_mode(renderer, state);
             break;
         case SCREEN_GB_MOBILE:
             draw_gb_mobile(renderer, state);

@@ -4,6 +4,7 @@ import base64
 import copy
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import threading
@@ -12,6 +13,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 def main() -> int:
     binary = str(Path(sys.argv[1]).resolve())
+    version_header = Path(__file__).resolve().parents[1] / "c_client/client_version.h"
+    match = re.search(r'^#define INTEGRAL_CLIENT_MACHINE_VERSION "([^"]+)"$',
+                      version_header.read_text(encoding="utf-8"), re.MULTILINE)
+    assert match, "Client machine version is missing from client_version.h"
+    client_version = match.group(1)
     reply = {"data": b"", "status": 200}
 
     class Handler(BaseHTTPRequestHandler):
@@ -20,7 +26,7 @@ def main() -> int:
             if self.path == "/auth/login":
                 payload = json.loads(body)
                 assert payload == {"username": "version-test", "password": "synthetic-password",
-                                   "server_id": "primary", "client_version": "0.3.0-beta"}
+                                   "server_id": "primary", "client_version": client_version}
                 assert self.headers.get("Authorization") is None
             else:
                 assert self.headers["Authorization"] == "Bearer synthetic-token"

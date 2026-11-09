@@ -21,9 +21,9 @@ make frontend
 
 `make frontend`は、Mupen64Plus core、各plugin、N64 Runtime front-endをソースからビルドし、`build/integral_n64_runtime_frontend`を生成します。Mupen64Plus一式を別途ビルドする必要はありません。
 
-通常のゲームプレイでは、INTEGRAL EMULATOR Clientが登録済みROMとセッション専用の作業パスをRuntimeへ渡します。Runtime自身はIntegral Serverへの認証や、サーバー上のSAVを確定する権限を持ちません。
+ログイン後のゲームプレイでは、INTEGRAL EMULATOR Clientが登録済みROMとセッション専用の作業パスをRuntimeへ渡します。LOCAL MODEでは`roms/`内のN64 ROMと、必要ならTransfer Pak用GB ROM／SAVのパスを直接渡します。Runtime自身はIntegral Serverへの認証や、サーバー上のSAVを確定する権限を持ちません。
 
-N64 ROOMのTransfer Pak GB SAV・RTCは匿名パイプで受け取り、メモリ上だけで処理します。LOCAL N64のSAV・RTCファイル保存は維持します。
+N64 ROOMのTransfer Pak GB SAV・RTCは匿名パイプで受け取り、メモリ上だけで処理します。PLAY GAME > N64 MODEでは、ログイン後はサーバー同期用の一時ファイル、LOCAL MODEではROMに対応するローカルSAVを使用します。
 
 キーボード操作にはSDLの物理キー位置を使用し、OSで選択中の入力方式や入力ソースは変更しません。
 

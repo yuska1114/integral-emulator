@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 yuska (GitHub: @yuska1114)
+# SPDX-License-Identifier: GPL-2.0-or-later
+--- a/src/main.c
++++ b/src/main.c
+@@ -336,6 +336,15 @@
+     sdl_synchronize_audio(l_sdl_backend);
+ }
+ 
++/* Optional handshake with the Integral core's VI speed limiter. */
++EXPORT int CALL IntegralAudioCorePacing(int enabled, int *correction_ppm)
++{
++    if (!l_PluginInit || l_sdl_backend == NULL)
++        return 0;
++
++    return sdl_core_pacing(l_sdl_backend, enabled, correction_ppm);
++}
++
+ EXPORT int CALL InitiateAudio(AUDIO_INFO Audio_Info)
+ {
+     if (!l_PluginInit)
+--- a/src/sdl_backend.h
++++ b/src/sdl_backend.h
+@@ -36,6 +36,8 @@
+ 
+ void sdl_synchronize_audio(struct sdl_backend* sdl_backend);
+ 
++int sdl_core_pacing(struct sdl_backend* sdl_backend, int enabled, int* correction_ppm);
++
+ void sdl_set_speed_factor(struct sdl_backend* sdl_backend, unsigned int speed_factor);
+ 
+ #endif
+--- a/src/sdl_backend.c
++++ b/src/sdl_backend.c
+@@ -99,6 +99,8 @@
+     /* Resampler */
+     void* resampler;
+     const struct resampler_interface* iresampler;
++
++    int core_pacing;
+ };
+ 
+ /* SDL_AudioFormat.format format specifier and args builder */
+@@ -409,20 +411,49 @@
+ }
+ 
+ 
++static size_t queued_output_samples(struct sdl_backend* sdl_backend, unsigned int* last_callback)
++{
++    size_t available;
++
++    SDL_LockAudio();
++    cbuff_tail(&sdl_backend->primary_buffer, &available);
++    if (last_callback != NULL)
++        *last_callback = sdl_backend->last_cb_time;
++    SDL_UnlockAudio();
++
++    return (size_t)(((int64_t)(available / N64_SAMPLE_BYTES) * sdl_backend->output_frequency * 100) /
++        (sdl_backend->input_frequency * sdl_backend->speed_factor));
++}
++
++int sdl_core_pacing(struct sdl_backend* sdl_backend, int enabled, int* correction_ppm)
++{
++    enum { MAX_CORRECTION_PPM = 10000 };
++    sdl_backend->core_pacing = enabled && sdl_backend->audio_sync && !sdl_backend->error;
++    if (sdl_backend->core_pacing && correction_ppm != NULL)
++    {
++        int64_t target = sdl_backend->target;
++        int64_t level = queued_output_samples(sdl_backend, NULL);
++        /* Correct clock drift gradually, with at most a 1% change in VI
++         * period. Queue errors of half the target use the full correction. */
++        int64_t correction = (level - target) * (2 * MAX_CORRECTION_PPM) / target;
++        if (correction > MAX_CORRECTION_PPM)
++            correction = MAX_CORRECTION_PPM;
++        if (correction < -MAX_CORRECTION_PPM)
++            correction = -MAX_CORRECTION_PPM;
++        *correction_ppm = (int) correction;
++    }
++    return sdl_backend->core_pacing;
++}
++
+ static size_t estimate_level_at_next_audio_cb(struct sdl_backend* sdl_backend)
+ {
+-    size_t available;
++    unsigned int last_callback;
++    size_t expected_level = queued_output_samples(sdl_backend, &last_callback);
+     unsigned int now = SDL_GetTicks();
+-
+-    /* NOTE: given that we only access "available" counter from cbuff, we don't need to protect it's access with LockAudio/UnlockAudio */
+-    cbuff_tail(&sdl_backend->primary_buffer, &available);
+-
+-    /* Start by calculating the current Primary buffer fullness in terms of output samples */
+-    size_t expected_level = (size_t)(((int64_t)(available/N64_SAMPLE_BYTES) * sdl_backend->output_frequency * 100) / (sdl_backend->input_frequency * sdl_backend->speed_factor));
+ 
+     /* Next, extrapolate to the buffer level at the expected time of the next audio callback, assuming that the
+        buffer is filled at the same rate as the output frequency */
+-    unsigned int expected_next_cb_time = sdl_backend->last_cb_time + ((1000 * sdl_backend->secondary_buffer_size) / sdl_backend->output_frequency);
++    unsigned int expected_next_cb_time = last_callback + ((1000 * sdl_backend->secondary_buffer_size) / sdl_backend->output_frequency);
+ 
+     if (now < expected_next_cb_time) {
+         expected_level += (expected_next_cb_time - now) * sdl_backend->output_frequency / 1000;
+@@ -435,11 +466,15 @@
+ {
+     enum { TOLERANCE_MS = 10 };
+ 
++    if (sdl_backend->error)
++        return;
++
+     size_t expected_level = estimate_level_at_next_audio_cb(sdl_backend);
+ 
+     /* If the expected value of the Primary Buffer Fullness at the time of the next audio callback is more than 10
+        milliseconds ahead of our target buffer fullness level, then insert a delay now */
+-    if (sdl_backend->audio_sync && expected_level >= sdl_backend->target + sdl_backend->output_frequency * TOLERANCE_MS / 1000)
++    if (!sdl_backend->core_pacing && sdl_backend->audio_sync &&
++        expected_level >= sdl_backend->target + sdl_backend->output_frequency * TOLERANCE_MS / 1000)
+     {
+         /* Core is ahead of SDL audio thread,
+          * delay emulation to allow the SDL audio thread to catch up */

@@ -19,7 +19,7 @@ void integral_client_ui_draw_main_menu(SDL_Renderer *renderer, const IntegralCli
 
     integral_client_ui_draw_header(renderer, "MAIN MENU", view->username, view->server, view->version);
     const char *labels[] = {
-        "LOCAL",
+        "PLAY GAME",
         "CREATE ROOM",
         "JOIN ROOM",
         "ROM REGISTER",
@@ -217,7 +217,7 @@ void integral_client_ui_draw_join_room(SDL_Renderer *renderer, const IntegralCli
 }
 
 
-void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralClientMenuView *view)
+void integral_client_ui_draw_play_game_mode(SDL_Renderer *renderer, const IntegralClientMenuView *view)
 {
     SDL_SetRenderDrawColor(renderer, 20, 24, 28, 255);
     SDL_RenderClear(renderer);
@@ -226,14 +226,14 @@ void integral_client_ui_draw_local_mode(SDL_Renderer *renderer, const IntegralCl
     SDL_Color selected = {86, 162, 126, 255};
     SDL_Color muted = {112, 122, 130, 255};
 
-    integral_client_ui_draw_header(renderer, "LOCAL", view->username, view->server, view->version);
+    integral_client_ui_draw_header(renderer, "PLAY GAME", view->username, view->server, view->version);
     const char *labels[] = {
         "GB MODE",
         "MOBILE MODE",
         "N64 MODE",
     };
 
-    for (unsigned i = 0; i < INTEGRAL_LOCAL_MODE_ROWS; i++) {
+    for (unsigned i = 0; i < INTEGRAL_PLAY_GAME_MODE_ROWS; i++) {
         int y = 126 + (int)i * 76;
         if (view->selected == i) {
             SDL_SetRenderDrawColor(renderer, 38, 72, 62, 255);

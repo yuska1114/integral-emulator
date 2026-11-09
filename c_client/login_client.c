@@ -36,14 +36,14 @@ static void dispatch_client_key(AppState *state, const SDL_KeyboardEvent *key)
     else if (state->ui.screen == SCREEN_MAIN_MENU) {
         handle_main_key(state, key);
     }
-    else if (state->ui.screen == SCREEN_LOCAL_MODE) {
-        handle_local_mode_key(state, key);
+    else if (state->ui.screen == SCREEN_PLAY_GAME_MODE) {
+        handle_play_game_mode_key(state, key);
     }
     else if (state->ui.screen == SCREEN_ROOM_MODE) {
         handle_room_mode_key(&state->room, key);
     }
-    else if (state->ui.screen == SCREEN_LOCAL || state->ui.screen == SCREEN_GB_MOBILE) {
-        handle_local_key(state, key);
+    else if (state->ui.screen == SCREEN_GB_MODE || state->ui.screen == SCREEN_GB_MOBILE) {
+        handle_gb_mode_key(state, key);
     }
     else if (state->ui.screen == SCREEN_N64_RUNTIME) {
         handle_n64_runtime_key(state, key);
@@ -312,8 +312,10 @@ int main(int argc, char **argv)
                 }
             }
         }
-        poll_server_state(&state.room);
-        poll_local_save_notice(&state);
+        if (!state.ui.offline_local_mode) {
+            poll_server_state(&state.room);
+            poll_local_save_notice(&state);
+        }
         /* Focus may already be restored before queued events are consumed. */
         if (SDL_GetKeyboardFocus() == window) clear_local_launch_notice(&state);
         client_diagnostics_tick(&state, &diagnostics);

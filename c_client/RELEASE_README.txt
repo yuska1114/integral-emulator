@@ -88,6 +88,11 @@ Linuxでログイン情報の記憶を有効にすると、パスワードは平
 
 初めて遊ぶまで
 
+用語：LOCAL MODEはログインもサーバー通信も行わず、このPCのROMとセーブデータで遊ぶ入口です。
+PLAY GAMEはログイン後とLOCAL MODEで共通の機種選択画面です。
+ログイン後のGB MODE／N64 MODEは、ゲーム画面がこのPCで動いても、SAVをサーバーと同期します。
+LOCAL MODEだけを使う場合、以下のアカウント準備とROM登録は不要です。
+
 メニュー画面はキーボードで操作します。基本は上下キーまたはTabで項目を移動し、
 Enterで決定、Escで戻ります。画面下にも操作方法が表示されます。
 SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
@@ -104,6 +109,10 @@ SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
 3. Clientを起動してログインします。
    ACCOUNT LOGIN画面でSERVERとENVを確認し、USERNAMEとPASSWORDを入力します。
    入力欄を選んでF2を押すと編集できます。LOGINを選んでEnterを押してください。
+   LOCAL MODEを選んでEnterを押すと、ログインせずにMAIN MENUを表示します。
+   LOCAL MODEではPLAY GAMEのGB MODE／N64 MODEをログインなしで起動できます。
+   SETTINGSとSCREENSHOTSも使用できます。MOBILE MODE、ROOM、ROM REGISTERは
+   LOGIN REQUIREDと表示されます。
    パスワード変更を求められた場合は、画面の案内に従って変更します。
 
 4. ROMを登録します。
@@ -119,7 +128,7 @@ SETTINGS → UTIL KEYS CONFIG → CLIENT ALIASでは、方向、Enter、Escに
 
 5. GBのゲームを開始します。
    必要に応じてMAIN MENU → SETTINGS → GB KEYS CONFIGでキーやコントローラーを設定します。
-   LOCAL → GB MODEを開き、SLOT1の行で左右キーを押して登録済みのROMを選びます。
+   PLAY GAME → GB MODEを開き、SLOT1の行で左右キーを押して登録済みのROMを選びます。
    1画面で遊ぶ場合はSLOT2を空にします。設定済みならSLOT2の行でBackspaceを押すと
    解除できます。STARTを選んでEnterを押すとゲームが起動します。
 
@@ -128,9 +137,18 @@ ROM1～ROM8は登録用の枠、SLOT1／SLOT2は今回遊ぶゲームを選ぶ�
 SAVが必要です。保存と終了の方法は、後述の「セーブデータの保存とゲームの終了」を
 確認してください。
 
+LOCAL MODEで遊ぶ場合はROM登録は不要です。PLAY GAME → GB MODEでSLOT1／SLOT2に
+roms/以下のGB ROMを左右キーで選び、STARTで起動します。同じROMは両方のSLOTに
+選べません。SAVは各ROMと同じ場所の同名.savです（例：roms/game.gbc →
+roms/game.sav）。PLAY GAME → N64 MODEではN64 SLOTにN64 ROMを選び、必要なら
+SLOT1～SLOT4にTransfer Pak用のGB ROMを選びます。Transfer PakのSAVも各GB ROMの
+隣の.savを使用します。N64の本体セーブ（.eep／.sra／.flaなど）はROMと同じ
+フォルダに保存します。
+LOCAL MODEのキー設定とOPTIONSはconfig/integral_client_local.confに記憶されます。
+
 ほかのモードを使う場合
 
-- N64：ROM REGISTERでN64 ROMを登録し、LOCAL → N64 MODEのN64 SLOTで選びます。
+- N64：ROM REGISTERでN64 ROMを登録し、PLAY GAME → N64 MODEのN64 SLOTで選びます。
   N64の1～4Pキー設定はSETTINGS → N64 KEYS CONFIGで行い、画面上部の
   N64 CONTROLLERを左右キーで切り替えます。必要に応じてSLOT1～SLOT4に
   Transfer Pak用のGB ROMを選び、STARTで開始します。
@@ -139,7 +157,7 @@ SAVが必要です。保存と終了の方法は、後述の「セーブデー�
   入室後、各自のROMなど必要な項目を設定し、両者がREADYにします。
   Link Cable ROOM／N64 ROOMの作成側（User1）は、相手が使用するGB ROMも自分のPCに
   用意し、ROM REGISTERのROM1～ROM8へ登録してください。相手のROMは転送されません。
-- Mobile：LOCAL → MOBILE MODEでSLOT1とSCENARIOを選び、STARTで開始します。
+- Mobile：PLAY GAME → MOBILE MODEでSLOT1とSCENARIOを選び、STARTで開始します。
   対象ROMに対応した追加パッケージを、サーバー管理者が導入している必要があります。
   Clientの導入だけでは利用できません。SCENARIOがNOT AVAILABLEの場合は、ROMの
   選択とサーバー側の対応状況を管理者へ確認してください。
@@ -156,29 +174,32 @@ GBのゲーム画面は起動時のClientと同じウィンドウサイズにな
 中央表示して余白を黒くします。Clientの終了時のサイズは次回起動時に復元されます。
 
 SETTINGS → OPTIONSではIR RELEASE DELAYとSGBを変更できます。SGBがENABLEで、
-LOCAL GBを1スロットでSGB対応ROMとして起動した場合は、ゲーム側が転送したSGBボーダーを
+GB MODEを1スロットでSGB対応ROMとして起動した場合は、ゲーム側が転送したSGBボーダーを
 含む256×224表示を使用します。SameBootの起動画面は表示しません。
 
-RTC搭載ROMのSAVが通信に必要なRTC情報を含まない場合は、LOCALで一度ゲームを起動し、
-正常に終了してから再度通信を開始してください。
+RTC搭載ROMのサーバーSAVが通信に必要なRTC情報を含まない場合は、ログイン後の
+PLAY GAME → GB MODEで一度起動し、正常に終了してから通信を再開してください。
 
 セーブデータの保存とゲームの終了
 
-セーブデータ（SAV）はサーバーで管理します。LOCALでもサーバーへの接続が必要です。
+LOCAL MODEのセーブデータはこのPCのroms/内に保存します。ログイン後のPLAY GAMEでは
+SAVをサーバーと同期します。LOCAL MODEのセーブデータはサーバーSAVとは別です。
 終了操作だけでゲーム内のセーブが実行されるわけではありません。ゲームに保存操作が
 ある場合は、先にゲーム内で保存してください。
 
-  モード                         | サーバーSAVへの反映
+  モード                         | 保存先
   -------------------------------|--------------------------------------------
-  GB LOCAL（1画面／2画面）       | あり。実行中と終了後にSAVの変更を同期します。
-  N64 LOCAL                      | あり。N64のSAVと、Transfer Pakに選んだGB SAV。
-  Mobile Mode                    | 正常終了し、SAVの検証に成功した場合だけ反映。
-  Link Cable ROOM：Battle        | なし。対戦結果によってSAVは更新されません。
+  LOCAL MODE：GB MODE            | roms/内のROMと同名の.sav。
+  LOCAL MODE：N64 MODE           | N64本体はROMと同じフォルダ。Transfer PakはGB ROMと同名の.sav。
+  ログイン後：GB MODE            | 実行中と終了後にサーバーSAVへ同期。
+  ログイン後：N64 MODE           | N64のSAVとTransfer PakのGB SAVをサーバーへ同期。
+  ログイン後：MOBILE MODE        | 正常終了し、SAVの検証に成功した場合だけサーバーへ反映。
+  Link Cable ROOM：Battle        | 対戦結果によってSAVは更新されません。
   Link Cable ROOM：Trade         | Hostの正常終了後、両者の結果が一致した場合だけ
-                                 | 両者のSAVを一組として反映します。
-  N64 ROOM                       | なし。両者ともサーバーSAVは更新されません。
+                                 | 両者のSAVを一組としてサーバーへ反映。
+  N64 ROOM                       | 両者ともサーバーSAVは更新されません。
 
-N64 LOCALのコントローラーパックのデータは、サーバー同期の対象外です。
+ログイン後のN64 MODEでも、コントローラーパックのデータはサーバー同期の対象外です。
 
 終了するときは、ゲーム画面で終了キー（初期設定はEsc）またはウィンドウの閉じる
 ボタンを使い、終了確認でYESを選んでください。
@@ -187,7 +208,7 @@ Link Cable ROOMのTradeでは、Host（User1）が終了操作を行い、Remote
 完了するまで接続を保って待ってください。Remoteが自分で終了すると、両者のSAVは
 更新されません。ゲーム内で交換が成功していても、この終了手順が必要です。
 
-Client本体は、ゲームと保存処理が終わるまで開いたままにしてください。
+ログイン後は、ゲームとサーバーへの保存処理が終わるまでClient本体を開いたままにしてください。
 通信障害、ゲーム期限切れ、強制終了の場合は、最新の状態がサーバーへ反映されない
 ことがあります。
 

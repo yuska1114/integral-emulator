@@ -37,7 +37,8 @@ int integral_gb_runtime_video_window_open_titled_sized_content(
     unsigned window_width,
     unsigned window_height,
     unsigned slot_width,
-    unsigned slot_height);
+    unsigned slot_height,
+    bool vsync);
 int integral_gb_runtime_video_window_open_titled_unthrottled(
     IntegralGBRuntimeVideoWindow **window_out,
     unsigned scale,
@@ -63,6 +64,9 @@ int integral_gb_runtime_video_window_render(IntegralGBRuntimeVideoWindow *window
                                    const IntegralGBRuntimeSlot *slot2);
 int integral_gb_runtime_video_window_render_pixels(IntegralGBRuntimeVideoWindow *window,
                                            const uint32_t *pixels);
+int integral_gb_runtime_video_window_render_pair_pixels(IntegralGBRuntimeVideoWindow *window,
+                                                        const uint32_t *slot1,
+                                                        const uint32_t *slot2);
 void integral_gb_runtime_video_window_close(IntegralGBRuntimeVideoWindow *window);
 
 #endif

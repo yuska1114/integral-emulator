@@ -57,7 +57,7 @@ class UtilKeysContract(unittest.TestCase):
 
     def test_visible_matrix(self):
         text = source("c_client/client_view.c")
-        for label in ("FAST / TURBO: LOCAL GB 1P ONLY", "RESET: LOCAL MODES",
+        for label in ("FAST / TURBO: GB MODE 1P ONLY", "RESET: GB/N64 MODES",
                       "SCREENSHOT / ESCAPE: ALL MODES"):
             self.assertIn(label, text)
 

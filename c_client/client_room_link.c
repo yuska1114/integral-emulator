@@ -829,7 +829,7 @@ static bool start_room_gb_runtime_fixed_host_runtime(
             }
             else {
                 copy_text(state->login->status, sizeof(state->login->status),
-                          "RTC SAV NOT READY - RUN LOCAL ONCE, EXIT NORMALLY, THEN RETRY");
+                          "RTC SAV NOT READY - RUN GB MODE WHILE LOGGED IN, EXIT, RETRY");
             }
             client_room_log(state, "gb_runtime_fixed_host_save_preflight_failed",
                        "host_status=%d remote_status=%d",
@@ -1018,7 +1018,7 @@ static bool start_room_gb_runtime_fixed_host_runtime(
               sizeof(state->link.room_gb_runtime_fixed_host_save_policy), save_policy);
     copy_text(state->login->status, sizeof(state->login->status),
               strcmp(relay_transport, "plain") == 0
-                  ? "WARNING PLAIN LOCAL NETWORK  FIXED HOST RUNNING"
+                  ? "WARNING PLAIN LAN  FIXED HOST RUNNING"
                   : (host ? "FIXED HOST BATTLE RUNNING" : "FIXED HOST REMOTE RUNNING"));
     client_room_log(state, "gb_runtime_fixed_host_runtime_started",
                "role=%s session=%s transport=%s rtc_target_unix=%lld",
@@ -1066,7 +1066,7 @@ static void maybe_advance_room_gb_runtime_fixed_host_preflight(IntegralRoomConte
         state->link.room_gb_runtime_save_preflight_blocked = true;
         copy_text(state->login->status, sizeof(state->login->status),
             strcmp(blocked_reason, "rtc_save_required") == 0
-                ? "LEAVE ROOM - RUN LOCAL AND EXIT NORMALLY FIRST"
+                ? "LEAVE ROOM - RUN GB MODE WHILE LOGGED IN FIRST"
                 : "ROM CHECK FAILED - LEAVE ROOM AND RETRY");
         client_room_log(state, "preflight_blocked", "session=%s role=%s reason=%s",
             state->link.room_link_session_id, role, blocked_reason);
@@ -1687,7 +1687,7 @@ void handle_room_key(IntegralRoomContext *state, const SDL_KeyboardEvent *key)
                         state->common.room_chat_input[0] = '\0';
                         state->common.room_chat_composition[0] = '\0';
                         refresh_room(state);
-                        copy_text(state->login->status, sizeof(state->login->status), "CHAT SENT LOCAL");
+                        copy_text(state->login->status, sizeof(state->login->status), "CHAT SENT");
                     }
                     else {
                         state->common.room_chat_editing = false;

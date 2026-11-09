@@ -8,6 +8,10 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 output_dir=${1:-"$project_root/dist/linux/INTEGRAL_EMULATOR_C_CLIENT_LINUX_BUILD"}
 icon_bmp=${INTEGRAL_EMULATOR_ICON_BMP:-"$project_root/assets/public/integral_emulator_icon.bmp"}
+preview_args=()
+if [[ "${INTEGRAL_EMULATOR_RELEASE_PREVIEW:-0}" == 1 ]]; then
+  preview_args=(--preview)
+fi
 for command in cc make cmake pkg-config sdl2-config strip python3 env ldd readlink dpkg-query; do
   command -v "$command" >/dev/null || { echo "Missing command: $command" >&2; exit 1; }
 done
@@ -78,5 +82,6 @@ if grep -aR -l -F "$project_root" "$output_dir" >/dev/null; then
   exit 1
 fi
 python3 "$project_root/scripts/build_artifact_provenance.py" "$output_dir" \
-  --platform linux --project-root "$project_root" --write
+  --platform linux --project-root "$project_root" --write \
+  ${preview_args[@]+"${preview_args[@]}"}
 echo "Linux build artifacts: $output_dir"

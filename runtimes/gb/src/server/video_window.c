@@ -261,9 +261,10 @@ int integral_gb_runtime_video_window_open_titled_sized_content(
     unsigned window_width,
     unsigned window_height,
     unsigned slot_width,
-    unsigned slot_height)
+    unsigned slot_height,
+    bool vsync)
 {
-    return open_titled(window_out, scale, slot_count, title, true,
+    return open_titled(window_out, scale, slot_count, title, vsync,
                        window_width, window_height, slot_width, slot_height);
 }
 
@@ -311,7 +312,7 @@ static void render_top_right_message(IntegralGBRuntimeVideoWindow *window,
 }
 
 static void render_textured_slots(IntegralGBRuntimeVideoWindow *window,
-                                  const IntegralGBRuntimeSlot *slot2,
+                                  bool show_slot2,
                                   bool confirm,
                                   bool yes_selected)
 {
@@ -333,7 +334,7 @@ static void render_textured_slots(IntegralGBRuntimeVideoWindow *window,
     SDL_SetRenderDrawColor(window->renderer, 0, 0, 0, 255);
     SDL_RenderClear(window->renderer);
     SDL_RenderCopy(window->renderer, window->slot1_texture, NULL, &slot1_rect);
-    if (window->slot_count > 1 && slot2) {
+    if (window->slot_count > 1 && show_slot2) {
         SDL_RenderCopy(window->renderer, window->slot2_texture, NULL, &slot2_rect);
     }
 
@@ -543,25 +544,32 @@ void integral_gb_runtime_video_window_set_status_message(IntegralGBRuntimeVideoW
     (void)integral_gb_runtime_copy_text(window->status_message, sizeof(window->status_message), message);
 }
 
-int integral_gb_runtime_video_window_render(IntegralGBRuntimeVideoWindow *window,
-                                   const IntegralGBRuntimeSlot *slot1,
-                                   const IntegralGBRuntimeSlot *slot2)
+int integral_gb_runtime_video_window_render_pair_pixels(IntegralGBRuntimeVideoWindow *window,
+                                                        const uint32_t *slot1,
+                                                        const uint32_t *slot2)
 {
     int pitch = (int)(window->slot_width * sizeof(uint32_t));
-    if (SDL_UpdateTexture(window->slot1_texture, NULL,
-                          integral_gb_runtime_slot_presented_pixels(slot1), pitch) != 0) {
+    if (SDL_UpdateTexture(window->slot1_texture, NULL, slot1, pitch) != 0) {
         fprintf(stderr, "SDL_UpdateTexture failed: %s\n", SDL_GetError());
         return -1;
     }
     if (window->slot_count > 1 && slot2 &&
-        SDL_UpdateTexture(window->slot2_texture, NULL,
-                          integral_gb_runtime_slot_presented_pixels(slot2), pitch) != 0) {
+        SDL_UpdateTexture(window->slot2_texture, NULL, slot2, pitch) != 0) {
         fprintf(stderr, "SDL_UpdateTexture failed: %s\n", SDL_GetError());
         return -1;
     }
 
-    render_textured_slots(window, slot2, window->return_confirm, window->return_confirm_yes);
+    render_textured_slots(window, slot2 != NULL, window->return_confirm, window->return_confirm_yes);
     return 0;
+}
+
+int integral_gb_runtime_video_window_render(IntegralGBRuntimeVideoWindow *window,
+                                   const IntegralGBRuntimeSlot *slot1,
+                                   const IntegralGBRuntimeSlot *slot2)
+{
+    return integral_gb_runtime_video_window_render_pair_pixels(window,
+        integral_gb_runtime_slot_presented_pixels(slot1),
+        window->slot_count > 1 && slot2 ? integral_gb_runtime_slot_presented_pixels(slot2) : NULL);
 }
 
 int integral_gb_runtime_video_window_render_pixels(IntegralGBRuntimeVideoWindow *window,
@@ -570,14 +578,7 @@ int integral_gb_runtime_video_window_render_pixels(IntegralGBRuntimeVideoWindow 
     if (window == NULL || pixels == NULL || window->slot_count != 1u) {
         return -1;
     }
-    int pitch = (int)(window->slot_width * sizeof(uint32_t));
-    if (SDL_UpdateTexture(window->slot1_texture, NULL, pixels, pitch) != 0) {
-        if (window != NULL && pixels != NULL)
-            fprintf(stderr, "SDL_UpdateTexture failed: %s\n", SDL_GetError());
-        return -1;
-    }
-    render_textured_slots(window, NULL, window->return_confirm, window->return_confirm_yes);
-    return 0;
+    return integral_gb_runtime_video_window_render_pair_pixels(window, pixels, NULL);
 }
 
 void integral_gb_runtime_video_window_close(IntegralGBRuntimeVideoWindow *window)

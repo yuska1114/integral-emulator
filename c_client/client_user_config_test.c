@@ -98,7 +98,7 @@ int main(int argc, char **argv)
     char invalid_config[1100];
     snprintf(invalid_config, sizeof(invalid_config), "%s/blocked.conf", gb_path);
     integral_rom_cycle_local(slots, indices, invalid_config, status, sizeof(status), 0, 1);
-    CHECK(strcmp(status, "LOCAL CONFIG SAVE FAILED") == 0 && indices[0] == 1);
+    CHECK(strcmp(status, "GB SLOT CONFIG SAVE FAILED") == 0 && indices[0] == 1);
     memset(slots, 0, sizeof(slots));
     integral_rom_cycle_local(slots, indices, config, status, sizeof(status), 0, 1);
     CHECK(strcmp(status, "NO ROM1-8 SET") == 0 && indices[0] == 1);

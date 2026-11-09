@@ -990,7 +990,7 @@ int client_diagnostics_startup(int argc, char **argv, ClientDiagnostics *diag)
         memset(&key, 0, sizeof(key));
         app_state_init(&navigation, diag->config_path);
         const char *launch_notices[] = {
-            "GB_RUNTIME LOCAL STARTED", "GB_RUNTIME SERVER2 STARTED",
+            "GB MODE STARTED", "GB MODE 2P STARTED",
             "MOBILE MODE STARTED", "N64_RUNTIME STARTED TP:2",
         };
         for (unsigned i = 0; i < sizeof(launch_notices) / sizeof(launch_notices[0]); i++) {
@@ -1025,7 +1025,7 @@ int client_diagnostics_startup(int argc, char **argv, ClientDiagnostics *diag)
         navigation.ui.main_selected = 0;
         key.keysym.sym = SDLK_RETURN;
         handle_main_key(&navigation, &key);
-        if (navigation.ui.screen != SCREEN_LOCAL_MODE) {
+        if (navigation.ui.screen != SCREEN_PLAY_GAME_MODE) {
             return 1;
         }
 
@@ -1071,30 +1071,30 @@ int client_diagnostics_startup(int argc, char **argv, ClientDiagnostics *diag)
             return 1;
         }
 
-        navigation.ui.screen = SCREEN_LOCAL_MODE;
-        navigation.local.local_mode_selected = 0;
+        navigation.ui.screen = SCREEN_PLAY_GAME_MODE;
+        navigation.local.play_game_mode_selected = 0;
         key.keysym.sym = SDLK_RETURN;
-        handle_local_mode_key(&navigation, &key);
-        if (navigation.ui.screen != SCREEN_LOCAL) {
+        handle_play_game_mode_key(&navigation, &key);
+        if (navigation.ui.screen != SCREEN_GB_MODE) {
             return 1;
         }
         key.keysym.sym = SDLK_ESCAPE;
-        handle_local_key(&navigation, &key);
-        if (navigation.ui.screen != SCREEN_LOCAL_MODE) {
+        handle_gb_mode_key(&navigation, &key);
+        if (navigation.ui.screen != SCREEN_PLAY_GAME_MODE) {
             return 1;
         }
 
-        navigation.local.local_mode_selected = 1;
+        navigation.local.play_game_mode_selected = 1;
         key.keysym.sym = SDLK_RETURN;
-        handle_local_mode_key(&navigation, &key);
+        handle_play_game_mode_key(&navigation, &key);
         if (navigation.ui.screen != SCREEN_GB_MOBILE) {
             return 1;
         }
-        handle_local_key(&navigation, &key);
+        handle_gb_mode_key(&navigation, &key);
         if (strstr(navigation.login.status, "SLOT1 ROM REQUIRED") == NULL) {
             return 1;
         }
-        navigation.local.local_selected = 2;
+        navigation.local.gb_screen_selected = 2;
         navigation.local.mobile_scenario_count = 3;
         navigation.local.mobile_scenario_selected = 0;
         copy_text(navigation.local.mobile_scenarios[0].display_name,
@@ -1104,43 +1104,43 @@ int client_diagnostics_startup(int argc, char **argv, ClientDiagnostics *diag)
         copy_text(navigation.local.mobile_scenarios[2].display_name,
                   sizeof(navigation.local.mobile_scenarios[2].display_name), "SYNTHETIC GAMMA");
         key.keysym.sym = SDLK_LEFT;
-        handle_local_key(&navigation, &key);
+        handle_gb_mode_key(&navigation, &key);
         if (navigation.local.mobile_scenario_selected != 2u ||
             strstr(navigation.login.status, "SYNTHETIC GAMMA") == NULL) {
             return 1;
         }
         key.keysym.sym = SDLK_RIGHT;
-        handle_local_key(&navigation, &key);
+        handle_gb_mode_key(&navigation, &key);
         if (navigation.local.mobile_scenario_selected != 0u ||
             strstr(navigation.login.status, "SYNTHETIC ALPHA") == NULL) {
             return 1;
         }
         key.keysym.sym = SDLK_RETURN;
-        handle_local_key(&navigation, &key);
+        handle_gb_mode_key(&navigation, &key);
         if (navigation.local.mobile_scenario_selected != 1u ||
             strstr(navigation.login.status, "SYNTHETIC BETA") == NULL) {
             return 1;
         }
         key.keysym.sym = SDLK_ESCAPE;
-        handle_local_key(&navigation, &key);
-        if (navigation.ui.screen != SCREEN_LOCAL_MODE) {
+        handle_gb_mode_key(&navigation, &key);
+        if (navigation.ui.screen != SCREEN_PLAY_GAME_MODE) {
             return 1;
         }
 
-        navigation.local.local_mode_selected = 2;
+        navigation.local.play_game_mode_selected = 2;
         key.keysym.sym = SDLK_RETURN;
-        handle_local_mode_key(&navigation, &key);
+        handle_play_game_mode_key(&navigation, &key);
         if (navigation.ui.screen != SCREEN_N64_RUNTIME) {
             return 1;
         }
         key.keysym.sym = SDLK_ESCAPE;
         handle_n64_runtime_key(&navigation, &key);
-        if (navigation.ui.screen != SCREEN_LOCAL_MODE) {
+        if (navigation.ui.screen != SCREEN_PLAY_GAME_MODE) {
             return 1;
         }
         static const AppScreen keyboard_only_screens[] = {
             SCREEN_LOGIN, SCREEN_PASSWORD_CHANGE, SCREEN_MAIN_MENU,
-            SCREEN_LOCAL_MODE, SCREEN_LOCAL, SCREEN_GB_MOBILE,
+            SCREEN_PLAY_GAME_MODE, SCREEN_GB_MODE, SCREEN_GB_MOBILE,
             SCREEN_N64_RUNTIME, SCREEN_ROOM_MODE, SCREEN_JOIN_ROOM,
             SCREEN_ROOM, SCREEN_ROM_REGISTER, SCREEN_SCREENSHOTS,
         };
@@ -1213,14 +1213,16 @@ void client_diagnostics_prepare_screen(AppState *state, int argc, char **argv)
                 copy_text(state->room.common.room_code_input, sizeof(state->room.common.room_code_input), "483");
                 copy_text(state->login.status, sizeof(state->login.status), "ENTER ROOM CODE");
             }
-            else if (strcmp(argv[i + 1], "local-mode") == 0) {
-                state->ui.screen = SCREEN_LOCAL_MODE;
-                state->local.local_mode_selected = 0;
+            else if (strcmp(argv[i + 1], "play-game-mode") == 0 ||
+                     strcmp(argv[i + 1], "local-mode") == 0) {
+                state->ui.screen = SCREEN_PLAY_GAME_MODE;
+                state->local.play_game_mode_selected = 0;
                 copy_text(state->login.username, sizeof(state->login.username), "TESTUSER1");
-                copy_text(state->login.status, sizeof(state->login.status), "SELECT LOCAL MODE");
+                copy_text(state->login.status, sizeof(state->login.status), "SELECT PLAY GAME MODE");
             }
-            else if (strcmp(argv[i + 1], "local") == 0) {
-                state->ui.screen = SCREEN_LOCAL;
+            else if (strcmp(argv[i + 1], "gb-mode") == 0 ||
+                     strcmp(argv[i + 1], "local") == 0) {
+                state->ui.screen = SCREEN_GB_MODE;
                 copy_text(state->login.status, sizeof(state->login.status), "GB MODE");
                 copy_text(state->catalog.rom_slots[0].rom_path, sizeof(state->catalog.rom_slots[0].rom_path), "roms/sample_game.gbc");
                 copy_text(state->catalog.rom_slots[0].rom_id, sizeof(state->catalog.rom_slots[0].rom_id), "rom_test");

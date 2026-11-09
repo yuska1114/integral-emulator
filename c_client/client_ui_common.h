@@ -13,8 +13,9 @@ typedef enum AppScreen {
     SCREEN_LOGIN,
     SCREEN_PASSWORD_CHANGE,
     SCREEN_MAIN_MENU,
-    SCREEN_LOCAL_MODE,
-    SCREEN_LOCAL,
+    /* Available after either login path; LOCAL MODE itself is a session flag. */
+    SCREEN_PLAY_GAME_MODE,
+    SCREEN_GB_MODE,
     SCREEN_GB_MOBILE,
     SCREEN_ROOM_MODE,
     SCREEN_JOIN_ROOM,

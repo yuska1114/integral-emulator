@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "transfer_pak/storage.h"
+#include "../../../gb/src/common/utf8_file.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -17,10 +18,15 @@ int transfer_pak_storage_replace(const char *temporary,
                                  const char *destination)
 {
 #ifdef _WIN32
-    return MoveFileExA(temporary, destination,
+    wchar_t *source = integral_utf8_wide(temporary);
+    wchar_t *target = integral_utf8_wide(destination);
+    int result = source && target && MoveFileExW(source, target,
                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)
                ? 0
                : -1;
+    free(source);
+    free(target);
+    return result;
 #else
     return rename(temporary, destination);
 #endif
@@ -47,12 +53,22 @@ int transfer_pak_storage_slot_path(const char *directory, uint32_t slot,
 
 int transfer_pak_storage_file_size(const char *path, uint32_t *size)
 {
+#ifdef _WIN32
+    wchar_t *wide = integral_utf8_wide(path);
+    struct _stat64 status;
+    int found = wide ? _wstat64(wide, &status) : -1;
+    free(wide);
+    if (path == NULL || size == NULL || found != 0 ||
+        (status.st_mode & _S_IFMT) != _S_IFREG || status.st_size < 0 ||
+        (uint64_t)status.st_size > TRANSFER_PAK_STORAGE_MAX_FILE_SIZE) return -1;
+#else
     struct stat status;
     if (path == NULL || size == NULL || stat(path, &status) != 0 ||
         !S_ISREG(status.st_mode) || status.st_size < 0 ||
         (uint64_t)status.st_size > TRANSFER_PAK_STORAGE_MAX_FILE_SIZE) {
         return -1;
     }
+#endif
     *size = (uint32_t)status.st_size;
     return 0;
 }

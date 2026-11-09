@@ -6,6 +6,9 @@
 #include "client_config.h"
 #include "client_save_sync.h"
 
+/* Legacy "local" launch APIs use a server Game Session. The separate
+ * integral_gb_offline_start path belongs to login-free LOCAL MODE. */
+
 /* Logical initial client area; rendering keeps its own integer pixel scale. */
 void integral_gb_local_pair_window_size(unsigned client_width, unsigned client_height,
                                        unsigned available_width, unsigned available_height,
@@ -15,7 +18,7 @@ typedef struct IntegralGbLocalLaunch {
     const char *runtime;
     const char *rom1;
     const char *save1;
-    const char *rom2; /* NULL for one-screen LOCAL. */
+    const char *rom2; /* NULL for one-screen GB MODE. */
     const char *save2;
     const char *port;
     const char *rtc_offset;
@@ -50,6 +53,11 @@ void integral_gb_local_start(const IntegralGbLocalLaunch *launch,
                              char *status, size_t status_size,
                              void (*log)(void *, const char *, const char *),
                              void *log_context);
+
+/* Launch a local ROM with its adjacent SAV, without any API or save-sync process. */
+void integral_gb_offline_start(const IntegralGbLocalLaunch *launch,
+                               IntegralChildProcess *monitor_out,
+                               char *status, size_t status_size);
 
 /* Synchronous boundary to existing SAV/outbox/RTC and SDL operations.
  * Callbacks do not retain the request or introduce persistent state. */

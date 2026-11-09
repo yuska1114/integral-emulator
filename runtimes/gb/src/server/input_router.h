@@ -41,6 +41,8 @@ typedef struct IntegralGBRuntimeInputRouter {
     bool turbo_macro_control;
     bool turbo_macro_toggle_requested;
     bool game_input_blocked;
+    void (*publish_buttons)(void *context, uint8_t slot1, uint8_t slot2, bool release_all);
+    void *publish_context;
 } IntegralGBRuntimeInputRouter;
 
 void integral_gb_runtime_input_router_init(IntegralGBRuntimeInputRouter *router,
@@ -58,6 +60,8 @@ void integral_gb_runtime_input_router_set_speed_multiplier(IntegralGBRuntimeInpu
 void integral_gb_runtime_input_router_disable_speed_controls(IntegralGBRuntimeInputRouter *router);
 bool integral_gb_runtime_input_router_handle_event(IntegralGBRuntimeInputRouter *router, const SDL_Event *event);
 void integral_gb_runtime_input_router_update_turbo(IntegralGBRuntimeInputRouter *router);
+void integral_gb_runtime_input_router_apply_buttons(IntegralGBRuntimeInputRouter *router,
+                                                     uint8_t slot1, uint8_t slot2);
 void integral_gb_runtime_input_router_apply_auto_a(const IntegralGBRuntimeInputRouter *router,
                                                    unsigned frame,
                                                    unsigned auto_a_frames,

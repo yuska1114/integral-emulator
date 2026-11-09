@@ -126,7 +126,7 @@ static void observe(void *context, const char *event, const char *detail)
 #else
     assert(strcmp(event, "gb_runtime_server_monitor_started") == 0);
 #endif
-    assert(strcmp(active_status, expected_count == 2 ? "GB_RUNTIME SERVER2 STARTED" : "GB_RUNTIME LOCAL STARTED") == 0);
+    assert(strcmp(active_status, expected_count == 2 ? "GB MODE 2P STARTED" : "GB MODE STARTED") == 0);
     assert(sscanf(detail, "pid=%ld", &started_pid) == 1);
     started++;
 }

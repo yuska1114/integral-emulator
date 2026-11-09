@@ -509,8 +509,8 @@ endif
 	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen main --screenshot $(BUILD_DIR)/main_smoke.bmp
 	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen room-mode --screenshot $(BUILD_DIR)/room_mode_smoke.bmp
 	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen join-room --screenshot $(BUILD_DIR)/join_room_smoke.bmp
-	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen local-mode --screenshot $(BUILD_DIR)/local_mode_smoke.bmp
-	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen local --screenshot $(BUILD_DIR)/local_smoke.bmp
+	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen play-game-mode --screenshot $(BUILD_DIR)/play_game_mode_smoke.bmp
+	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen gb-mode --screenshot $(BUILD_DIR)/gb_mode_smoke.bmp
 	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen gb-mobile --screenshot $(BUILD_DIR)/gb_mobile_smoke.bmp
 	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen n64_runtime --screenshot $(BUILD_DIR)/n64_runtime_smoke.bmp
 	SDL_VIDEODRIVER=dummy ./$(TARGET) --smoke-test --config $(BUILD_DIR)/smoke-empty.conf --screen room --screenshot $(BUILD_DIR)/room_smoke.bmp

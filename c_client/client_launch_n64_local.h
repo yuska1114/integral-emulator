@@ -5,6 +5,9 @@
 #include "client_config.h"
 #include "client_save_sync.h"
 
+/* Legacy "local" requests use a server Game Session; offline_start is used
+ * only by the login-free LOCAL MODE. */
+
 typedef struct IntegralN64LocalPaths {
     char frontend[INTEGRAL_CONFIG_PATH_MAX], core[INTEGRAL_CONFIG_PATH_MAX];
     char video[INTEGRAL_CONFIG_PATH_MAX], audio[INTEGRAL_CONFIG_PATH_MAX];
@@ -16,12 +19,15 @@ typedef struct IntegralN64LocalLaunch {
     const char *frontend, *rom, *core, *config_dir, *data, *screenshot_dir;
     const char *save_dir, *save_name, *video, *audio, *input, *rsp;
     const char *transfer_dir, *controller_map, *hotkeys;
+    const char *transfer_rom_paths[4], *transfer_save_paths[4];
     const char *extra_controller_maps[3];
 } IntegralN64LocalLaunch;
-#define INTEGRAL_N64_LOCAL_ARGV_CAPACITY 45
+#define INTEGRAL_N64_LOCAL_ARGV_CAPACITY 61
 /* Identical Windows/POSIX argv, caller-owned strings and terminating NULL. */
 void integral_n64_local_arguments(const IntegralN64LocalLaunch *,
                                   const char *argv[INTEGRAL_N64_LOCAL_ARGV_CAPACITY]);
+void integral_n64_offline_start(const IntegralN64LocalLaunch *, IntegralChildProcess *,
+                               char *, size_t);
 
 /* Synchronous preparation and launch. UI selection is already refreshed.
  * SAV/SDL adapters retain existing behavior; monitoring owns its OS-specific copy. */

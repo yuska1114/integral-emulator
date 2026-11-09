@@ -11,5 +11,7 @@ int integral_gb_runtime_screenshot_save_slot(const IntegralGBRuntimeSlot *slot, 
 int integral_gb_runtime_screenshot_save_pair(const IntegralGBRuntimeSlot *slot1,
     const IntegralGBRuntimeSlot *slot2, const char *mode, const char *role,
     char *out_path, size_t out_path_size);
+int integral_gb_runtime_screenshot_save_link_pixels(const uint32_t *slot1,
+    const uint32_t *slot2, char *out_path, size_t out_path_size);
 
 #endif

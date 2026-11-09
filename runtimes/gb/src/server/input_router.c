@@ -37,12 +37,16 @@ void integral_gb_runtime_input_router_init(IntegralGBRuntimeInputRouter *router,
     router->screenshot_requested = false;
     router->escape_requested = false;
     router->reset_requested = false;
+    router->screenshot_held = router->escape_held = router->reset_held = false;
+    router->fast_held = router->turbo_key_held = false;
     router->turbo_hold_active = false;
     router->turbo_capture_active = false;
     router->turbo_phase_on = true;
     router->turbo_macro_control = false;
     router->turbo_macro_toggle_requested = false;
     router->game_input_blocked = false;
+    router->publish_buttons = NULL;
+    router->publish_context = NULL;
 }
 
 void integral_gb_runtime_input_router_set_keymaps(IntegralGBRuntimeInputRouter *router,
@@ -185,18 +189,28 @@ static void apply_button_mask(IntegralGBRuntimeSlot *slot, uint8_t previous, uin
     }
 }
 
+void integral_gb_runtime_input_router_apply_buttons(IntegralGBRuntimeInputRouter *router,
+                                                     uint8_t slot1, uint8_t slot2)
+{
+    apply_button_mask(router->slot1, router->slot1_applied_buttons, slot1);
+    apply_button_mask(router->slot2, router->slot2_applied_buttons, slot2);
+    if (router->publish_buttons &&
+        (router->slot1_applied_buttons != slot1 || router->slot2_applied_buttons != slot2)) {
+        router->publish_buttons(router->publish_context, slot1, slot2, false);
+    }
+    router->slot1_applied_buttons = slot1;
+    router->slot2_applied_buttons = slot2;
+}
+
 static void apply_router_buttons(IntegralGBRuntimeInputRouter *router)
 {
     uint8_t slot1_turbo = router->turbo_hold_active && router->turbo_phase_on ? router->slot1_turbo_buttons : 0u;
     uint8_t slot2_turbo = router->turbo_hold_active && router->turbo_phase_on ? router->slot2_turbo_buttons : 0u;
     uint8_t slot1_next = (uint8_t)(router->slot1_normal_buttons | slot1_turbo);
     uint8_t slot2_next = (uint8_t)(router->slot2_normal_buttons | slot2_turbo);
-    apply_button_mask(router->slot1, router->slot1_applied_buttons, slot1_next);
-    apply_button_mask(router->slot2, router->slot2_applied_buttons, slot2_next);
+    integral_gb_runtime_input_router_apply_buttons(router, slot1_next, slot2_next);
     router->slot1_turbo_applied_buttons = slot1_turbo;
     router->slot2_turbo_applied_buttons = slot2_turbo;
-    router->slot1_applied_buttons = slot1_next;
-    router->slot2_applied_buttons = slot2_next;
 }
 
 bool integral_gb_runtime_input_router_handle_event(IntegralGBRuntimeInputRouter *router, const SDL_Event *event)
@@ -342,6 +356,9 @@ void integral_gb_runtime_input_router_release_all(IntegralGBRuntimeInputRouter *
     router->turbo_hold_active = false;
     router->turbo_capture_active = false;
     router->turbo_phase_on = true;
+    if (router->publish_buttons) {
+        router->publish_buttons(router->publish_context, 0, 0, true);
+    }
     apply_router_buttons(router);
     router->speed_multiplier = 1;
 }

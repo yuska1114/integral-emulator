@@ -34,10 +34,16 @@
           "order": 3,
           "path": "runtimes/gb/patches/sameboy-integral-sgb-game-border.patch",
           "sha256": "37df3e6021cd08df4ad3c77ba8d2c4226ba6bf6bc90d6a46c7a11a29ced48c13"
+        },
+        {
+          "license": "MIT",
+          "order": 4,
+          "path": "runtimes/gb/patches/sameboy-integral-frame-duration.patch",
+          "sha256": "98a53cf0d3de33fb23bf2fb3e5bd4da2f053d444fe82f7788768c021f4c8ff57"
         }
       ],
       "public_source_file_count": 75,
-      "public_source_tree_sha256": "e7b7ec04283799c9a46467af1f15898040bc2202ac636324fee7bbaa5d1826ed",
+      "public_source_tree_sha256": "a9aa90c93fbe267a383434935e40b30f95e9376698ca76b53137f10efe659aab",
       "source_path": "runtimes/gb/third_party/SameBoy",
       "upstream_archive_sha256": "aca79238ef23c220b6332abb28b6a4bbe467995ff7a26073dcb3070a7054eab6",
       "upstream_archive_url": "https://codeload.github.com/LIJI32/SameBoy/tar.gz/208ba4afabffab9edde416f2dbb8ae459e34adb8",
@@ -47,7 +53,7 @@
       "upstream_tree_oid": "74605c44c72c74979907e1f0680e982410af050f",
       "upstream_tree_sha256": "6c0a825ce2ea2bbbf4aefe420ed39935653c77fe08f67f648d21a4cfe1dd5f23",
       "vendored_file_count": 631,
-      "vendored_tree_sha256": "c6c49309da798e5a6aaa71c6753743d0cfcb9c5daf4943f4ac298b40f3e56ed9"
+      "vendored_tree_sha256": "ac8c02e5695a1bfa9cac06ad7f183272937d3e8f093e4dd6cca0ed7cf20e0cb0"
     },
     {
       "build_patches": [
@@ -102,8 +108,20 @@
         {
           "license": "GPL-2.0-or-later",
           "order": 9,
+          "path": "runtimes/n64/patches/mupen64plus-core-transferpak-zero-read.patch",
+          "sha256": "1e447c30a0264cd9ffee14acf3ab7a76748690afa265f4d15c1a8e6a5cff9c35"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 10,
+          "path": "runtimes/n64/patches/mupen64plus-core-audio-pacing.patch",
+          "sha256": "e28bf16d00f9106257e3501580cfcb8a50e19dd9efb3cfee0a3829c3c8ef9b34"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 11,
           "path": "runtimes/n64/patches/mupen64plus-core-integral-change-notices.patch",
-          "sha256": "54c0ffab6575cf2c4f2398f727b028d2ff5db61748313ce864e9dec92c9aef39"
+          "sha256": "810c5fcdff0e2ac250fa68859096a1d9d7e3116d116f9145abca5b36e9b25cb3"
         }
       ],
       "component": "mupen64plus-core",
@@ -211,8 +229,14 @@
         {
           "license": "GPL-2.0-or-later",
           "order": 2,
+          "path": "runtimes/n64/patches/mupen64plus-audio-sdl-core-pacing.patch",
+          "sha256": "6066c18b4ddd1d34e11c57d5b94265d9e24932d1b9aa2d3cd1ec9a89eba7dbf6"
+        },
+        {
+          "license": "GPL-2.0-or-later",
+          "order": 3,
           "path": "runtimes/n64/patches/mupen64plus-audio-sdl-integral-change-notices.patch",
-          "sha256": "050918a7f079f7d3adfdd955bae06434159a0215a5eb4e60adad62a667249b5b"
+          "sha256": "783c2b7745754ac90a78b47e5d2c1642874f54e58f23221df870eed887050639"
         }
       ],
       "component": "mupen64plus-audio-sdl",
