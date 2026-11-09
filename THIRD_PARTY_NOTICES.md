@@ -6,6 +6,7 @@ SameBoyにはIntegral側の変更として、`Core/gb.c`・`gb.h`・`timing.c`�
 IR受信OFF遅延を追加しています。0指定で上流動作となり、上流のrevision更新ではありません。
 また、`Core/sgb.c`・`sgb.h`に、ゲーム側SGBボーダーの有効化をRuntimeから判定するための
 補助APIを追加しています。
+ローカルGBの進行制御で使う `GB_run_frame()` は、フレーム全体のエミュレーション時間を返すよう修正しています。
 
 ## 収録コンポーネント
 

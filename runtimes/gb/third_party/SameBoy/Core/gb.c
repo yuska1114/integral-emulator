@@ -1289,8 +1289,10 @@ uint64_t GB_run_frame(GB_gameboy_t *gb)
     gb->turbo_cap_multiplier = 0;
     
     gb->cycles_since_last_sync = 0;
+    /* Timing sync can reset its counter during a frame. */
+    uint64_t frame_cycles = 0;
     while (true) {
-        GB_run(gb);
+        frame_cycles += GB_run(gb);
         if (gb->vblank_just_occured) {
             break;
         }
@@ -1298,7 +1300,7 @@ uint64_t GB_run_frame(GB_gameboy_t *gb)
     gb->turbo = old_turbo;
     gb->turbo_dont_skip = old_dont_skip;
     gb->turbo_cap_multiplier = old_turbo_cap;
-    return gb->cycles_since_last_sync * 1000000000LL / 2 / GB_get_clock_rate(gb); /* / 2 because we use 8MHz units */
+    return frame_cycles * 1000000000LL / 2 / GB_get_clock_rate(gb); /* / 2 because we use 8MHz units */
 }
 
 uint32_t *GB_get_pixels_output(GB_gameboy_t *gb)

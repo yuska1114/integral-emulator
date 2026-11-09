@@ -28,6 +28,7 @@
 
 #define INTEGRAL_GB_RUNTIME_FRAME_INTERVAL_US 16743ULL
 #define INTEGRAL_GB_RUNTIME_MAX_FRAME_DEADLINE_LAG_US (INTEGRAL_GB_RUNTIME_FRAME_INTERVAL_US * 2ULL)
+#define NANOSECONDS_PER_MILLISECOND 1000000ULL
 
 static volatile sig_atomic_t g_gb_runtime_server_shutdown_requested = 0;
 
@@ -167,6 +168,238 @@ static unsigned apply_slot_macro(IntegralGBRuntimeSlot *slot,
         }
     }
     return press_macro_key(slot->gb, macro[index]) ? 1u : 0u;
+}
+
+typedef struct LinkFrameState {
+    signed delta;
+    unsigned slot1_for_slot2;
+    unsigned slot2_for_slot1;
+    unsigned ir_trace_count;
+    unsigned ir_trace_nonzero;
+    unsigned ir_trace_frame[128];
+    unsigned ir_trace_ir1[128];
+    unsigned ir_trace_ir2[128];
+    unsigned ir_last_slot1;
+    unsigned ir_last_slot2;
+} LinkFrameState;
+
+static void run_link_frame(IntegralGBRuntimeSlot *slot1,
+                           IntegralGBRuntimeSlot *slot2,
+                           IntegralGBRuntimeLinkBridge *bridge,
+                           LinkFrameState *state,
+                           unsigned frame)
+{
+    bridge->current_frame = frame;
+    slot1->vblank_occurred = false;
+    slot2->vblank_occurred = false;
+    while (!slot1->vblank_occurred || !slot2->vblank_occurred) {
+        bool slot1_master_waiting = integral_gb_runtime_slot_serial_internal_clock(slot1) &&
+                                    !integral_gb_runtime_slot_serial_active(slot2);
+        bool slot2_master_waiting = integral_gb_runtime_slot_serial_internal_clock(slot2) &&
+                                    !integral_gb_runtime_slot_serial_active(slot1);
+        if (slot1_master_waiting && !slot2->vblank_occurred) {
+            state->delta += (signed)integral_gb_runtime_slot_run_until_sync(slot2);
+            bridge->slot2_syncs++;
+            state->slot1_for_slot2++;
+            unsigned ir1_delta = bridge->slot1_ir_edges - state->ir_last_slot1;
+            unsigned ir2_delta = bridge->slot2_ir_edges - state->ir_last_slot2;
+            if (ir1_delta != 0 || ir2_delta != 0) {
+                state->ir_trace_nonzero++;
+                if (state->ir_trace_count < 128) {
+                    state->ir_trace_frame[state->ir_trace_count] = frame;
+                    state->ir_trace_ir1[state->ir_trace_count] = ir1_delta;
+                    state->ir_trace_ir2[state->ir_trace_count] = ir2_delta;
+                    state->ir_trace_count++;
+                }
+            }
+            state->ir_last_slot1 = bridge->slot1_ir_edges;
+            state->ir_last_slot2 = bridge->slot2_ir_edges;
+        }
+        else if (slot2_master_waiting && !slot1->vblank_occurred) {
+            state->delta -= (signed)integral_gb_runtime_slot_run_until_sync(slot1);
+            bridge->slot1_syncs++;
+            state->slot2_for_slot1++;
+        }
+        else if (state->delta >= 0) {
+            state->delta -= (signed)integral_gb_runtime_slot_run_until_sync(slot1);
+            bridge->slot1_syncs++;
+        }
+        else {
+            state->delta += (signed)integral_gb_runtime_slot_run_until_sync(slot2);
+            bridge->slot2_syncs++;
+        }
+    }
+}
+
+typedef struct LocalLinkVideoFrame {
+    uint32_t pixels[2][INTEGRAL_GB_RUNTIME_GB_WIDTH * INTEGRAL_GB_RUNTIME_GB_HEIGHT];
+    unsigned sequence;
+} LocalLinkVideoFrame;
+
+typedef struct LocalLinkMailbox {
+    SDL_mutex *mutex;
+    uint8_t held[2];
+    uint8_t pressed[2];
+    bool reset;
+    LocalLinkVideoFrame latest;
+    LocalLinkVideoFrame displayed;
+} LocalLinkMailbox;
+
+typedef struct LocalLinkRun {
+    const ServerOptions *options;
+    IntegralGBRuntimeSlot *slots[2];
+    IntegralGBRuntimeLinkBridge *bridge;
+    LinkFrameState *link_frames;
+    IntegralGBRuntimeAudioPlayer *audio;
+    LocalLinkMailbox *mailbox;
+    SDL_atomic_t stop;
+    SDL_atomic_t finished;
+    unsigned frame;
+    unsigned macro_events[2];
+} LocalLinkRun;
+
+static void publish_local_link_buttons(void *context, uint8_t slot1, uint8_t slot2, bool release_all)
+{
+    LocalLinkMailbox *mailbox = context;
+    const uint8_t next[] = {slot1, slot2};
+    SDL_LockMutex(mailbox->mutex);
+    for (unsigned i = 0; i < 2; i++) {
+        /* Latch a press that was released before the worker sampled it. */
+        if (release_all) mailbox->pressed[i] = 0;
+        else mailbox->pressed[i] |= next[i] & (uint8_t)~mailbox->held[i];
+        mailbox->held[i] = next[i];
+    }
+    SDL_UnlockMutex(mailbox->mutex);
+}
+
+static void copy_local_link_video(LocalLinkRun *run)
+{
+    LocalLinkVideoFrame *latest = &run->mailbox->latest;
+    for (unsigned i = 0; i < 2; i++) {
+        memcpy(latest->pixels[i], integral_gb_runtime_slot_presented_pixels(run->slots[i]),
+               sizeof(latest->pixels[i]));
+    }
+    latest->sequence++;
+}
+
+static int SDLCALL run_local_link_worker(void *context)
+{
+    LocalLinkRun *run = context;
+    LocalLinkMailbox *mailbox = run->mailbox;
+    const ServerOptions *options = run->options;
+    IntegralGBRuntimeInputRouter input = {.slot1 = run->slots[0], .slot2 = run->slots[1]};
+    uint8_t held[2] = {0};
+
+    for (; !SDL_AtomicGet(&run->stop) && (!options->frames || run->frame < options->frames); run->frame++) {
+        uint8_t pressed[2] = {0};
+        bool reset = false;
+        /* A preempted UI thread must not delay emulation or audio. */
+        if (SDL_TryLockMutex(mailbox->mutex) == 0) {
+            memcpy(held, mailbox->held, sizeof(held));
+            memcpy(pressed, mailbox->pressed, sizeof(pressed));
+            memset(mailbox->pressed, 0, sizeof(mailbox->pressed));
+            reset = mailbox->reset;
+            mailbox->reset = false;
+            SDL_UnlockMutex(mailbox->mutex);
+        }
+
+        integral_gb_runtime_input_router_apply_auto_a(&input, run->frame,
+            options->auto_a_frames, options->auto_a_pulse);
+        run->macro_events[0] += apply_slot_macro(run->slots[0], "slot1", options->slot1_macro,
+            run->frame, options->macro_step_frames, options->macro_press_frames, options->macro_screenshots);
+        run->macro_events[1] += apply_slot_macro(run->slots[1], "slot2", options->slot2_macro,
+            run->frame, options->macro_step_frames, options->macro_press_frames, options->macro_screenshots);
+        integral_gb_runtime_input_router_apply_buttons(&input, held[0] | pressed[0], held[1] | pressed[1]);
+        if (reset) {
+            integral_gb_runtime_slot_reset(run->slots[0]);
+            integral_gb_runtime_slot_reset(run->slots[1]);
+            integral_gb_runtime_input_router_apply_buttons(&input, 0, 0);
+        }
+
+        run_link_frame(run->slots[0], run->slots[1], run->bridge, run->link_frames, run->frame);
+        integral_gb_runtime_audio_player_queue_slot(run->audio, run->slots[0], true);
+        if (SDL_TryLockMutex(mailbox->mutex) == 0) {
+            copy_local_link_video(run);
+            SDL_UnlockMutex(mailbox->mutex);
+        }
+        integral_gb_runtime_server_save_local_slot_if_dirty(run->slots[0]);
+        integral_gb_runtime_server_save_local_slot_if_dirty(run->slots[1]);
+    }
+    SDL_AtomicSet(&run->finished, 1);
+    return 0;
+}
+
+static int run_local_link_window(LocalLinkRun *run, IntegralGBRuntimeVideoWindow *window,
+                                 IntegralGBRuntimeInputRouter *input, bool *return_to_menu)
+{
+    LocalLinkMailbox *mailbox = calloc(1, sizeof(*mailbox));
+    if (!mailbox) {
+        fprintf(stderr, "Failed to allocate local GB link mailbox\n");
+        return 1;
+    }
+    mailbox->mutex = SDL_CreateMutex();
+    if (!mailbox->mutex) {
+        fprintf(stderr, "Failed to create local GB link mutex: %s\n", SDL_GetError());
+        free(mailbox);
+        return 1;
+    }
+    run->mailbox = mailbox;
+    copy_local_link_video(run);
+    SDL_Thread *worker = SDL_CreateThread(run_local_link_worker, "GB local link", run);
+    if (!worker) {
+        fprintf(stderr, "Failed to start local GB link worker: %s\n", SDL_GetError());
+        SDL_DestroyMutex(mailbox->mutex);
+        free(mailbox);
+        return 1;
+    }
+
+    input->publish_buttons = publish_local_link_buttons;
+    input->publish_context = mailbox;
+    int result = 0;
+    while (!g_gb_runtime_server_shutdown_requested && !SDL_AtomicGet(&run->finished)) {
+        IntegralGBRuntimeVideoWindowPollResult poll_result =
+            integral_gb_runtime_video_window_poll(window, input, NULL, NULL);
+        if (poll_result != INTEGRAL_GB_RUNTIME_VIDEO_WINDOW_CONTINUE) {
+            *return_to_menu = poll_result == INTEGRAL_GB_RUNTIME_VIDEO_WINDOW_RETURN_MENU;
+            break;
+        }
+
+        bool reset = integral_gb_runtime_input_router_take_reset_request(input);
+        SDL_LockMutex(mailbox->mutex);
+        mailbox->reset |= reset;
+        const bool new_frame = mailbox->displayed.sequence != mailbox->latest.sequence;
+        if (new_frame) mailbox->displayed = mailbox->latest;
+        SDL_UnlockMutex(mailbox->mutex);
+
+        const uint32_t *slot1 = mailbox->displayed.pixels[0];
+        const uint32_t *slot2 = mailbox->displayed.pixels[1];
+        if (integral_gb_runtime_input_router_take_screenshot_request(input)) {
+            char path[512];
+            if (integral_gb_runtime_screenshot_save_link_pixels(slot1, slot2, path, sizeof(path)) == 0) {
+                printf("  screenshot saved: %s\n", path);
+                integral_gb_runtime_video_window_show_message(window, "SCREENSHOT SAVED");
+            }
+            else {
+                fprintf(stderr, "Failed to save screenshot\n");
+                integral_gb_runtime_video_window_show_message(window, "SCREENSHOT FAILED");
+            }
+        }
+        if (reset) integral_gb_runtime_video_window_show_message(window, "RESET");
+        if (!new_frame) {
+            SDL_Delay(4u);
+        }
+        else if (integral_gb_runtime_video_window_render_pair_pixels(window, slot1, slot2) != 0) {
+            result = 1;
+            break;
+        }
+    }
+    SDL_AtomicSet(&run->stop, 1);
+    SDL_WaitThread(worker, NULL);
+    input->publish_buttons = NULL;
+    input->publish_context = NULL;
+    SDL_DestroyMutex(mailbox->mutex);
+    free(mailbox);
+    return result;
 }
 
 static void poll_remote_stream_inputs(IntegralGBRuntimeStreamServer *stream_server,
@@ -502,9 +735,11 @@ int main(int argc, char **argv)
         printf("  local link: connected Slot 1 <-> Slot 2\n");
     }
 
+    const bool threaded_local_link = options.display && link_connected && !options.remote_input_enabled;
     IntegralGBRuntimeVideoWindow *window = NULL;
     IntegralGBRuntimeInputRouter input_router;
-    integral_gb_runtime_input_router_init(&input_router, slot1, slot2_ready ? slot2 : NULL);
+    integral_gb_runtime_input_router_init(&input_router, threaded_local_link ? NULL : slot1,
+                                         slot2_ready && !threaded_local_link ? slot2 : NULL);
     integral_gb_runtime_input_router_set_keymaps(&input_router,
                                        &options.slot1_keys,
                                        &options.slot2_keys,
@@ -548,11 +783,12 @@ int main(int argc, char **argv)
         if (display_window_width < display_slot_width) display_window_width = display_slot_width;
         if (display_window_height < display_slot_height) display_window_height = display_slot_height;
     }
+    const bool local_frame_pacing = options.display && options.self_mode && !options.lan_remote_enabled;
     if (options.display &&
         integral_gb_runtime_video_window_open_titled_sized_content(
             &window, options.scale, options.display_slots, window_title,
             display_window_width, display_window_height,
-            display_slot_width, display_slot_height) != 0) {
+            display_slot_width, display_slot_height, !local_frame_pacing) != 0) {
         close_stream_server_heap(&stream_server, &stream_server_open);
         close_stream_server_heap(&stream_server_slot1, &stream_server_slot1_open);
         if (slot2_ready) {
@@ -564,7 +800,8 @@ int main(int argc, char **argv)
 
     IntegralGBRuntimeAudioPlayer *audio_player = NULL;
     if (options.local_audio_enabled &&
-        integral_gb_runtime_audio_player_open(&audio_player, options.audio_max_ms) != 0) {
+        integral_gb_runtime_audio_player_open(&audio_player, options.audio_max_ms,
+                                              local_frame_pacing || threaded_local_link) != 0) {
         integral_gb_runtime_video_window_close(window);
         if (stream_server_open) {
             close_stream_server_heap(&stream_server, &stream_server_open);
@@ -623,23 +860,30 @@ int main(int argc, char **argv)
 
     unsigned frames_to_run = options.frames;
     unsigned frame = 0;
-    signed delta = 0;
+    LinkFrameState link_frames = {0};
     int16_t audio_scratch[INTEGRAL_GB_RUNTIME_AUDIO_MAX_FRAMES * INTEGRAL_GB_RUNTIME_AUDIO_CHANNELS];
-    unsigned link_wait_slot1_for_slot2 = 0;
-    unsigned link_wait_slot2_for_slot1 = 0;
-    unsigned link_wait_ir_trace_count = 0;
-    unsigned link_wait_ir_trace_nonzero = 0;
-    unsigned link_wait_ir_trace_frame[128];
-    unsigned link_wait_ir_trace_ir1[128];
-    unsigned link_wait_ir_trace_ir2[128];
-    unsigned link_wait_ir_last_slot1 = 0;
-    unsigned link_wait_ir_last_slot2 = 0;
     unsigned slot1_macro_events = 0;
     unsigned slot2_macro_events = 0;
     uint64_t next_frame_deadline_us = integral_gb_runtime_now_us();
+    uint64_t local_frame_deadline_ns = local_frame_pacing
+        ? SDL_GetTicks64() * NANOSECONDS_PER_MILLISECOND : 0;
     bool return_to_menu = false;
     bool smoke_screenshot_saved = false;
-    while (!g_gb_runtime_server_shutdown_requested &&
+    int exit_status = 0;
+    if (threaded_local_link) {
+        LocalLinkRun run = {
+            .options = &options,
+            .slots = {slot1, slot2},
+            .bridge = &link_bridge,
+            .link_frames = &link_frames,
+            .audio = audio_player,
+        };
+        exit_status = run_local_link_window(&run, window, &input_router, &return_to_menu);
+        frame = run.frame;
+        slot1_macro_events = run.macro_events[0];
+        slot2_macro_events = run.macro_events[1];
+    }
+    while (!threaded_local_link && !g_gb_runtime_server_shutdown_requested &&
            (options.display || options.remote_input_enabled || frame < frames_to_run)) {
         if (frames_to_run > 0 && frame >= frames_to_run) {
             break;
@@ -732,58 +976,20 @@ int main(int argc, char **argv)
                                   slot1);
         bool advanced_frame = false;
         if (link_connected) {
-            link_bridge.current_frame = frame;
-            slot1->vblank_occurred = false;
-            slot2->vblank_occurred = false;
-            while (!slot1->vblank_occurred || !slot2->vblank_occurred) {
-                bool slot1_master_waiting = integral_gb_runtime_slot_serial_internal_clock(slot1) &&
-                                            !integral_gb_runtime_slot_serial_active(slot2);
-                bool slot2_master_waiting = integral_gb_runtime_slot_serial_internal_clock(slot2) &&
-                                            !integral_gb_runtime_slot_serial_active(slot1);
-                if (slot1_master_waiting && !slot2->vblank_occurred) {
-                    delta += (signed)integral_gb_runtime_slot_run_until_sync(slot2);
-                    link_bridge.slot2_syncs++;
-                    link_wait_slot1_for_slot2++;
-                    unsigned ir1_delta = link_bridge.slot1_ir_edges - link_wait_ir_last_slot1;
-                    unsigned ir2_delta = link_bridge.slot2_ir_edges - link_wait_ir_last_slot2;
-                    if (ir1_delta != 0 || ir2_delta != 0) {
-                        link_wait_ir_trace_nonzero++;
-                        if (link_wait_ir_trace_count < 128) {
-                            link_wait_ir_trace_frame[link_wait_ir_trace_count] = frame;
-                            link_wait_ir_trace_ir1[link_wait_ir_trace_count] = ir1_delta;
-                            link_wait_ir_trace_ir2[link_wait_ir_trace_count] = ir2_delta;
-                            link_wait_ir_trace_count++;
-                        }
-                    }
-                    link_wait_ir_last_slot1 = link_bridge.slot1_ir_edges;
-                    link_wait_ir_last_slot2 = link_bridge.slot2_ir_edges;
-                }
-                else if (slot2_master_waiting && !slot1->vblank_occurred) {
-                    delta -= (signed)integral_gb_runtime_slot_run_until_sync(slot1);
-                    link_bridge.slot1_syncs++;
-                    link_wait_slot2_for_slot1++;
-                }
-                else if (delta >= 0) {
-                    delta -= (signed)integral_gb_runtime_slot_run_until_sync(slot1);
-                    link_bridge.slot1_syncs++;
-                }
-                else {
-                    delta += (signed)integral_gb_runtime_slot_run_until_sync(slot2);
-                    link_bridge.slot2_syncs++;
-                }
-            }
+            run_link_frame(slot1, slot2, &link_bridge, &link_frames, frame);
             advanced_frame = true;
         }
         else {
-            unsigned frames_this_tick = 1;
+            unsigned speed_multiplier = 1;
             if (options.self_mode) {
                 if (lan_remote_open && integral_gb_runtime_lan_remote_fast_enabled(&lan_remote)) {
-                    frames_this_tick = 2u;
+                    speed_multiplier = 2u;
                 }
                 else {
-                    frames_this_tick = integral_gb_runtime_input_router_speed_multiplier(&input_router);
+                    speed_multiplier = integral_gb_runtime_input_router_speed_multiplier(&input_router);
                 }
             }
+            unsigned frames_this_tick = speed_multiplier;
             if (frames_to_run > 0 && frame + frames_this_tick > frames_to_run) {
                 frames_this_tick = frames_to_run - frame;
             }
@@ -791,7 +997,15 @@ int main(int argc, char **argv)
                 SDL_Delay(16);
             }
             else {
-                if (integral_gb_runtime_slot_run_frames(slot1, frames_this_tick) != 0 ||
+                if (local_frame_pacing) {
+                    uint64_t emulated_ns = 0;
+                    for (unsigned i = 0; i < frames_this_tick; i++) {
+                        emulated_ns += GB_run_frame(slot1->gb);
+                    }
+                    local_frame_deadline_ns += emulated_ns / speed_multiplier;
+                    integral_gb_runtime_audio_player_queue_slot(audio_player, slot1, speed_multiplier == 1u);
+                }
+                else if (integral_gb_runtime_slot_run_frames(slot1, frames_this_tick) != 0 ||
                     (slot2_ready && integral_gb_runtime_slot_run_frames(slot2, frames_this_tick) != 0)) {
                     fprintf(stderr, "Failed to advance slot frames\n");
                     integral_gb_runtime_lan_remote_close(&lan_remote);
@@ -846,7 +1060,8 @@ int main(int argc, char **argv)
                 return 1;
             }
         }
-        if (audio_player || lan_remote_open || stream_server_slot1_open) {
+        if ((!local_frame_pacing && audio_player) ||
+            lan_remote_open || stream_server_slot1_open) {
             unsigned audio_frames = integral_gb_runtime_slot_drain_audio(slot1,
                                                                 audio_scratch,
                                                                 INTEGRAL_GB_RUNTIME_AUDIO_MAX_FRAMES);
@@ -884,7 +1099,20 @@ int main(int argc, char **argv)
         if (advanced_frame) {
             frame++;
         }
-        if (!options.display && options.remote_input_enabled && frames_to_run == 0) {
+        if (local_frame_pacing) {
+            const uint64_t max_lag_ns = INTEGRAL_GB_RUNTIME_MAX_FRAME_DEADLINE_LAG_US * 1000u;
+            uint64_t now_ns = SDL_GetTicks64() * NANOSECONDS_PER_MILLISECOND;
+            if (now_ns > local_frame_deadline_ns + max_lag_ns) {
+                /* Do not run a burst of frames to catch up after a long stall. */
+                local_frame_deadline_ns = now_ns;
+            }
+            else if (now_ns < local_frame_deadline_ns) {
+                uint64_t remaining_ns = local_frame_deadline_ns - now_ns;
+                SDL_Delay((Uint32)((remaining_ns + NANOSECONDS_PER_MILLISECOND - 1u) /
+                                   NANOSECONDS_PER_MILLISECOND));
+            }
+        }
+        else if (!options.display && options.remote_input_enabled && frames_to_run == 0) {
             if (advanced_frame) {
                 next_frame_deadline_us += INTEGRAL_GB_RUNTIME_FRAME_INTERVAL_US;
                 uint64_t now_us = integral_gb_runtime_now_us();
@@ -934,18 +1162,18 @@ int main(int argc, char **argv)
     if (link_connected) {
         integral_gb_runtime_link_bridge_print_stats(&link_bridge);
         printf("  link serial wait assists: slot1_waited_for_slot2=%u slot2_waited_for_slot1=%u\n",
-               link_wait_slot1_for_slot2,
-               link_wait_slot2_for_slot1);
+               link_frames.slot1_for_slot2,
+               link_frames.slot2_for_slot1);
         printf("  link serial wait ir trace: nonzero=%u shown=%u\n",
-               link_wait_ir_trace_nonzero,
-               link_wait_ir_trace_count);
+               link_frames.ir_trace_nonzero,
+               link_frames.ir_trace_count);
         printf("  link serial wait ir trace first:");
-        for (unsigned i = 0; i < link_wait_ir_trace_count; i++) {
+        for (unsigned i = 0; i < link_frames.ir_trace_count; i++) {
             printf(" #%u:f%u:ir%u/%u",
                    i,
-                   link_wait_ir_trace_frame[i],
-                   link_wait_ir_trace_ir1[i],
-                   link_wait_ir_trace_ir2[i]);
+                   link_frames.ir_trace_frame[i],
+                   link_frames.ir_trace_ir1[i],
+                   link_frames.ir_trace_ir2[i]);
         }
         printf("\n");
     }
@@ -978,5 +1206,5 @@ int main(int argc, char **argv)
     if (return_to_menu) {
         return exec_menu();
     }
-    return 0;
+    return exit_status;
 }

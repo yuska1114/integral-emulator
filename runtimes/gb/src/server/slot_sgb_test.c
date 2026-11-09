@@ -158,6 +158,12 @@ int main(int argc, char **argv)
     bool seen_b = false;
     observe_palette_states(&guarded.slot, &seen_a, &seen_b);
     assert(seen_a && seen_b);
+    /* Sixty steady-state SGB2 frames take about one second of emulated time. */
+    uint64_t elapsed_ns = 0;
+    for (unsigned frame = 0; frame < 60; frame++) {
+        elapsed_ns += GB_run_frame(guarded.slot.gb);
+    }
+    assert(elapsed_ns >= 990000000u && elapsed_ns <= 1020000000u);
     assert_guards(&guarded);
 
     integral_gb_runtime_slot_reset(&guarded.slot);

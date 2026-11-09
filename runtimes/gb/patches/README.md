@@ -9,6 +9,8 @@ SameBoy `v1.0.3`（upstream baseline `208ba4afabffab9edde416f2dbb8ae459e34adb8`�
    - IR受信OFF遅延の設定機能
 3. `sameboy-integral-sgb-game-border.patch`
    - ゲーム側SGBボーダーが有効になったかをRuntimeから判定する補助API
+4. `sameboy-integral-frame-duration.patch`
+   - `GB_run_frame()` の戻り値にフレーム全体のエミュレーション時間を反映
 
 patchの適用順、SHA-256、upstream treeとの対応はプロジェクトルートの`THIRD_PARTY_LOCK.json`に記録しています。プロジェクトルートで次を実行するとローカルの公開subsetとpatch hashを検証できます。
 
